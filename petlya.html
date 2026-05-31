@@ -239,12 +239,12 @@ padding: 0.6rem 0.8rem;
 .message.ai .message-body { font-size: 1.1rem; } .message.user .message-body { font-size: 0.74rem; }
 }
 /* ВОСПОМИНАНИЯ — восстановленный диалог, живой, приглушённый */
-.memory { opacity: 0.7; max-width: 80vw; padding-top: 3rem; will-change: transform, opacity, filter; }
-.memory .message-body { color: rgba(210,225,245,0.85); font-size: 1.6rem; text-align: center; max-width: 75%; line-height: 1.5; word-break: break-word; overflow-wrap: break-word; }
-.memory.user .message-body { color: rgba(0,255,136,0.82); font-size: 2.2rem; font-family: 'Kalam', cursive; letter-spacing: 0.01em; line-height: 1.35; white-space: normal; word-break: break-word; overflow-wrap: break-word; max-width: 60%; }
+.memory { opacity: 0.7; padding-top: 3rem; will-change: transform, opacity, filter; }
+.memory .message-body { color: rgba(210,225,245,0.85); font-size: 1.6rem; text-align: center; max-width: 75%; line-height: 1.5; word-break: break-word; }
+.memory.user .message-body { color: rgba(0,255,136,0.82); font-size: 2.2rem; font-family: 'Kalam', cursive; letter-spacing: 0.01em; line-height: 1.35; white-space: normal; word-break: break-word; overflow-wrap: break-word; width: 50vw; max-width: 50vw; display: block; }
 
 /* шум-воспоминание: медленный диагональный маятник справа-сверху → вниз-влево */
-.memory.user { position: relative; z-index: 5; max-width: 55vw; width: 55vw; display: block; }
+.memory.user { position: relative; z-index: 5; }
 @keyframes memh-diag1 { 0% { transform: translate(20vw, -40px); opacity:0.75; } 50% { transform: translate(-20vw, 60px); opacity:0.75; } 100% { transform: translate(20vw, -40px); opacity:0.75; } }
 .memh-rl { animation: memh-diag1 80s ease-in-out infinite; }
 @keyframes memh-diag2 { 0% { transform: translate(-15vw, 50px); opacity:0.75; } 50% { transform: translate(25vw, -70px); opacity:0.75; } 100% { transform: translate(-15vw, 50px); opacity:0.75; } }
