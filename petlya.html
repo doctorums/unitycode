@@ -575,6 +575,10 @@ function restoreDialog() {
   let saved = null;
   try { saved = JSON.parse(sessionStorage.getItem('uc_petlya_dialog') || 'null'); } catch(e){}
   if (!Array.isArray(saved) || !saved.length) return false;
+  // страница уже была — отменяем fadeIn, всё видно сразу
+  document.body.style.animation = 'none';
+  document.body.style.opacity = '1';
+  document.body.style.filter = 'none';
   messages = saved.slice();
 
   var aiFx   = ['mem-breathe','mem-drift','mem-tilt','mem-wave','mem-blur','mem-sway'];
