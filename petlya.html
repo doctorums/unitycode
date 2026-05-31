@@ -247,22 +247,22 @@ padding: 0.6rem 0.8rem;
 @keyframes memh-diag4 { 0% { transform: translate(-20vw, -30px) rotate(-1deg); opacity:0.75; } 50% { transform: translate(20vw, 80px) rotate(1deg); opacity:0.75; } 100% { transform: translate(-20vw, -30px) rotate(-1deg); opacity:0.75; } }
 .memh-tiltslide { animation: memh-diag4 85s ease-in-out infinite; }
 
-@keyframes mem-breathe { 0%,100% { transform: scale(1); opacity:0.5; } 50% { transform: scale(1.025); opacity:0.7; } }
+@keyframes mem-breathe { 0%,100% { transform: scale(1) translateY(0); opacity:0.5; } 50% { transform: scale(1.04) translateY(-12px); opacity:0.75; } }
 .mem-breathe { animation: mem-breathe 7s ease-in-out infinite; }
 
-@keyframes mem-drift { 0%,100% { transform: translateX(0); } 33% { transform: translateX(14px); } 66% { transform: translateX(-10px); } }
+@keyframes mem-drift { 0%,100% { transform: translateX(0) translateY(0); } 33% { transform: translateX(30px) translateY(-15px); } 66% { transform: translateX(-25px) translateY(10px); } }
 .mem-drift { animation: mem-drift 13s ease-in-out infinite; }
 
-@keyframes mem-tilt { 0%,100% { transform: rotate(0deg) skewX(0deg); } 50% { transform: rotate(-1.2deg) skewX(2deg); } }
+@keyframes mem-tilt { 0%,100% { transform: rotate(0deg) skewX(0deg) translateX(0); } 50% { transform: rotate(-2deg) skewX(3deg) translateX(20px); } }
 .mem-tilt { animation: mem-tilt 9s ease-in-out infinite; }
 
-@keyframes mem-wave { 0%,100% { transform: translateY(0) scaleX(1); } 25% { transform: translateY(-6px) scaleX(1.02); } 75% { transform: translateY(5px) scaleX(0.99); } }
+@keyframes mem-wave { 0%,100% { transform: translateY(0) scaleX(1); } 25% { transform: translateY(-20px) scaleX(1.03); } 75% { transform: translateY(15px) scaleX(0.98); } }
 .mem-wave { animation: mem-wave 11s ease-in-out infinite; }
 
 @keyframes mem-blur { 0%,100% { filter: blur(0px); opacity:0.6; } 50% { filter: blur(1.6px); opacity:0.4; } }
 .mem-blur { animation: mem-blur 8s ease-in-out infinite; }
 
-@keyframes mem-sway { 0%,100% { transform: translateX(0) rotate(0deg); } 50% { transform: translateX(8px) rotate(0.8deg); } }
+@keyframes mem-sway { 0%,100% { transform: translateX(0) rotate(0deg) translateY(0); } 50% { transform: translateX(25px) rotate(1.5deg) translateY(-10px); } }
 .mem-sway { animation: mem-sway 10s ease-in-out infinite; }
 
 /* варианты УХОДА воспоминаний при новом вводе */
@@ -601,7 +601,7 @@ function restoreDialog() {
       var fx = pool[Math.floor(Math.random()*pool.length)];
       lastAiFx = fx;
       div.classList.add('memory', fx);
-      div.style.animationDuration = (12 + Math.random()*8).toFixed(1) + 's';
+      div.style.animationDuration = (6 + Math.random()*5).toFixed(1) + 's';
       div.style.animationDelay = (Math.random()*4).toFixed(2) + 's';
       // кнопка — только если не вплетали ни в этой сессии, ни раньше
       const alreadyWoven = m.woven ||
