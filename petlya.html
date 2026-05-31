@@ -129,6 +129,13 @@ font-size: 0.6rem; letter-spacing: 0.15em;
 cursor: pointer; background: transparent;
 transition: border-color 0.2s, color 0.2s, background 0.2s;
 text-transform: uppercase;
+animation: btn-sway 4s ease-in-out infinite;
+transform-origin: left center;
+}
+@keyframes btn-sway {
+0%,100% { transform: translateX(0) rotate(0deg); }
+30% { transform: translateX(6px) rotate(0.6deg); }
+70% { transform: translateX(-4px) rotate(-0.4deg); }
 }
 .weave-btn:hover:not(:disabled) { border-color: var(--accent2); color: var(--accent2); background: rgba(255,51,102,0.05); }
 .weave-btn:disabled { opacity: 0.5; cursor: default; }
@@ -614,6 +621,7 @@ function restoreDialog() {
         weaveBtn.dataset.noise = lastUser.slice(0, 500);
         weaveBtn.dataset.msgIndex = messages.indexOf(m);
         weaveBtn.onclick = function() { weaveIntoNet(this); };
+        weaveBtn.style.animationDelay = (0.8 + Math.random()*1.5).toFixed(2) + 's';
         div.appendChild(weaveBtn);
       }
     }
