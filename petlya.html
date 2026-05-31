@@ -238,13 +238,13 @@ padding: 0.6rem 0.8rem;
 
 /* шум-воспоминание: медленный диагональный маятник справа-сверху → вниз-влево */
 .memory.user { position: relative; z-index: 5; }
-@keyframes memh-diag1 { 0% { transform: translate(35vw, -80px); opacity:0.75; } 100% { transform: translate(-35vw, 100px); opacity:0.75; } }
+@keyframes memh-diag1 { 0% { transform: translate(0, 0); opacity:0.75; } 100% { transform: translate(-60vw, 140px); opacity:0.75; } }
 .memh-rl { animation: memh-diag1 260s ease-in-out infinite alternate; }
-@keyframes memh-diag2 { 0% { transform: translate(40vw, -60px) rotate(-1deg); opacity:0.75; } 100% { transform: translate(-40vw, 120px) rotate(1.5deg); opacity:0.75; } }
+@keyframes memh-diag2 { 0% { transform: translate(0, 0); opacity:0.75; } 100% { transform: translate(60vw, 130px); opacity:0.75; } }
 .memh-lr { animation: memh-diag2 280s ease-in-out infinite alternate; }
-@keyframes memh-diag3 { 0% { transform: translate(32vw, -90px); opacity:0.75; } 100% { transform: translate(-38vw, 80px); opacity:0.75; } }
+@keyframes memh-diag3 { 0% { transform: translate(0, 0); opacity:0.75; } 100% { transform: translate(-55vw, -100px); opacity:0.75; } }
 .memh-arc { animation: memh-diag3 250s ease-in-out infinite alternate; }
-@keyframes memh-diag4 { 0% { transform: translate(38vw, -70px) rotate(-1.5deg); opacity:0.75; } 100% { transform: translate(-36vw, 110px) rotate(1deg); opacity:0.75; } }
+@keyframes memh-diag4 { 0% { transform: translate(0, 0) rotate(0deg); opacity:0.75; } 100% { transform: translate(55vw, -110px) rotate(1.5deg); opacity:0.75; } }
 .memh-tiltslide { animation: memh-diag4 270s ease-in-out infinite alternate; }
 
 @keyframes mem-breathe { 0%,100% { transform: scale(1); opacity:0.5; } 50% { transform: scale(1.025); opacity:0.7; } }
@@ -575,9 +575,9 @@ function restoreDialog() {
   let saved = null;
   try { saved = JSON.parse(sessionStorage.getItem('uc_petlya_dialog') || 'null'); } catch(e){}
   if (!Array.isArray(saved) || !saved.length) return false;
-  document.body.style.animation = "none";
-  document.body.style.opacity = "1";
-  document.body.style.filter = "none";
+  document.body.style.animation = 'none';
+  document.body.style.opacity = '1';
+  document.body.style.filter = 'none';
   messages = saved.slice();
 
   var aiFx   = ['mem-breathe','mem-drift','mem-tilt','mem-wave','mem-blur','mem-sway'];
@@ -667,7 +667,7 @@ function dismissMemories() {
   var out = pool[Math.floor(Math.random()*pool.length)];
   try { sessionStorage.setItem('uc_petlya_memout', out); } catch(e){}
   mems.forEach(function(el, i){
-
+    el.style.position = 'absolute';    // выбить из потока — новый шум не смещается
     el.style.animationDelay = (i * 0.08).toFixed(2) + 's';
     el.classList.add('leaving', out);
     setTimeout(function(){ if (el.parentNode) el.remove(); }, 1500 + i*80);
