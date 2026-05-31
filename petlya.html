@@ -605,7 +605,7 @@ function restoreDialog() {
       div.style.animationDelay = (Math.random()*4).toFixed(2) + 's';
       // кнопка — только если не вплетали ни в этой сессии, ни раньше
       const alreadyWoven = m.woven ||
-        (function(){ try { return localStorage.getItem('uc_woven_' + m.content.slice(0,60)) === '1'; } catch(e){ return false; } })();
+        (function(){ try { return localStorage.getItem('uc_woven_' + lastUser.slice(0,60)) === '1'; } catch(e){ return false; } })();
       if (!alreadyWoven) {
         const weaveBtn = document.createElement('button');
         weaveBtn.className = 'weave-btn';
@@ -908,7 +908,7 @@ if (!isNaN(idx) && messages[idx]) {
   messages[idx].woven = true;
   try { sessionStorage.setItem('uc_petlya_dialog', JSON.stringify(messages)); } catch(e){}
 }
-try { localStorage.setItem('uc_woven_' + btn.dataset.text.slice(0,60), '1'); } catch(e){}
+try { localStorage.setItem('uc_woven_' + (btn.dataset.noise||btn.dataset.text).slice(0,60), '1'); } catch(e){}
 // Успех — кнопка остаётся disabled навсегда
 } catch(e) {
 console.warn('Supabase error', e);
