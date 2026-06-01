@@ -651,13 +651,13 @@ async function restoreDialog() {
       div.classList.add('memory', fx);
       div.style.animationDuration = (6 + Math.random()*5).toFixed(1) + 's';
       div.style.animationDelay = (Math.random()*4).toFixed(2) + 's';
-      // перенос текста отклика — по два слова на строку если больше трёх слов
+      // перенос текста отклика — по три слова на строку если больше трёх слов
       const mb = div.querySelector('.message-body');
       if (mb) {
         const words = m.content.trim().split(/\s+/);
         if (words.length > 3) {
           const lines = [];
-          for (let i = 0; i < words.length; i += 2) lines.push(words.slice(i, i+2).join(' '));
+          for (let i = 0; i < words.length; i += 3) lines.push(words.slice(i, i+3).join(' '));
           mb.innerHTML = lines.join('<br>');
         }
       }
