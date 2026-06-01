@@ -610,9 +610,16 @@ function restoreDialog() {
       div.classList.add('memory', fx);
       div.style.animationDuration = (6 + Math.random()*5).toFixed(1) + 's';
       div.style.animationDelay = (Math.random()*4).toFixed(2) + 's';
-      // перенос текста отклика — инлайново, строка 613
+      // перенос текста отклика — по два слова на строку если больше трёх слов
       const mb = div.querySelector('.message-body');
-      if (mb) { mb.style.whiteSpace = 'normal'; mb.style.wordBreak = 'break-word'; mb.style.overflowWrap = 'break-word'; mb.style.maxWidth = '70vw'; mb.style.width = '70vw'; mb.style.display = 'block'; }
+      if (mb) {
+        const words = m.content.trim().split(/\s+/);
+        if (words.length > 3) {
+          const lines = [];
+          for (let i = 0; i < words.length; i += 2) lines.push(words.slice(i, i+2).join(' '));
+          mb.innerHTML = lines.join('<br>');
+        }
+      }
       // кнопка — только если не вплетали ни в этой сессии, ни раньше
       const alreadyWoven = m.woven ||
         (function(){ try { return localStorage.getItem('uc_woven_' + lastUser.slice(0,60)) === '1'; } catch(e){ return false; } })();
