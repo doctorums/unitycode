@@ -980,18 +980,29 @@ btn.dataset.weaveInProgress = '0';
 // ═══════════════════════════════════════════════════════
 (async function(){
 var el = document.querySelector('.sys-msg');
-setTimeout(() => {
+function launchStar() {
   const star = document.querySelector('.star-pulse');
-  const ta = document.getElementById('userInput');
   const wrap = document.querySelector('.marquee-wrap');
-  if (!star || !ta || !wrap) return;
-  const taRect = ta.getBoundingClientRect();      // координаты поля ввода шума
+  if (!star || !wrap) return;
+  // правый край видимой кнопки Отправить (иконка на узких экранах, текстовая на широких)
+  const btnText = document.getElementById('sendBtn');
+  const btnIcon = document.getElementById('sendBtnIcon');
+  const btn = (btnIcon && btnIcon.offsetParent !== null) ? btnIcon
+            : (btnText && btnText.offsetParent !== null) ? btnText : null;
+  if (!btn) return;
+  const btnRect = btn.getBoundingClientRect();
   const wrapRect = wrap.getBoundingClientRect();
-  // звезда стартует у правого края поля ввода (откуда визуально приходит текст)
-  star.style.left = (taRect.right - 12) + 'px';
+  star.style.animation = 'none';                  // сброс перед перезапуском
+  star.style.left = btnRect.right + 'px';         // правый край кнопки Отправить
   star.style.top = wrapRect.top + 'px';
-  star.style.animation = 'marquee-star-fx 17s linear infinite, star-blink 3s ease-in-out infinite';
-}, 2000);
+  void star.offsetWidth;                          // reflow, чтобы анимация перезапустилась
+  star.style.animation = 'marquee-star-fx 20s linear infinite, star-blink 3s ease-in-out infinite';
+}
+setTimeout(launchStar, 2000);
+// при смене ориентации/размера пересчитываем позицию старта
+let starResizeT;
+window.addEventListener('resize', () => { clearTimeout(starResizeT); starResizeT = setTimeout(launchStar, 250); });
+window.addEventListener('orientationchange', () => setTimeout(launchStar, 400));
 // при возврате на Спираль — восстановить прошлый диалог сессии
 var restored = false;
 try { restored = await restoreDialog(); } catch(e){}
