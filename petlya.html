@@ -588,15 +588,18 @@ async function restoreDialog() {
   document.body.style.filter = 'none';
   messages = saved.slice();
 
-  // собираем уникальные шумы для пакетной проверки в Supabase
+  // собираем уникальные шумы пользователя
   const userNoises = [...new Set(saved.filter(m=>m.role==='user').map(m=>m.content.slice(0,500)))];
+  // проверяем в Supabase какие шумы уже вплетены
   const wovenNoises = new Set();
   try {
-    const encoded = userNoises.map(n=>`raw_noise.eq.${encodeURIComponent(n)}`).join(',');
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/nodes?or=(${encoded})&select=raw_noise`, {
-      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
-    });
-    if (r.ok) { const rows = await r.json(); rows.forEach(row=>wovenNoises.add(row.raw_noise)); }
+    for (const noise of userNoises) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/nodes?raw_noise=eq.${encodeURIComponent(noise)}&select=raw_noise&limit=1`,
+        { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY } }
+      );
+      if (r.ok) { const rows = await r.json(); if (rows.length) wovenNoises.add(noise); }
+    }
   } catch(e) {}
 
   var aiFx   = ['mem-breathe','mem-drift','mem-tilt','mem-wave','mem-blur','mem-sway'];
