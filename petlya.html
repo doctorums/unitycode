@@ -152,7 +152,9 @@ position: relative; z-index: 50; flex-shrink: 0;
 }
 .input-row { display: flex; gap: 1rem; align-items: flex-end; }
 .input-wrapper { flex: 1; min-width: 0; }
-.input-label { font-size: 0.55rem; color: var(--dim); letter-spacing: 0.15em; margin-bottom: 0.4rem; display: block; }
+.input-label { font-size: 0.55rem; color: var(--dim); letter-spacing: 0.15em; margin-bottom: 0.4rem; display: block; overflow: hidden; white-space: nowrap; }
+.input-label span { display: inline-block; animation: marquee-label 18s linear infinite; padding-right: 6rem; }
+@keyframes marquee-label { 0% { transform: translateX(40%); } 100% { transform: translateX(-100%); } }
 textarea {
 width: 100%; box-sizing: border-box;
 background: rgba(255,255,255,0.03);
@@ -342,7 +344,7 @@ oninput="onWorkerUrlChange()">
 <div class="input-area">
 <div class="input-row">
 <div class="input-wrapper">
-<span class="input-label">// ВВЕДИ СВОЙ ШУМ (мысли, страхи, вопросы, интуиции)</span>
+<span class="input-label"><span>// ВВЕДИ СВОЙ ШУМ (мысли, страхи, вопросы, интуиции)</span></span>
 <textarea
 id="userInput"
 placeholder="Введи свои обрывки мыслей, страхи или вопросы..."
