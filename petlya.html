@@ -172,8 +172,7 @@ animation: line-flicker 8.3s steps(1, end) infinite;
 .star-pulse { position: fixed; opacity: 0; font-size: 0.75rem; color: rgba(200,220,255,0.9); z-index: 200; pointer-events: none; }
 @keyframes marquee-star-fx { 0% { transform: translateX(0); } 100% { transform: translateX(-200vw); } }
 @keyframes star-blink { 0%,100% { opacity: 0.4; } 3% { opacity: 1; } 17% { opacity: 1; } }
-textarea::placeholder { text-align: center; }
-
+textarea {
 width: 100%; box-sizing: border-box;
 background: rgba(255,255,255,0.03);
 border: 1px solid var(--border);
