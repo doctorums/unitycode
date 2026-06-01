@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="shared.css">
 <style>
 body { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; animation: fadeIn 3s ease forwards; }
+#sky { position:fixed; inset:0; z-index:0; display:block; pointer-events:none; touch-action:none; }
 @keyframes fadeIn {
 0% { opacity: 0; filter: brightness(3) saturate(0); }
 20% { opacity: 0.4; filter: brightness(4) saturate(0); }
@@ -312,6 +313,8 @@ padding: 0.6rem 0.8rem;
 </style>
 </head>
 <body>
+
+<canvas id="sky"></canvas>
 
 <header>
 <a href="index.html" class="logo">UNITYCODE // СПИРАЛЬ</a>
@@ -1110,6 +1113,42 @@ requestAnimationFrame(frame);
 // автоматическое растворение: показалось (~5с), постояло, тает само
 setTimeout(function(){ if (typeof hideIntro === 'function') hideIntro(); }, 8000);
 })();
+// ── ЗВЁЗДНОЕ НЕБО ─────────────────────────────────────────────────────
+(function sky(){
+  const cv=document.getElementById('sky'), ctx=cv.getContext('2d');
+  const SK={ top:"#0a1626", mid:"#070f1c", bottom:"#04080f" };
+  const S={ density:1.0, maxCount:420, color:"220,235,255",
+    sizeSmall:0.9, sizeBig:1.6, bigChance:0.12,
+    twinkle:1.0, drift:0.02, minAlpha:0.15, maxAlpha:0.75 };
+  let W,H,stars;
+  function init(){
+    W=cv.width=innerWidth; H=cv.height=innerHeight;
+    const N=Math.min(S.maxCount, Math.round(W*H/3600*S.density));
+    stars=Array.from({length:N},()=>({
+      x:Math.random()*W, y:Math.random()*H,
+      r:Math.random()<S.bigChance?S.sizeBig:S.sizeSmall,
+      a:S.minAlpha+Math.random()*(S.maxAlpha-S.minAlpha),
+      sp:0.3+Math.random()*1.2, ph:Math.random()*Math.PI*2,
+      vx:(Math.random()-0.5)*S.drift, vy:(Math.random()-0.5)*S.drift
+    }));
+  }
+  function loop(now){
+    const t=now/1000;
+    const bg=ctx.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,SK.top); bg.addColorStop(0.6,SK.mid); bg.addColorStop(1,SK.bottom);
+    ctx.globalAlpha=1; ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+    for(const s of stars){
+      s.x+=s.vx; s.y+=s.vy;
+      if(s.x<0)s.x+=W; if(s.x>W)s.x-=W; if(s.y<0)s.y+=H; if(s.y>H)s.y-=H;
+      const tw=0.4+0.6*Math.sin(t*s.sp*S.twinkle+s.ph);
+      ctx.fillStyle='rgba('+S.color+','+(s.a*tw).toFixed(3)+')';
+      ctx.fillRect(s.x,s.y,s.r,s.r);
+    }
+    requestAnimationFrame(loop);
+  }
+  addEventListener('resize',init); init(); requestAnimationFrame(loop);
+})();
+
 </script>
 </body>
 </html>
