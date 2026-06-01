@@ -186,6 +186,9 @@ line-height: 1.6; transition: border-color 0.2s;
 }
 textarea:focus { border-color: rgba(0,255,136,0.4); }
 textarea::placeholder { color: var(--dim); }
+textarea:placeholder-shown { animation: ph-shimmer 4.5s ease-in-out infinite; }
+@keyframes ph-shimmer { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+textarea:focus { animation: none; }
 .send-btn {
 padding: 0.8rem 1.5rem; height: 60px; flex-shrink: 0;
 border: 1px solid var(--accent); color: var(--accent);
