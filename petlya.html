@@ -154,7 +154,7 @@ position: relative; z-index: 50; flex-shrink: 0;
 .input-wrapper { flex: 1; min-width: 0; }
 .input-label { font-size: 0.55rem; color: var(--dim); letter-spacing: 0.15em; margin-bottom: 0.4rem; display: block; position: relative; height: 1.2em; white-space: nowrap; }
 .marquee-wrap { overflow: hidden; width: 100%; height: 100%; }
-.input-label .marquee-text { display: inline-block; animation: marquee-label 18s linear infinite; padding-right: 6rem; }
+.input-label .marquee-text { display: inline-block; animation: marquee-label 18s linear infinite; padding-right: 6rem; text-shadow: 0 1px 3px rgba(0,0,0,0.7); }
 @keyframes marquee-label { 0% { transform: translateX(var(--text-start, 65vw)); } 100% { transform: translateX(-100%); } }
 .star-pulse { position: fixed; opacity: 0; font-size: 0.75rem; color: rgba(200,220,255,0.9); z-index: 200; pointer-events: none; }
 @keyframes marquee-star-fx { 0% { transform: translateX(0); } 100% { transform: translateX(-200vw); } }
@@ -348,7 +348,7 @@ oninput="onWorkerUrlChange()">
 <div class="input-area">
 <div class="input-row">
 <div class="input-wrapper">
-<span class="input-label"><span class="star-pulse">✦</span><span class="marquee-wrap"><span class="marquee-text">ВВЕДИ СВОЙ ШУМ (мысли, страхи, вопросы, интуиции)</span></span></span>
+<span class="input-label"><span class="star-pulse">✦</span><span class="marquee-wrap"><span class="marquee-text">ВВЕДИ СВОЙ <span style="color:var(--accent)">ШУМ</span> (мысли, страхи, вопросы, интуиции)</span></span></span>
 <textarea
 id="userInput"
 placeholder="Введи свои обрывки мыслей, страхи или вопросы..."
