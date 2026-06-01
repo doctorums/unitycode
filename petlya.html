@@ -155,7 +155,8 @@ position: relative; z-index: 50; flex-shrink: 0;
 .input-label { font-size: 0.55rem; color: var(--dim); letter-spacing: 0.15em; margin-bottom: 0.4rem; display: flex; align-items: center; overflow: hidden; white-space: nowrap; }
 .input-label .marquee-text { display: inline-block; animation: marquee-label 18s linear infinite; padding-right: 6rem; }
 @keyframes marquee-label { 0% { transform: translateX(65vw); } 100% { transform: translateX(-100%); } }
-.star-pulse { flex-shrink: 0; font-size: 0.75rem; color: rgba(200,220,255,0.9); animation: star-blink 3s ease-in-out infinite; margin-right: 0.5em; will-change: opacity; }
+.star-pulse { flex-shrink: 0; font-size: 0.75rem; color: rgba(200,220,255,0.9); animation: star-blink 3s ease-in-out infinite, marquee-star 18s linear infinite; margin-right: 0.5em; will-change: opacity, transform; }
+@keyframes marquee-star { 0% { transform: translateX(65vw); } 100% { transform: translateX(-50px); } }
 @keyframes star-blink { 0% { opacity: 1; } 3% { opacity: 1; } 10% { opacity: 0.15; } 17% { opacity: 1; } 33% { opacity: 0.15; } 100% { opacity: 0.15; } }
 textarea {
 width: 100%; box-sizing: border-box;
