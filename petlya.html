@@ -391,6 +391,10 @@ let WORKER_URL = 'https://unitycode-petlya.sv2txxznjm.workers.dev';
 // Перед боевым запуском поставить false.
 const USE_STUB = true;
 
+// Supabase — глобальные константы (используются в restoreDialog и weaveIntoNet)
+const SUPABASE_URL = 'https://lukyyqabkxzrgdixzphs.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
+
 // ═══════════════════════════════════════════════════════
 // УТИЛИТЫ
 // ═══════════════════════════════════════════════════════
@@ -636,15 +640,16 @@ async function restoreDialog() {
         }
       }
       // кнопка — только если шум ещё не вплетён в Supabase
+      const msgIdx = messages.indexOf(m);
       const alreadyWoven = m.woven || wovenNoises.has(lastUser) ||
-        (function(){ try { return localStorage.getItem('uc_woven_idx_' + messages.indexOf(m)) === '1'; } catch(e){ return false; } })();
+        (function(){ try { return localStorage.getItem('uc_woven_idx_' + msgIdx) === '1'; } catch(e){ return false; } })();
       if (!alreadyWoven) {
         const weaveBtn = document.createElement('button');
         weaveBtn.className = 'weave-btn';
         weaveBtn.textContent = '[ Вплести в Сеть ]';
         weaveBtn.dataset.text = m.content.slice(0, 300);
         weaveBtn.dataset.noise = lastUser.slice(0, 500);
-        weaveBtn.dataset.msgIndex = messages.indexOf(m);
+        weaveBtn.dataset.msgIndex = msgIdx;
         weaveBtn.onclick = function() { weaveIntoNet(this); };
         weaveBtn.style.animationDelay = (0.8 + Math.random()*1.5).toFixed(2) + 's';
         weaveBtn.style.display = 'inline-block';
@@ -906,9 +911,6 @@ btn.dataset.weaveInProgress = '1';
 
 btn.textContent = '[ ВПЛЕТЕНИЕ... ]';
 btn.disabled = true;
-
-const SUPABASE_URL = 'https://lukyyqabkxzrgdixzphs.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
 
 try {
 const { lat, lng } = await getCoords();
