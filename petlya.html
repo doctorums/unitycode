@@ -246,13 +246,13 @@ padding: 0.6rem 0.8rem;
 
 /* шум-воспоминание: медленный диагональный маятник справа-сверху → вниз-влево */
 .memory.user { position: relative; z-index: 5; }
-@keyframes memh-diag1 { 0%,100% { transform: translate(0vw, 0px); opacity:0.75; } 25% { transform: translate(20vw, -40px); opacity:0.75; } 75% { transform: translate(-20vw, 60px); opacity:0.75; } }
+@keyframes memh-diag1 { 0%,100% { transform: translate(0vw, 0px); opacity:0.75; } 50% { transform: translate(-22vw, 55px); opacity:0.75; } }
 .memh-rl { animation: memh-diag1 80s ease-in-out infinite; }
-@keyframes memh-diag2 { 0%,100% { transform: translate(0vw, 0px); opacity:0.75; } 25% { transform: translate(-15vw, 50px); opacity:0.75; } 75% { transform: translate(25vw, -70px); opacity:0.75; } }
+@keyframes memh-diag2 { 0%,100% { transform: translate(0vw, 0px); opacity:0.75; } 50% { transform: translate(-18vw, 70px); opacity:0.75; } }
 .memh-lr { animation: memh-diag2 90s ease-in-out infinite; }
-@keyframes memh-diag3 { 0%,100% { transform: translate(0vw, 0px); opacity:0.75; } 25% { transform: translate(10vw, 30px); opacity:0.75; } 75% { transform: translate(-25vw, -60px); opacity:0.75; } }
+@keyframes memh-diag3 { 0%,100% { transform: translate(0vw, 0px); opacity:0.75; } 50% { transform: translate(-28vw, 45px); opacity:0.75; } }
 .memh-arc { animation: memh-diag3 70s ease-in-out infinite; }
-@keyframes memh-diag4 { 0%,100% { transform: translate(0vw, 0px) rotate(0deg); opacity:0.75; } 25% { transform: translate(-20vw, -30px) rotate(-1deg); opacity:0.75; } 75% { transform: translate(20vw, 80px) rotate(1deg); opacity:0.75; } }
+@keyframes memh-diag4 { 0%,100% { transform: translate(0vw, 0px) rotate(0deg); opacity:0.75; } 50% { transform: translate(-20vw, 80px) rotate(-1deg); opacity:0.75; } }
 .memh-tiltslide { animation: memh-diag4 85s ease-in-out infinite; }
 
 @keyframes mem-breathe { 0%,100% { transform: scale(1) translateY(0); opacity:0.5; } 50% { transform: scale(1.04) translateY(-12px); opacity:0.75; } }
