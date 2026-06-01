@@ -146,9 +146,18 @@ width: auto; max-width: fit-content;
 ═══════════════════════════════ */
 .input-area {
 padding: 1rem 2rem 1.5rem;
-border-top: 1px solid var(--border);
 background: rgba(0,0,0,0.95);
 position: relative; z-index: 50; flex-shrink: 0;
+}
+.input-area::before {
+content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+background: var(--border);
+animation: line-flicker 7s ease-in-out infinite;
+}
+@keyframes line-flicker {
+0% { opacity: 0.5; } 9% { opacity: 0.9; } 14% { opacity: 0.3; } 23% { opacity: 0.7; }
+38% { opacity: 0.45; } 52% { opacity: 1; } 60% { opacity: 0.35; } 71% { opacity: 0.6; }
+83% { opacity: 0.5; } 91% { opacity: 0.85; } 100% { opacity: 0.5; }
 }
 .input-row { display: flex; gap: 1rem; align-items: flex-end; }
 .input-wrapper { flex: 1; min-width: 0; }
