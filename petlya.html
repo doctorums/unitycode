@@ -644,6 +644,9 @@ async function restoreDialog() {
         weaveBtn.dataset.msgIndex = messages.indexOf(m);
         weaveBtn.onclick = function() { weaveIntoNet(this); };
         weaveBtn.style.animationDelay = (0.8 + Math.random()*1.5).toFixed(2) + 's';
+        weaveBtn.style.display = 'inline-block';
+        weaveBtn.style.width = 'auto';
+        weaveBtn.style.alignSelf = 'flex-start';
         div.appendChild(weaveBtn);
       }
     }
