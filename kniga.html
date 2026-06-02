@@ -342,6 +342,7 @@ function go(i){
 function scrollTop(){window.scrollTo({top:0,behavior:'smooth'});}
 window.go=go;
 window.scrollTop=scrollTop;
+window.getCurrent=()=>current;
 
 document.querySelectorAll('.toc-item').forEach(b=>{
   b.addEventListener('click',()=>go(+b.dataset.pane));
@@ -351,6 +352,8 @@ document.querySelectorAll('.toc-item').forEach(b=>{
 const sidebar=document.getElementById('sidebar'), overlay=document.getElementById('overlay');
 function openSidebar(){sidebar.classList.add('open');overlay.classList.add('show');}
 function closeSidebar(){sidebar.classList.remove('open');overlay.classList.remove('show');}
+window.openSidebar=openSidebar;
+window.closeSidebar=closeSidebar;
 document.getElementById('menuBtn').addEventListener('click',openSidebar);
 overlay.addEventListener('click',closeSidebar);
 
@@ -540,13 +543,16 @@ pad.addEventListener('pointerup',()=>{
 pad.addEventListener('click',e=>{
  const a=e.target.dataset.act;
  if(!a) return;
- if(a==='up') window.scrollTo({top:0,behavior:'smooth'});
- if(a==='down') window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
- if(a==='prev' && window.go) window.go((typeof current!=='undefined'?current:0)-1);
- if(a==='next' && window.go) window.go((typeof current!=='undefined'?current:0)+1);
- if(a==='toc'){
-   if(typeof openSidebar==='function') openSidebar();
- }
+ const step=Math.round(window.innerHeight*0.82);
+ const cur=window.getCurrent?window.getCurrent():0;
+ // верх/вниз — прокрутка внутри выбранной главы
+ if(a==='up') window.scrollBy({top:-step,behavior:'smooth'});
+ if(a==='down') window.scrollBy({top:step,behavior:'smooth'});
+ // влево/вправо — переход по главам
+ if(a==='prev' && window.go) window.go(cur-1);
+ if(a==='next' && window.go) window.go(cur+1);
+ // центр — боковое меню
+ if(a==='toc' && window.openSidebar) window.openSidebar();
 });
 })();
 </script>
