@@ -62,7 +62,11 @@
   .toc-item{display:block;width:100%;text-align:left;background:none;border:none;cursor:pointer;
     font-family:"Newsreader",serif;color:var(--fg);font-size:16px;line-height:1.4;padding:9px 24px;transition:background .2s,color .2s;border-left:3px solid transparent}
   .toc-item:hover{background:color-mix(in srgb,var(--gold) 12%,transparent)}
-  .toc-item.part{font-family:"Fraunces",serif;font-weight:600;color:var(--head);font-size:15px;margin-top:14px;letter-spacing:.02em}
+  .toc-item.part{font-family:"Fraunces",serif;font-weight:600;color:var(--head);font-size:15px;margin-top:14px;letter-spacing:.02em;
+    transform-origin:left center;animation:tocSway 4.5s ease-in-out infinite}
+  .toc-item.part:nth-of-type(odd){animation-delay:-2.2s}
+  .toc-item.part:hover{animation-play-state:paused}
+  @keyframes tocSway{0%,100%{transform:translateX(0) rotate(0deg)}50%{transform:translateX(3px) rotate(.6deg)}}
   .toc-item.chap{padding-left:36px}
   .toc-item.active{border-left-color:var(--gold);color:var(--gold);background:color-mix(in srgb,var(--gold) 8%,transparent)}
   .overlay{position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .3s}
