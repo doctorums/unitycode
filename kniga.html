@@ -70,8 +70,10 @@
 
   /* reading area */
   main{position:relative;z-index:3;max-width:var(--maxw);margin:0 auto;padding:96px 26px 40px}
-  .pane{display:none;animation:fade .5s ease}
-  .pane.active{display:block}
+  .pane{display:none}
+  .pane.active{display:block;opacity:1;transform:none;transition:opacity .22s ease,transform .22s ease}
+  .pane.active.anim-in{opacity:0;transform:translateY(18px);transition:none}
+  .pane.anim-out{opacity:0;transform:translateY(-12px);transition:opacity .15s ease,transform .15s ease}
   @keyframes fade{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 
   h1.part{font-family:"Fraunces",serif;font-weight:600;font-size:clamp(34px,7vw,52px);line-height:1.05;
@@ -329,15 +331,34 @@ let current=0;
 const paneEls=()=>Array.from(document.querySelectorAll('.pane'));
 function go(i){
   if(i<0||i>=navList.length) return;
-  paneEls().forEach(el=>el.classList.remove('active'));
-  const el=document.querySelector('.pane[data-i="'+i+'"]');
-  el.classList.add('active');
-  current=i;
-  document.querySelectorAll('.toc-item').forEach(b=>b.classList.toggle('active', +b.dataset.pane===i));
-  scrollTop();
-  closeSidebar();
-  try{localStorage.setItem('uc_pane', i);}catch(e){}
-  updateProgress();
+
+  const currentEl=document.querySelector('.pane.active');
+
+  const showNew=()=>{
+    paneEls().forEach(el=>el.classList.remove('active'));
+    const el=document.querySelector('.pane[data-i="'+i+'"]');
+    el.classList.add('active','anim-in');
+    requestAnimationFrame(()=>{
+      requestAnimationFrame(()=>el.classList.remove('anim-in'));
+    });
+
+    current=i;
+    document.querySelectorAll('.toc-item').forEach(b=>b.classList.toggle('active', +b.dataset.pane===i));
+    scrollTop();
+    closeSidebar();
+    try{localStorage.setItem('uc_pane', i);}catch(e){}
+    updateProgress();
+  };
+
+  if(currentEl){
+    currentEl.classList.add('anim-out');
+    setTimeout(()=>{
+      currentEl.classList.remove('anim-out');
+      showNew();
+    },150);
+  } else {
+    showNew();
+  }
 }
 function scrollTop(){window.scrollTo({top:0,behavior:'smooth'});}
 window.go=go;
