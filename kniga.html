@@ -63,10 +63,10 @@
     font-family:"Newsreader",serif;color:var(--fg);font-size:16px;line-height:1.4;padding:9px 24px;transition:background .2s,color .2s;border-left:3px solid transparent}
   .toc-item:hover{background:color-mix(in srgb,var(--gold) 12%,transparent)}
   .toc-item.part{font-family:"Fraunces",serif;font-weight:600;color:var(--head);font-size:15px;margin-top:14px;letter-spacing:.02em;
-    transform-origin:left center;animation:tocSway 4.5s ease-in-out infinite}
+    transform-origin:left center;animation:tocSway 3.5s ease-in-out infinite}
   .toc-item.part:nth-of-type(odd){animation-delay:-2.2s}
   .toc-item.part:hover{animation-play-state:paused}
-  @keyframes tocSway{0%,100%{transform:translateX(0) rotate(0deg)}50%{transform:translateX(3px) rotate(.6deg)}}
+  @keyframes tocSway{0%,100%{transform:translateX(0) rotate(0deg)}25%{transform:translateX(7px) rotate(1.6deg)}75%{transform:translateX(-3px) rotate(-1deg)}}
   .toc-item.chap{padding-left:36px}
   .toc-item.active{border-left-color:var(--gold);color:var(--gold);background:color-mix(in srgb,var(--gold) 8%,transparent)}
   .overlay{position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .3s}
@@ -79,6 +79,17 @@
   .pane.active.anim-in{opacity:0;transform:translateY(18px);transition:none}
   .pane.anim-out{opacity:0;transform:translateY(-12px);transition:opacity .15s ease,transform .15s ease}
   @keyframes fade{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+  /* cover hero */
+  .omega-hero{display:inline-block;animation:omegaBreath 5s ease-in-out infinite;will-change:transform,filter}
+  @keyframes omegaBreath{
+    0%,100%{transform:scale(1);filter:drop-shadow(0 0 6px rgba(216,166,74,.35))}
+    50%{transform:scale(1.08);filter:drop-shadow(0 0 22px rgba(216,166,74,.75))}
+  }
+  .cover-rise{opacity:0;animation:coverRise .9s cubic-bezier(.2,.7,.2,1) forwards}
+  .cover-rise.cover-d1{animation-delay:.5s}
+  .cover-rise.cover-d2{animation-delay:.85s}
+  @keyframes coverRise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
 
   h1.part{font-family:"Fraunces",serif;font-weight:600;font-size:clamp(34px,7vw,52px);line-height:1.05;
     color:var(--head);text-align:center;margin:8vh 0 2vh;letter-spacing:-.015em}
@@ -289,11 +300,11 @@ let frontHTML='';
   const f=BOOK.front;
   // f: ω, TITLE, subtitle, "Сборник...", эпиграф-строка, "— ..."
   const texts=f.filter(x=>x.kind==='p').map(x=>x.text);
-  frontHTML+='<div style="text-align:center">';
-  frontHTML+='<div style="font-family:Fraunces;font-size:64px;color:var(--gold);margin:6vh 0 10px">ω</div>';
-  if(texts[1]) frontHTML+='<h1 class="part" style="margin:0">'+escapeHTML(texts[1])+'</h1>';
-  if(texts[2]) frontHTML+='<div class="part-blurb" style="margin-top:14px">'+escapeHTML(texts[2])+'</div>';
-  if(texts[3]) frontHTML+='<div style="color:var(--fg-dim);font-size:15px;letter-spacing:.06em">'+escapeHTML(texts[3])+'</div>';
+  frontHTML+='<div class="cover" style="text-align:center">';
+  frontHTML+='<div class="omega-hero" style="font-family:Fraunces;font-size:64px;color:var(--gold);margin:6vh 0 10px">ω</div>';
+  if(texts[1]) frontHTML+='<h1 class="part cover-rise" style="margin:0">'+escapeHTML(texts[1])+'</h1>';
+  if(texts[2]) frontHTML+='<div class="part-blurb cover-rise cover-d1" style="margin-top:14px">'+escapeHTML(texts[2])+'</div>';
+  if(texts[3]) frontHTML+='<div class="cover-rise cover-d2" style="color:var(--fg-dim);font-size:15px;letter-spacing:.06em">'+escapeHTML(texts[3])+'</div>';
   frontHTML+='</div>';
   // эпиграф
   const epi=f.find(x=>x.kind==='p' && x.text && !x.text.startsWith('—') && x.text.length>40 && x===f[4]);
