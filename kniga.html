@@ -551,8 +551,12 @@ pad.addEventListener('click',e=>{
  // влево/вправо — переход по главам
  if(a==='prev' && window.go) window.go(cur-1);
  if(a==='next' && window.go) window.go(cur+1);
- // центр — боковое меню
- if(a==='toc' && window.openSidebar) window.openSidebar();
+ // центр — боковое меню (тоггл)
+ if(a==='toc'){
+   const sb=document.getElementById('sidebar');
+   if(sb && sb.classList.contains('open')){ if(window.closeSidebar) window.closeSidebar(); }
+   else if(window.openSidebar){ window.openSidebar(); }
+ }
 });
 })();
 </script>
