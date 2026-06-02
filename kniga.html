@@ -310,14 +310,7 @@ BOOK.sections.forEach((sec)=>{
 });
 
 // chapter nav buttons
-function navButtons(i){
-  const prev=i>0?navList[i-1]:null;
-  const next=i<navList.length-1?navList[i+1]:null;
-  return '<div class="chap-nav">'+
-    '<button '+(prev?'':'disabled')+' onclick="go('+(i-1)+')"><span class="lbl">Назад</span><span class="nm">'+(prev?escapeHTML(prev.title):'—')+'</span></button>'+
-    '<button class="next" '+(next?'':'disabled')+' onclick="go('+(i+1)+')"><span class="lbl">Дальше</span><span class="nm">'+(next?escapeHTML(next.title):'—')+'</span></button>'+
-    '</div><button class="toplink" onclick="scrollTop()">↑ наверх</button>';
-}
+function navButtons(i){ return ""; }
 
 // собираем финальные панели: содержимое + навигация, обёрнутые в .pane
 main.innerHTML=paneInner.map((inner,i)=>
@@ -347,6 +340,8 @@ function go(i){
   updateProgress();
 }
 function scrollTop(){window.scrollTo({top:0,behavior:'smooth'});}
+window.go=go;
+window.scrollTop=scrollTop;
 
 document.querySelectorAll('.toc-item').forEach(b=>{
   b.addEventListener('click',()=>go(+b.dataset.pane));
@@ -547,8 +542,8 @@ pad.addEventListener('click',e=>{
  if(!a) return;
  if(a==='up') window.scrollTo({top:0,behavior:'smooth'});
  if(a==='down') window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
- if(a==='prev' && window.go) window.go((window.currentIndex||0)-1);
- if(a==='next' && window.go) window.go((window.currentIndex||0)+1);
+ if(a==='prev' && window.go) window.go((typeof current!=='undefined'?current:0)-1);
+ if(a==='next' && window.go) window.go((typeof current!=='undefined'?current:0)+1);
  if(a==='toc'){
    if(typeof openSidebar==='function') openSidebar();
  }
