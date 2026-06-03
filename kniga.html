@@ -325,10 +325,13 @@ BOOK.sections.forEach((sec)=>{
     const bl=BLURBS[sec.title];
     const items=sec.items||[];
     const firstTxt=items.length?(items[0].text||''):'';
-    const dup=bl&&firstTxt&&bl.trim()===firstTxt.trim();
-    if(dup){
+    const dupExact=bl&&firstTxt&&bl.trim()===firstTxt.trim();
+    const dupPrefix=bl&&firstTxt&&!dupExact&&firstTxt.trim().startsWith(bl.trim());
+    if(dupExact){
       inner+='<div class="part-blurb cover-slide-r">'+escapeHTML(firstTxt)+'</div>';
       inner+=renderItems(items.slice(1), pidx);
+    }else if(dupPrefix){
+      inner+=renderItems(items, pidx);
     }else{
       if(bl) inner+='<div class="part-blurb">'+escapeHTML(bl)+'</div>';
       inner+=renderItems(items, pidx);
@@ -624,3 +627,4 @@ pad.addEventListener('click',e=>{
 
 </body>
 </html>
+
