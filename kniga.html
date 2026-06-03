@@ -322,8 +322,17 @@ BOOK.sections.forEach((sec)=>{
   let inner='';
   if(sec.level===1){
     inner+='<h1 class="part part-anim">'+escapeHTML(sec.title)+'</h1>';
-    const bl=BLURBS[sec.title]; if(bl) inner+='<div class="part-blurb">'+escapeHTML(bl)+'</div>';
-    inner+=renderItems(sec.items, pidx);
+    const bl=BLURBS[sec.title];
+    const items=sec.items||[];
+    const firstTxt=items.length?(items[0].text||''):'';
+    const dup=bl&&firstTxt&&bl.trim()===firstTxt.trim();
+    if(dup){
+      inner+='<div class="part-blurb cover-slide-r">'+escapeHTML(firstTxt)+'</div>';
+      inner+=renderItems(items.slice(1), pidx);
+    }else{
+      if(bl) inner+='<div class="part-blurb">'+escapeHTML(bl)+'</div>';
+      inner+=renderItems(items, pidx);
+    }
   }else{
     inner+='<h2 class="chap'+(/^Глава\b/.test(sec.title)?' chap-anim':'')+'">'+escapeHTML(sec.title)+'</h2>';
     inner+=renderItems(sec.items, pidx);
