@@ -62,11 +62,7 @@
   .toc-item{display:block;width:100%;text-align:left;background:none;border:none;cursor:pointer;
     font-family:"Newsreader",serif;color:var(--fg);font-size:16px;line-height:1.4;padding:9px 24px;transition:background .2s,color .2s;border-left:3px solid transparent}
   .toc-item:hover{background:color-mix(in srgb,var(--gold) 12%,transparent)}
-  .toc-item.part{font-family:"Fraunces",serif;font-weight:600;color:var(--head);font-size:15px;margin-top:14px;letter-spacing:.02em;
-    transform-origin:left center;animation:tocSway 3.5s ease-in-out infinite}
-  .toc-item.part:nth-of-type(odd){animation-delay:-2.2s}
-  .toc-item.part:hover{animation-play-state:paused}
-  @keyframes tocSway{0%,100%{transform:translateX(0) rotate(0deg)}25%{transform:translateX(7px) rotate(1.6deg)}75%{transform:translateX(-3px) rotate(-1deg)}}
+  .toc-item.part{font-family:"Fraunces",serif;font-weight:600;color:var(--head);font-size:15px;margin-top:14px;letter-spacing:.02em}
   .toc-item.chap{padding-left:36px}
   .toc-item.active{border-left-color:var(--gold);color:var(--gold);background:color-mix(in srgb,var(--gold) 8%,transparent)}
   .overlay{position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .3s}
@@ -98,6 +94,8 @@
   .part-blurb{text-align:center;font-style:italic;color:var(--fg-dim);max-width:520px;margin:0 auto 4vh;font-size:19px}
   h2.chap{font-family:"Fraunces",serif;font-weight:600;font-size:clamp(28px,5vw,40px);line-height:1.08;
     color:var(--head);letter-spacing:-.015em;margin:0 0 6px}
+  h2.chap.chap-anim{opacity:0;animation:chapSlide 1.5s cubic-bezier(.2,.7,.2,1) .15s forwards}
+  @keyframes chapSlide{from{opacity:0;transform:translateX(120px)}to{opacity:1;transform:none}}
   h3{font-family:"Fraunces",serif;font-weight:600;font-size:clamp(21px,3.4vw,27px);color:var(--head);margin:34px 0 6px;line-height:1.15}
   h4{font-family:"Fraunces",serif;font-weight:600;font-size:19px;color:var(--head2);margin:24px 0 4px}
   p{margin:18px 0}
@@ -326,7 +324,7 @@ BOOK.sections.forEach((sec)=>{
     const bl=BLURBS[sec.title]; if(bl) inner+='<div class="part-blurb">'+escapeHTML(bl)+'</div>';
     inner+=renderItems(sec.items, pidx);
   }else{
-    inner+='<h2 class="chap">'+escapeHTML(sec.title)+'</h2>';
+    inner+='<h2 class="chap'+(/^Глава\b/.test(sec.title)?' chap-anim':'')+'">'+escapeHTML(sec.title)+'</h2>';
     inner+=renderItems(sec.items, pidx);
   }
   paneInner.push(inner);
@@ -360,6 +358,11 @@ function go(i){
     paneEls().forEach(el=>el.classList.remove('active'));
     const el=document.querySelector('.pane[data-i="'+i+'"]');
     el.classList.add('active','anim-in');
+    el.querySelectorAll('.omega-hero,.cover-rise,.cover-slide-r,.chap-anim').forEach(node=>{
+      node.style.animation='none';
+      void node.offsetWidth;
+      node.style.animation='';
+    });
     requestAnimationFrame(()=>{
       requestAnimationFrame(()=>el.classList.remove('anim-in'));
     });
