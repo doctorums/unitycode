@@ -617,11 +617,9 @@ async function restoreDialog() {
   document.body.style.filter = 'none';
   messages = saved.slice();
 
-  // уникальные шумы пользователя — для фоновой проверки вплетения
-  const userNoises = [...new Set(saved.filter(m=>m.role==='user').map(m=>m.content.slice(0,500)))];
-  // ВАЖНО: рисуем диалог сразу из sessionStorage, БЕЗ сетевого ожидания.
-  // Без VPN Supabase у части провайдеров висит/режется — проверку «уже вплетён»
-  // делаем в фоне ниже, чтобы последний шум появлялся всегда.
+  // Рисуем диалог сразу из sessionStorage, без сетевого ожидания — показ не зависит
+  // от доступности Supabase (важно без VPN). «Уже вплетён?» определяем по локальному
+  // флагу uc_woven_idx_ / m.woven, которые ставятся при клике «Вплести».
 
   var aiFx   = ['mem-breathe','mem-drift','mem-tilt','mem-wave','mem-blur','mem-sway'];
   var userFx = ['memh-rl','memh-lr','memh-arc','memh-tiltslide'];
@@ -677,24 +675,6 @@ async function restoreDialog() {
     }
   }
   scrollBottom();
-  // фоновая проверка: какие шумы уже вплетены — прячем их кнопки. Не блокирует показ,
-  // с таймаутом, чтобы недоступность Supabase (без VPN) не влияла на отрисовку.
-  (async function(){
-    for (const noise of userNoises) {
-      try {
-        const params = new URLSearchParams({ 'raw_noise': `eq.${noise}`, 'select': 'raw_noise', 'limit': '1' });
-        const r = await fetch(`${SUPABASE_URL}/rest/v1/nodes?${params}`,
-          { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY },
-            signal: AbortSignal.timeout(5000) });
-        if (r.ok) {
-          const rows = await r.json();
-          if (rows.length) document.querySelectorAll('.weave-btn').forEach(function(b){
-            if (b.dataset.noise === noise) b.remove();
-          });
-        }
-      } catch(e) {}
-    }
-  })();
   return true;
 }
 
