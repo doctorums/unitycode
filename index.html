@@ -12,7 +12,7 @@ body{font-family:'Share Tech Mono',monospace;cursor:crosshair;background:#061120
 canvas{position:fixed;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;touch-action:none;}
 #c{z-index:0;}
 #cw{z-index:1;}
-.ui{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;}
+.ui{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-bottom:15vh;pointer-events:none;}
 .ui a{pointer-events:all;}
 .version{position:fixed;top:1.4rem;left:0;right:0;font-size:0.55rem;letter-spacing:0.22em;color:rgba(255,255,255,0.28);z-index:20;overflow:hidden;white-space:nowrap;}
 .version span{display:inline-block;animation:marquee 60s linear infinite alternate, flicker 4s ease-in-out infinite;}
@@ -60,9 +60,10 @@ pointer-events:none;
 50%{opacity:0;}
 }
 .label{font-size:0.8rem;letter-spacing:0.18em;color:rgba(255,255,255,0.32);text-transform:uppercase;margin-bottom:1rem;will-change:transform;opacity:0;animation:fi 1.2s ease 0.2s forwards;text-shadow:0 0 8px rgba(255,255,255,0.3),0 0 20px rgba(160,210,255,0.2);}
-.question{font-family:'Unbounded',sans-serif;font-weight:400;font-size:clamp(0.95rem,2.6vw,1.4rem);line-height:1.8;color:rgba(255,255,255,0.9);margin-bottom:3rem;text-shadow:0 2px 30px rgba(0,20,60,0.9);will-change:transform;opacity:0;animation:fi 1.5s ease 0.6s forwards;}
+.question{font-family:'Unbounded',sans-serif;font-weight:400;font-size:clamp(0.95rem,2.6vw,1.4rem);line-height:1.8;color:rgba(255,255,255,0.9);margin-bottom:1rem;text-shadow:0 2px 30px rgba(0,20,60,0.9);will-change:transform;opacity:0;animation:fi 1.5s ease 0.6s forwards;}
 .question em{font-style:normal;color:rgba(160,215,255,0.92);}
 .btn{display:inline-block;padding:0.6rem 1.6rem;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.65);font-family:'Share Tech Mono',monospace;font-size:0.65rem;letter-spacing:0.2em;text-transform:uppercase;text-decoration:none;background:rgba(255,255,255,0.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);opacity:0;animation:fi 1.5s ease 1.3s forwards;transition:all 0.3s;will-change:transform;cursor:pointer;pointer-events:all;border-radius:6px;}
+#btn{font-family:'Unbounded',sans-serif;font-size:clamp(0.95rem,2.6vw,1.4rem);letter-spacing:normal;text-transform:none;padding:0.6rem 1.6rem;border:1px solid rgba(255,255,255,0.22);background:rgba(255,255,255,0.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:rgba(160,215,255,0.92);}
 .ui a{pointer-events:all;}
 .ui span#btn{pointer-events:all;}
 .btn:hover{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.45);color:rgba(255,255,255,0.9);}
@@ -97,15 +98,14 @@ pointer-events:none;
 <div class="node">
 <div class="node-core"></div>
 </div>
-<div class="label" id="lbl"><span class="wl">UnityCode — это пространство нейротворчества.</span></div>
 <h1 class="question" id="q">
 <span class="wl">Ты пишешь то, что тебя волнует,</span><br>
 <span class="wl">а AI помогает увидеть в этом</span><br>
 <em class="wl">скрытые связи и новые смыслы.</em><br>
-<span class="wl">Мы не даём ответов.</span><br>
-<span class="wl">Мы помогаем тебе услышать себя.</span>
+<span class="wl">Здесь не дают ответов.</span><br>
+<span class="wl">Здесь помогают тебе.</span>
 </h1>
-<span class="btn" id="btn" onclick="tunnelGo(event)" ontouchend="tunnelGo(event)"><span class="wl">[ Войти в сеть ]</span></span>
+<span class="btn" id="btn" onclick="tunnelGo(event)" ontouchend="tunnelGo(event)"><span class="wl">Услышать себя</span></span>
 <p class="disclaimer" id="disc">Некоммерческий научно-художественный эксперимент.<br>Мы не собираем персональные данные. Только сигнал.<br>Сгенерированный контент не претендует на объективную истинность.</p>
 </div>
 </div>
@@ -429,7 +429,7 @@ l.style.transform=`translateY(${ly.toFixed(2)}px)`;
 (function(){
 document.querySelectorAll('.wl').forEach(function(el){
 // только строки вопроса и disclaimer — не label и не кнопка
-if(el.closest('#lbl')||el.closest('#btn')||el.closest('.disclaimer'))return;
+if(el.closest('#btn')||el.closest('.disclaimer'))return;
 var text=el.textContent;
 if(!text.trim())return;
 el.innerHTML=text.split('').map(function(ch){
@@ -455,7 +455,7 @@ e.preventDefault();
 },{passive:false});
 
 (function(){
-const lbl=document.getElementById('lbl');
+const lbl=document.querySelector('.center');
 let lastX=0,lastY=0,lastT=0,shakeEnergy=0,cooldown=false;
 function launchFromLbl(){
 if(cooldown||cometT!==null)return;
@@ -609,13 +609,7 @@ document.querySelector('.version').style.opacity=ui;
 var navEl=document.querySelector('nav'); if(navEl) navEl.style.opacity=ui;
 if(p>=1){
 active=false;
-tc.style.display='none';
-document.getElementById('choiceQ').innerHTML=aiQuestion;
-var c=document.getElementById('choice');
-c.style.display='flex';
-c.style.opacity='0';
-c.style.transition='opacity 0.8s ease';
-setTimeout(function(){c.style.opacity='1';},50);
+setTimeout(function(){window.location.href='petlya.html';},300);
 }
 };
 window.chooseYes=function(){
