@@ -49,8 +49,7 @@
   Контракт: `POST { scope, nodes, connections? } → { interpretation }`.
 
 Секреты воркеров — в `env.YANDEX_API_KEY`; CORS залочен на домены unitycode.space.
-(`worker.js` — старый монолитный воркер, оставлен в репозитории для истории, не
-используется.)
+
 
 ## База (Supabase)
 
