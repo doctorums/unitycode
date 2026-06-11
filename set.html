@@ -157,6 +157,33 @@ const SUPABASE_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
 const REFRESH_INTERVAL = 10000;
 const INTRO_DURATION = 37000;
 
+// ── Запись через воркер-шлюз + защита ──────────────────────────────────
+const WRITE_WORKER_URL = 'https://unitycode-write.sv2txxznjm.workers.dev/';
+const TURNSTILE_SITEKEY = '0x4AAAAAADipuIhRBHuABO1Z';
+
+// HTML-экранирование пользовательского текста (защита от XSS на выводе)
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Turnstile: одноразовый токен по требованию (interaction-only — обычно невидим)
+let _tsId = null, _tsResolve = null;
+window.onloadTurnstileCallback = function(){
+  try {
+    _tsId = turnstile.render('#ts-box', {
+      sitekey: TURNSTILE_SITEKEY, appearance: 'interaction-only', execution: 'execute',
+      callback: t => { if(_tsResolve){ _tsResolve(t); _tsResolve = null; } },
+      'error-callback': () => { if(_tsResolve){ _tsResolve(''); _tsResolve = null; } },
+    });
+  } catch(e){}
+};
+function getTurnstileToken(){
+  return new Promise(resolve => {
+    if (!window.turnstile || _tsId === null) { resolve(''); return; }
+    _tsResolve = resolve;
+    try { turnstile.reset(_tsId); } catch(e){}
+    try { turnstile.execute(_tsId); } catch(e){ resolve(''); }
+  });
+}
+
 // ═══════════════════════════════════════════════════════
 // КЭШ В sessionStorage с TTL
 // ═══════════════════════════════════════════════════════
@@ -333,13 +360,13 @@ const already = cache.connPairs.has(n.id + '|' + targetId);
 const short = (n.raw_noise || '').slice(0, 40) + ((n.raw_noise || '').length > 40 ? '…' : '');
 
 if (isSelf) {
-return `<div style="font-size:0.6rem;color:#444;padding:0.35rem 0;">— ${short} (это он)</div>`;
+return `<div style="font-size:0.6rem;color:#444;padding:0.35rem 0;">— ${esc(short)} (это он)</div>`;
 }
 if (already) {
-return `<div style="font-size:0.6rem;color:#555;padding:0.35rem 0;">✓ ${short}</div>`;
+return `<div style="font-size:0.6rem;color:#555;padding:0.35rem 0;">✓ ${esc(short)}</div>`;
 }
 return `<div class="pick-row" style="font-size:0.65rem;color:#00c8ff;padding:0.4rem 0.2rem;cursor:pointer;border-bottom:1px solid rgba(0,200,255,0.08);"
-onclick="createConnection('${n.id}','${targetId}', this)">→ ${short}</div>`;
+onclick="createConnection('${n.id}','${targetId}', this)">→ ${esc(short)}</div>`;
 }).join('');
 
 picker.innerHTML = `<div style="font-size:0.55rem;color:#00c8ff;letter-spacing:0.15em;margin-bottom:0.5rem;">// ЧЕМ СВЯЗАТЬ:</div>${rows}`;
@@ -349,17 +376,16 @@ picker.style.display = 'block';
 // Создаёт связь: выбранный свой шум (from) → цель (to)
 async function createConnection(fromId, toId, rowEl) {
 if (fromId === toId) return; // защита от самосвязывания
-const headers = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY };
-
 rowEl.style.pointerEvents = 'none';
 const original = rowEl.textContent;
 rowEl.textContent = '… связывание';
 
 try {
-const res = await fetch(`${SUPABASE_URL}/rest/v1/connections`, {
+const ts = await getTurnstileToken();
+const res = await fetch(WRITE_WORKER_URL, {
 method: 'POST',
-headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-body: JSON.stringify({ from_node_id: fromId, to_node_id: toId, status: 'accepted' }),
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ action: 'connection', token: localStorage.getItem('uc_token') || '', turnstile: ts, from_node_id: fromId, to_node_id: toId }),
 });
 if (!res.ok) throw new Error('HTTP ' + res.status);
 
@@ -449,7 +475,7 @@ const marker = L.marker([node.lat, node.lng], { icon: nodeIcon() });
 marker.bindPopup(`
 <div class="popup-content">
 <div class="popup-tag">// УЗЕЛ СЕТИ</div>
-<div class="popup-text">${node.raw_noise}</div>
+<div class="popup-text">${esc(node.raw_noise)}</div>
 <div class="popup-time">${timeAgo(node.created_at)}</div>
 <div class="popup-btns">
 <a href="petlya.html" class="popup-btn">Спираль →</a>
@@ -612,5 +638,7 @@ document.getElementById('activeCount').textContent = Math.floor(1 + Math.random(
 }, 5000);
 }
 </script>
+<div id="ts-box" style="position:fixed;bottom:8px;right:8px;z-index:4000;"></div>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onloadTurnstileCallback&render=explicit" async defer></script>
 </body>
 </html>
