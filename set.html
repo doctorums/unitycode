@@ -194,8 +194,8 @@ function getTurnstileToken(){
 // При устаревании — рисуем мгновенно, но в фоне делаем
 // полный refresh и убираем удалённые узлы с карты.
 // ═══════════════════════════════════════════════════════
-const CACHE_NODES = 'uc_cache_nodes_v2';
-const CACHE_CONNS = 'uc_cache_conns_v2';
+const CACHE_NODES = 'uc_cache_nodes_v3';
+const CACHE_CONNS = 'uc_cache_conns_v3';
 const CACHE_TTL_MS = 10 * 60 * 1000;   // 10 минут — после этого кэш игнорируется
 const FULL_REFRESH_INTERVAL = 60 * 1000; // 60 сек — фоновый полный пересчёт
 
@@ -337,6 +337,15 @@ return;
 
 // Подгружаем свои данные, если кэш пуст
 if (!cache.myNodes.length) await preloadMyData();
+
+// Страховка: цель — мой собственный узел? Связывание запрещено.
+if (cache.myNodeIds.includes(targetId)) {
+btn.textContent = '[ это твой узел ]';
+btn.style.color = '#555';
+btn.style.borderColor = 'rgba(255,255,255,0.1)';
+btn.onclick = null;
+return;
+}
 
 if (!cache.myNodes.length) {
 btn.textContent = '[ пройди Спираль ]';
