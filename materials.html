@@ -235,7 +235,14 @@ const CONFIG = {
 
 // строим меню материалов
 // Текущий язык: localStorage → язык браузера → ru (база)
-const LANG = (function(){ try { return (localStorage.getItem('uc_lang') || navigator.language || 'ru').slice(0,2).toLowerCase(); } catch(e){ return 'ru'; } })();
+const LANG = (function(){
+  let p=null;
+  try { p = new URLSearchParams(location.search).get('lang'); } catch(e){}
+  let stored=null; try { stored = localStorage.getItem('uc_lang'); } catch(e){}
+  const v = (p || stored || navigator.language || 'ru').slice(0,2).toLowerCase();
+  if(p){ try { localStorage.setItem('uc_lang', v); } catch(e){} }  // ?lang=en запоминается
+  return v;
+})();
 
 // Загрузка md с учётом языка: пробуем FILE.<lang>.md, откат на базовый (RU) FILE.md
 async function loadLocalized(src){
