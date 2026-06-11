@@ -244,9 +244,9 @@ const LANG = (function(){
   return v;
 })();
 
-// Загрузка md с учётом языка: пробуем FILE.<lang>.md, откат на базовый (RU) FILE.md
+// Загрузка md с учётом языка: пробуем FILE_<lang>.md, откат на базовый (RU) FILE.md
 async function loadLocalized(src){
-  const list = (LANG && LANG !== 'ru') ? [ src.replace(/(\.[^.\/]+)$/, '.'+LANG+'$1'), src ] : [ src ];
+  const list = (LANG && LANG !== 'ru') ? [ src.replace(/(\.[^.\/]+)$/, '_'+LANG+'$1'), src ] : [ src ];
   for(const url of list){
     try{ const res = await fetch(url); if(res.ok) return await res.text(); }catch(e){}
   }
