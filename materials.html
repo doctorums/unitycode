@@ -196,18 +196,7 @@ const CONFIG = {
   //   link = страница сайта | reader = показать md тут | ext = внешняя ссылка
   materials: [
     { id:"book", type:"link",   title:"Книга",        href:"kniga.html" },
-    { id:"new",  type:"reader", title:"С чего начать", text:
-"## Хочешь свой узел сети?\n\n"+
-"Каждый портал UnityCode — это живой узел. Их может быть много, и все они — часть одной растущей сети. Ты можешь зажечь свой.\n\n"+
-"«Форкнуть» — значит сделать собственную копию этого мира. Она станет твоей: меняй тексты, цвета, небо, наполняй своим смыслом. Никто не владеет сетью — у каждого свой голос в ней.\n\n"+
-"### Что для этого нужно\n\n"+
-"Бесплатный аккаунт на **GitHub** — это место, где живёт код порталов. Если его нет, регистрация займёт минуту.\n\n"+
-"### Три шага\n\n"+
-"- Нажми **Форкнуть** — у тебя появится своя копия портала.\n"+
-"- Поменяй в ней что захочешь: название, тексты, краски неба.\n"+
-"- Опубликуй — и твой узел засветится в сети.\n\n"+
-"Не бойся сломать — это твоя песочница. Хочешь глубже разобраться, что можно менять, а что лучше не трогать — открой **«Как форкнуть»**.\n\n"+
-"Добро пожаловать. Сеть ждёт твою частоту." },
+    { id:"new",  type:"reader", title:"С чего начать", src:"start.md" },
     { id:"fork", type:"reader", title:"Как форкнуть", src:"FORK.md" },
     { id:"repo", type:"ext",    title:"Форкнуть",     href:"@repo" }, // @repo = CONFIG.repoUrl
   ],
@@ -245,6 +234,17 @@ const CONFIG = {
 })();
 
 // строим меню материалов
+// Текущий язык: localStorage → язык браузера → ru (база)
+const LANG = (function(){ try { return (localStorage.getItem('uc_lang') || navigator.language || 'ru').slice(0,2).toLowerCase(); } catch(e){ return 'ru'; } })();
+
+// Загрузка md с учётом языка: пробуем FILE.<lang>.md, откат на базовый (RU) FILE.md
+async function loadLocalized(src){
+  const list = (LANG && LANG !== 'ru') ? [ src.replace(/(\.[^.\/]+)$/, '.'+LANG+'$1'), src ] : [ src ];
+  for(const url of list){
+    try{ const res = await fetch(url); if(res.ok) return await res.text(); }catch(e){}
+  }
+  return null;
+}
 const LAST_KEY="uc_materials_last";
 const reader=document.getElementById('reader'), readerBody=document.getElementById('readerBody');
 CONFIG.materials.forEach(m=>{
@@ -280,10 +280,15 @@ async function openReader(m){
   try{ localStorage.setItem(LAST_KEY,m.id); }catch(e){}
   reader.classList.add('show');
   if(window.__noiseHide) window.__noiseHide(true);
-  if(m.text){ readerBody.innerHTML=renderMarkdown(m.text); return; }  // встроенный текст
+  // встроенный текст: строка или объект { ru, en, ... } по языку
+  if(m.text){
+    const t = (typeof m.text==='object') ? (m.text[LANG] || m.text.ru || Object.values(m.text)[0]) : m.text;
+    readerBody.innerHTML=renderMarkdown(t); return;
+  }
   readerBody.innerHTML='<p style="color:#9aa">Загрузка…</p>';
-  try{ const res=await fetch(m.src); if(!res.ok)throw 0; readerBody.innerHTML=renderMarkdown(await res.text()); }
-  catch(e){ readerBody.innerHTML='<p style="color:#9aa">Не удалось загрузить '+m.src+'. Открой файл в репозитории напрямую.</p>'; }
+  const md = await loadLocalized(m.src);
+  readerBody.innerHTML = (md!=null) ? renderMarkdown(md)
+    : '<p style="color:#9aa">Не удалось загрузить '+m.src+'. Открой файл в репозитории напрямую.</p>';
 }
 (function initLast(){
   let last=null; try{ last=localStorage.getItem(LAST_KEY); }catch(e){}
