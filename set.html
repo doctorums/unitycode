@@ -356,15 +356,11 @@ return;
 }
 btn.textContent = '[ выбери свой шум ↓ ]';
 
-// Строим список: каждый свой шум — кнопка. Сам с собой связать нельзя.
+// Строим список: каждый свой шум — кнопка. Цель — всегда чужой узел.
 const rows = cache.myNodes.map(n => {
-const isSelf = n.id === targetId;
 const already = cache.connPairs.has(n.id + '|' + targetId);
 const short = (n.raw_noise || '').slice(0, 40) + ((n.raw_noise || '').length > 40 ? '…' : '');
 
-if (isSelf) {
-return `<div style="font-size:0.6rem;color:#444;padding:0.35rem 0;">— ${esc(short)} (это он)</div>`;
-}
 if (already) {
 return `<div style="font-size:0.6rem;color:#555;padding:0.35rem 0;">✓ ${esc(short)}</div>`;
 }
@@ -474,6 +470,12 @@ loadedIds.add(node.id);
 if (!lastCreatedAt || node.created_at > lastCreatedAt) lastCreatedAt = node.created_at;
 nodeCoords[node.id] = [node.lat, node.lng];
 
+// Свой узел: связывание недоступно — связи только между разными людьми
+const isMine = node.user_token && node.user_token === localStorage.getItem('uc_token');
+const actionHtml = isMine
+? `<span style="font-size:0.6rem;color:#00ff88;letter-spacing:0.15em;align-self:center;">// ТВОЙ УЗЕЛ</span>`
+: `<button class="popup-btn connect" id="popup-${node.id}" onclick="openConnectPicker('${node.id}', this)">[ связать ]</button>`;
+
 const marker = L.marker([node.lat, node.lng], { icon: nodeIcon() });
 marker.bindPopup(`
 <div class="popup-content">
@@ -482,9 +484,9 @@ marker.bindPopup(`
 <div class="popup-time">${timeAgo(node.created_at)}</div>
 <div class="popup-btns">
 <a href="petlya.html" class="popup-btn">Спираль →</a>
-<button class="popup-btn connect" id="popup-${node.id}" onclick="openConnectPicker('${node.id}', this)">[ связать ]</button>
+${actionHtml}
 </div>
-<div class="connect-picker" id="picker-${node.id}" style="display:none;margin-top:0.8rem;border-top:1px solid rgba(0,200,255,0.2);padding-top:0.8rem;"></div>
+${isMine ? '' : `<div class="connect-picker" id="picker-${node.id}" style="display:none;margin-top:0.8rem;border-top:1px solid rgba(0,200,255,0.2);padding-top:0.8rem;"></div>`}
 </div>`, { className: '' });
 cluster.addLayer(marker);
 nodeMarkers[node.id] = marker;
