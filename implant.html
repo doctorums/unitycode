@@ -278,6 +278,9 @@ const ANALYZE_URL = 'https://unitycode-analyze.sv2txxznjm.workers.dev';
 
 const headers = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY };
 
+// HTML-экранирование пользовательского текста (защита от XSS на выводе)
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
 function timeAgo(iso) {
   const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
   if (diff < 60)    return 'только что';
@@ -365,7 +368,7 @@ async function loadPersonal() {
   myNodes.forEach(node => {
     list.innerHTML += `
       <div class="noise-item">
-        ${node.raw_noise}
+        ${esc(node.raw_noise)}
         <div class="noise-time">${timeAgo(node.created_at)}</div>
       </div>`;
   });
