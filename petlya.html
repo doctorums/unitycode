@@ -1155,8 +1155,8 @@ setTimeout(function(){ requestAnimationFrame(growFrame); }, 300);
 }
 requestAnimationFrame(frame);
 }, 500);
-// автоматическое растворение: показалось (~5с), постояло, тает само
-setTimeout(function(){ if (typeof hideIntro === 'function') hideIntro(); }, 8000);
+// Вступление НЕ растворяется само — висит до отправки шума.
+// hideIntro() вызывается внутри sendMessage().
 })();
 // ── ЗВЁЗДНОЕ НЕБО ─────────────────────────────────────────────────────
 (function sky(){
