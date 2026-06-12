@@ -1008,6 +1008,22 @@ lng: payload.lng,
 });
 
 if (!res.ok) throw new Error('HTTP ' + res.status);
+const data = await res.json();
+
+// Вердикт привратника: Сеть не приняла сигнал. Это не сбой —
+// показываем причину тихо, голосом Сети. Кнопка гаснет навсегда.
+if (data && data.ok === false && data.error === 'gate') {
+btn.textContent = '[ ✗ СЕТЬ НЕ ПРИНЯЛА ]';
+btn.style.color = 'var(--accent2)';
+btn.style.borderColor = 'rgba(255,51,102,0.3)';
+const note = document.createElement('div');
+note.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,51,102,0.55);margin-top:0.5rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
+note.textContent = '// ' + (data.reason || 'сигнал не различим');
+if (btn.parentNode) btn.parentNode.appendChild(note);
+return;
+}
+
+if (!data || data.ok !== true) throw new Error('write_failed');
 
 btn.textContent = '[ ✓ ВПЛЕТЕНО ]';
 btn.style.color = 'var(--accent)';
