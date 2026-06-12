@@ -1,30 +1,13 @@
 <!DOCTYPE html>
-<!-- ════════════════════════════════════════════════════════════════════════
-     UNITYCODE · ИМПЛАНТ (аналитик)  —  ПАМЯТКА ФОРКЕРУ
-     Подробности: FORK.md в корне репозитория.
-
-     ✏️  МЕНЯЙ СВОБОДНО: тексты, цвета, оформление, подписи кнопок.
-     ⚙️  ВПИШИ СВОЁ при форке (ОБА адреса!):
-         • WORKER_URL  — твой Worker-генератор (≈ строка 259);
-         • ANALYZE_URL — твой Worker-аналитик  (≈ строка 262);
-         • SUPABASE_URL / SUPABASE_KEY — твоя база (ищи по тексту).
-     ⛔️ НЕ ТРОГАЙ (несущая стена):
-         • контракт аналитика: POST { scope, nodes, connections } → { interpretation };
-         • scope только из набора personal | social | collective;
-         • три пункта меню и имена файлов.
-════════════════════════════════════════════════════════════════════════ -->
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>UNITYCODE — Имплант</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-<noscript><link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400;700&display=swap" rel="stylesheet"></noscript>
+  <title>UNITYCODE — Узор</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="shared.css">
   <style>
-    body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; overscroll-behavior: none; }
+    body { min-height: 100vh; display: flex; flex-direction: column; }
 
     main {
       flex: 1;
@@ -213,12 +196,11 @@
 <body>
 
 <header>
-  <a href="index.html" class="logo">UNITYCODE // ИМПЛАНТ</a>
+  <a href="index.html" class="logo">UNITYCODE // УЗОР</a>
   <nav>
+    <a href="implant.html">Узор</a>
     <a href="petlya.html">Спираль</a>
     <a href="set.html">Сеть</a>
-    <a href="implant.html" class="active">Узор</a>
-    <a href="materials.html">Материя</a>
   </nav>
 </header>
 
@@ -281,9 +263,6 @@ const ANALYZE_URL = 'https://unitycode-analyze.sv2txxznjm.workers.dev';
 
 const headers = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY };
 
-// HTML-экранирование пользовательского текста (защита от XSS на выводе)
-function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
 function timeAgo(iso) {
   const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
   if (diff < 60)    return 'только что';
@@ -326,20 +305,28 @@ async function loadPersonal() {
 
   // Теперь — связи по ID этих узлов. Supabase REST хочет явный список id,
   // а не SQL-подзапрос. Собираем список и спрашиваем связи в обе стороны.
+  // Берём концы пар (from/to) — они нужны и для счётчика, и для анализа.
   const myIds = myNodes.map(n => n.id);
   const idList = `(${myIds.join(',')})`;
 
   let totalConnections = 0;
+  window._myConns = [];
   try {
     const [connsFromRes, connsToRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/connections?from_node_id=in.${idList}&status=eq.accepted&select=id`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/connections?to_node_id=in.${idList}&status=eq.accepted&select=id`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/connections?from_node_id=in.${idList}&status=eq.accepted&select=from_node_id,to_node_id`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/connections?to_node_id=in.${idList}&status=eq.accepted&select=from_node_id,to_node_id`, { headers }),
     ]);
     const connsFrom = await connsFromRes.json();
     const connsTo = await connsToRes.json();
-    const cntFrom = Array.isArray(connsFrom) ? connsFrom.length : 0;
-    const cntTo = Array.isArray(connsTo) ? connsTo.length : 0;
-    totalConnections = cntFrom + cntTo;
+    const a = Array.isArray(connsFrom) ? connsFrom : [];
+    const b = Array.isArray(connsTo) ? connsTo : [];
+    // Дедуп: связь могла попасть в оба запроса (оба конца мои)
+    const seen = new Set();
+    [...a, ...b].forEach(c => {
+      const key = c.from_node_id + '|' + c.to_node_id;
+      if (!seen.has(key)) { seen.add(key); window._myConns.push(c); }
+    });
+    totalConnections = window._myConns.length;
   } catch (e) {
     console.warn('Ошибка подсчёта связей:', e);
     totalConnections = 0;
@@ -371,13 +358,13 @@ async function loadPersonal() {
   myNodes.forEach(node => {
     list.innerHTML += `
       <div class="noise-item">
-        ${esc(node.raw_noise)}
+        ${node.raw_noise}
         <div class="noise-time">${timeAgo(node.created_at)}</div>
       </div>`;
   });
 
   // Сохраняем шумы для анализа
-  window._myNoises = myNodes.map(n => n.raw_noise);
+  window._myNodes = myNodes; // [{id, created_at, raw_noise}] — для анализа
 }
 
 // ═══════════════════════════════════════════════════════
@@ -392,18 +379,19 @@ async function runPersonalAnalysis() {
   btn.disabled = true;
   loading.classList.add('visible');
 
-  const noises = window._myNoises || [];
-  if (!noises.length) { loading.classList.remove('visible'); btn.disabled = false; return; }
+  const myNodes = window._myNodes || [];
+  if (!myNodes.length) { loading.classList.remove('visible'); btn.disabled = false; return; }
 
   try {
-    // Шлём граф Агенту-Аналитику. Промпт и структура живут в Worker'е,
-    // браузер только передаёт данные: режим + узлы.
+    // Шлём граф Агенту-Аналитику: узлы с id + пары связей,
+    // чтобы аналитик видел, ЧТО с ЧЕМ соединено.
     const res = await fetch(ANALYZE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         scope: 'personal',
-        nodes: noises.map(n => ({ raw_noise: n })),
+        nodes: myNodes.map(n => ({ id: n.id, raw_noise: n.raw_noise })),
+        connections: window._myConns || [],
       }),
     });
     const data = await res.json();
@@ -450,10 +438,10 @@ async function runCollectiveAnalysis() {
   loading.classList.add('visible');
 
   try {
-    // Берём последние 30 шумов + счётчик связей для контекста
+    // Берём последние 30 шумов (с id) + пары связей для анализа мостов
     const [nodesRes, connsRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/nodes?select=raw_noise&order=created_at.desc&limit=30`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/connections?select=id&status=eq.accepted`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/nodes?select=id,raw_noise&order=created_at.desc&limit=30`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/connections?select=from_node_id,to_node_id&status=eq.accepted`, { headers }),
     ]);
     const nodes = await nodesRes.json();
     const conns = await connsRes.json();
@@ -470,8 +458,8 @@ async function runCollectiveAnalysis() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         scope: 'collective',
-        nodes: nodes,                                   // [{ raw_noise }, ...]
-        connections: conns.map(c => ({ id: c.id })),    // для контекста плотности
+        nodes: nodes,                                   // [{ id, raw_noise }, ...]
+        connections: Array.isArray(conns) ? conns : [], // [{ from_node_id, to_node_id }, ...]
       }),
     });
     const data = await aiRes.json();
