@@ -425,7 +425,7 @@ function renderMarkdown(md){
       if(!Array.isArray(rows)) return;
       const live=rows
         .map(x=>(x.essence||'').trim())
-        .filter(t=>t.length>2)
+        .filter(t=>t.length>2 && !t.startsWith('__TRACE__'))
         .map(t=>({ text:t, weight:18+Math.floor(Math.random()*36) })); // 18..53
       if(live.length) NS.items=NS.items.concat(live);
     }catch(e){ /* остаётся то, что уже есть */ }
