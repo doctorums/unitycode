@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ru"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Тест выжимки</title>
+<style>
+  body{background:#000;color:#0f8;font-family:monospace;padding:1.5rem;line-height:1.6}
+  textarea{width:100%;box-sizing:border-box;background:#0a0a0a;color:#fff;border:1px solid #333;font-family:monospace;padding:0.6rem;min-height:60px}
+  button{background:transparent;color:#0f8;border:1px solid #0f8;padding:0.8rem 1.5rem;font-family:monospace;font-size:1rem;margin:0.8rem 0;width:100%}
+  pre{white-space:pre-wrap;word-break:break-word;background:#0a0a0a;border:1px solid #333;padding:1rem;font-size:0.85rem}
+  .label{color:#888;font-size:0.75rem;margin:1rem 0 0.3rem}
+</style>
+<div id="ts-box" style="position:fixed;bottom:8px;left:8px"></div>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTs&render=explicit" async defer></script>
+</head><body>
+<h3>// ТЕСТ ВЫЖИМКИ (essence)</h3>
+<p style="color:#888;font-size:0.8rem">Вплетает живой шум и показывает essence + essence_trace — что вернула MiMo. ⚠️ Пишет узел в базу (token: test-gate-token), потом удали.</p>
+<textarea id="noise">мне кажется, я наконец понял, зачем всё это</textarea>
+<button onclick="run()">[ ВПЛЕСТИ И ПОКАЗАТЬ ОТВЕТ ]</button>
+<div class="label">HTTP:</div><pre id="st">—</pre>
+<div class="label">СЫРОЙ ОТВЕТ (essence + essence_trace):</div><pre id="raw">—</pre>
+<script>
+const URL='https://unitycode-write.sv2txxznjm.workers.dev/';
+const SITEKEY='0x4AAAAAADipuIhRBHuABO1Z';
+let _id=null,_res=null;
+window.onTs=function(){try{_id=turnstile.render('#ts-box',{sitekey:SITEKEY,appearance:'interaction-only',execution:'execute',callback:t=>{if(_res){_res(t);_res=null;}},'error-callback':()=>{if(_res){_res('');_res=null;}}});}catch(e){}};
+function ts(){return new Promise(r=>{if(!_id){r('');return;}_res=r;try{turnstile.execute(_id);}catch(e){r('');}setTimeout(()=>{if(_res){_res('');_res=null;}},10000);});}
+async function run(){
+  const st=document.getElementById('st'),raw=document.getElementById('raw');
+  st.textContent='...';raw.textContent='';
+  try{
+    const tok=await ts();
+    const res=await fetch(URL,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'node',token:'test-gate-token',turnstile:tok,raw_noise:document.getElementById('noise').value,ai_interpretation:'отклик сети для теста выжимки'})});
+    st.textContent=res.status+' '+res.statusText;
+    raw.textContent=await res.text();
+  }catch(e){st.textContent='СЕТЕВАЯ ОШИБКА';raw.textContent=e.message;}
+}
+</script></body></html>
