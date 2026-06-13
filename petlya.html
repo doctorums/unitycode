@@ -457,21 +457,35 @@ const TURNSTILE_SITEKEY = '0x4AAAAAADipuIhRBHuABO1Z';
 
 // Turnstile: одноразовый токен по требованию (interaction-only — обычно невидим)
 let _tsId = null, _tsResolve = null;
+
+// Показ/скрытие контейнера капчи. Прячем через visibility (не display:none —
+// иначе Turnstile может не отработать). Виден только в момент проверки.
+function setTsVisible(on){
+  const box = document.getElementById('ts-box');
+  if (box) box.style.visibility = on ? 'visible' : 'hidden';
+}
+
 window.onloadTurnstileCallback = function(){
   try {
     _tsId = turnstile.render('#ts-box', {
       sitekey: TURNSTILE_SITEKEY, appearance: 'interaction-only', execution: 'execute',
-      callback: t => { if(_tsResolve){ _tsResolve(t); _tsResolve = null; } },
-      'error-callback': () => { if(_tsResolve){ _tsResolve(''); _tsResolve = null; } },
+      callback: t => { setTsVisible(false); if(_tsResolve){ _tsResolve(t); _tsResolve = null; } },
+      'error-callback': () => { setTsVisible(false); if(_tsResolve){ _tsResolve(''); _tsResolve = null; } },
     });
   } catch(e){}
+  setTsVisible(false); // спрятан по умолчанию, пока проверка не нужна
 };
 function getTurnstileToken(){
   return new Promise(resolve => {
     if (!window.turnstile || _tsId === null) { resolve(''); return; }
-    _tsResolve = resolve;
+    let done = false;
+    const finish = (val) => { if(done) return; done = true; setTsVisible(false); resolve(val); };
+    _tsResolve = (val) => finish(val);
+    setTsVisible(true); // показываем на время проверки — вдруг нужен челлендж
     try { turnstile.reset(_tsId); } catch(e){}
-    try { turnstile.execute(_tsId); } catch(e){ resolve(''); }
+    try { turnstile.execute(_tsId); } catch(e){ finish(''); }
+    // Страховка: на нестабильном канале callback может не прийти — не вешаем UI
+    setTimeout(() => { if(!done){ _tsResolve = null; finish(''); } }, 12000);
   });
 }
 
