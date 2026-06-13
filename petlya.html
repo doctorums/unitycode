@@ -1224,7 +1224,7 @@ requestAnimationFrame(frame);
 })();
 
 </script>
-<div id="ts-box" style="position:fixed;bottom:8px;right:8px;z-index:4000;"></div>
+<div id="ts-box" style="position:fixed;bottom:max(12px,env(safe-area-inset-bottom));left:12px;z-index:4000;"></div>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onloadTurnstileCallback&render=explicit" async defer></script>
 </body>
 </html>
