@@ -399,13 +399,36 @@ function renderMarkdown(md){
 
   // ── ШУМ ТРЕТЬЕГО АГЕНТА (режим покоя) ──────────────────────────────────
   const NS=CONFIG.noise||{on:false};
-  // источник фраз: пробуем внешний файл noises.json, иначе — список из CONFIG
+  // Источники фраз, в порядке подмешивания к дефолтным из CONFIG:
+  //   1) noises.json (если есть) — ручной список форкера
+  //   2) живые выжимки (essence) из Supabase — квинтэссенции реальных шумов Сети
+  // Дефолтные из CONFIG.noise.items остаются всегда — живое ДОБАВЛЯЕТСЯ к ним.
   (async ()=>{
     try{
-      const r=await fetch('noises.json'); if(!r.ok) return;
-      const arr=await r.json();
-      if(Array.isArray(arr) && arr.length) NS.items=arr;
-    }catch(e){ /* остаётся список из CONFIG */ }
+      const r=await fetch('noises.json'); if(r.ok){
+        const arr=await r.json();
+        if(Array.isArray(arr) && arr.length) NS.items=NS.items.concat(arr);
+      }
+    }catch(e){}
+  })();
+  (async ()=>{
+    const SB_URL='https://lukyyqabkxzrgdixzphs.supabase.co';
+    const SB_KEY='sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
+    try{
+      // берём последние непустые выжимки; вес рандомим в живом диапазоне
+      const r=await fetch(
+        SB_URL+'/rest/v1/nodes?select=essence&essence=not.is.null&order=created_at.desc&limit=40',
+        { headers:{ apikey:SB_KEY, Authorization:'Bearer '+SB_KEY } }
+      );
+      if(!r.ok) return;
+      const rows=await r.json();
+      if(!Array.isArray(rows)) return;
+      const live=rows
+        .map(x=>(x.essence||'').trim())
+        .filter(t=>t.length>2)
+        .map(t=>({ text:t, weight:18+Math.floor(Math.random()*36) })); // 18..53
+      if(live.length) NS.items=NS.items.concat(live);
+    }catch(e){ /* остаётся то, что уже есть */ }
   })();
   let noises=[];         // активные шумы (до maxOnscreen)
   let noiseHidden=false;
