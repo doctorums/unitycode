@@ -1023,6 +1023,19 @@ if (btn.parentNode) btn.parentNode.appendChild(note);
 return;
 }
 
+// Привратник недоступен (не смог ответить) — НЕ вплетено, но можно повторить.
+if (data && data.ok === false && data.error === 'gate_unavailable') {
+btn.textContent = '[ ↻ ПОВТОРИТЬ ]';
+btn.style.color = 'var(--accent2)';
+btn.disabled = false;
+btn.dataset.weaveInProgress = '0';
+const note = document.createElement('div');
+note.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,51,102,0.45);margin-top:0.5rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
+note.textContent = '// ' + (data.reason || 'Сеть не расслышала, попробуй ещё раз');
+if (btn.parentNode) btn.parentNode.appendChild(note);
+return;
+}
+
 if (!data || data.ok !== true) throw new Error('write_failed');
 
 btn.textContent = '[ ✓ ВПЛЕТЕНО ]';
