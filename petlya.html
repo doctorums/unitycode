@@ -1090,6 +1090,7 @@ btn.dataset.weaveInProgress = '0';
 // ═══════════════════════════════════════════════════════
 (async function(){
 var el = document.querySelector('.sys-msg');
+try { var _mt=document.querySelector('.marquee-text'); if(_mt && window.UC_I18N) _mt.innerHTML=UC_I18N.t('petlya.marquee'); } catch(e){}
 function getSendBtn() {
   const btnText = document.getElementById('sendBtn');
   const btnIcon = document.getElementById('sendBtnIcon');
@@ -1144,7 +1145,7 @@ return 1.2 - 0.2 * (1 - Math.pow(1 - t, 3));
 var sysText = el.querySelector('.sys-text');
 var sysTag = el.querySelector('.sys-tag');
 if(sysText) {
-var parts = sysText.innerHTML.split(/<br\s*\/?>/i);
+var parts = (window.UC_I18N ? UC_I18N.t("petlya.intro") : sysText.innerHTML).split(/<br\s*\/?>/i);
 sysText.innerHTML = parts.map(p => '<span class="sys-line" style="display:block">' + p + '</span>').join('');
 }
 var lines = sysText ? Array.from(sysText.querySelectorAll('.sys-line')) : [];
