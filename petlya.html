@@ -662,7 +662,7 @@ weaveBtn.className = 'weave-btn';
 weaveBtn.textContent = UC_I18N.t('petlya.weave');
 weaveBtn.dataset.text = fullText.slice(0, 300);
 weaveBtn.dataset.noise = userNoise.slice(0, 500);
-weaveBtn.dataset.msgIndex = messages.length; // индекс этого отклика в массиве (запишется туда после push)
+weaveBtn.dataset.msgIndex = messages.length - 1; // отклик уже в messages (последний)
 weaveBtn.onclick = function() { weaveIntoNet(this); };
 div.appendChild(weaveBtn);
 }
@@ -834,10 +834,10 @@ if (USE_STUB) {
   workerOk = true;
   updateInlineStatus();
   const stub = pickDemo();
-  await typeText(mbId, stub, 12);
   const lastUserMsg = messages.filter(m => m.role === 'user').slice(-1)[0]?.content || '';
+  pushMessage('assistant', stub);   // сохраняем сразу, до печати
+  await typeText(mbId, stub, 12);
   finalizeAiMessage(div, mbId, stub, lastUserMsg);
-  pushMessage('assistant', stub);
   return;
 }
 
@@ -866,11 +866,10 @@ fullText = data.interpretation || UC_I18N.t('petlya.signalUnrecognized');
 workerOk = true;
 updateInlineStatus();
 
-await typeText(mbId, fullText, 7);
-
 const lastUserMsg = messages.filter(m => m.role === 'user').slice(-1)[0]?.content || '';
+pushMessage('assistant', fullText);   // сохраняем ответ сразу, до анимации печати — переживёт уход со страницы
+await typeText(mbId, fullText, 7);
 finalizeAiMessage(div, mbId, fullText, lastUserMsg);
-pushMessage('assistant', fullText);
 } catch (err) {
 console.error('Worker error:', err);
 workerOk = false;
@@ -880,6 +879,7 @@ updateInlineStatus();
 if (body) body.innerHTML = `<span style="color:var(--accent2)">⚠ Worker: ${escHtml(err.message)}</span><br><br>`;
 
 const demoText = pickDemo();
+pushMessage('assistant', demoText);   // сохраняем сразу, до печати
 
 for (let i = 0; i <= demoText.length; i++) {
 await new Promise(r => setTimeout(r, 9));
@@ -892,7 +892,6 @@ if (body) body.innerHTML =
 `<span style="color:rgba(255,100,100,0.4);font-size:0.6rem">${UC_I18N.t('petlya.demoBadge')}</span><br><br>` + escHtml(demoText);
 
 finalizeAiMessage(div, mbId, demoText);
-pushMessage('assistant', demoText);
 }
 }
 
