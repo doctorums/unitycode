@@ -97,28 +97,39 @@
 
   function buildSwitcher(){
     if(document.getElementById('uc-lang') || !document.body) return;
-    var wrap=document.createElement('div');
-    wrap.id='uc-lang';
-    wrap.style.cssText='position:fixed;top:12px;right:14px;z-index:9000;font-family:"Share Tech Mono",monospace;font-size:0.62rem;letter-spacing:0.12em;';
+    var nav = document.querySelector('header nav') || document.querySelector('nav');
+
+    var wrap=document.createElement('div'); wrap.id='uc-lang';
     var btn=document.createElement('button');
-    btn.type='button';
+    btn.type='button'; btn.setAttribute('aria-label','Language');
     btn.textContent=NAMES[LANG]+' \u25BE';
-    btn.style.cssText='background:rgba(10,16,24,0.6);color:rgba(180,215,255,0.9);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:5px 10px;cursor:pointer;font:inherit;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);';
+    btn.style.cssText='font-family:"Share Tech Mono",monospace;font-size:0.72rem;letter-spacing:0.1em;color:rgba(180,215,255,0.9);background:rgba(10,16,24,0.55);border:1px solid rgba(255,255,255,0.22);border-radius:7px;padding:7px 11px;min-height:36px;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);';
+
     var list=document.createElement('div');
-    list.style.cssText='display:none;margin-top:4px;background:rgba(8,14,22,0.96);border:1px solid rgba(255,255,255,0.18);border-radius:6px;overflow:hidden;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);';
+    list.style.cssText='position:fixed;display:none;min-width:150px;background:rgba(8,14,22,0.97);border:1px solid rgba(255,255,255,0.2);border-radius:8px;overflow:hidden;z-index:9001;box-shadow:0 8px 30px rgba(0,0,0,0.5);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);';
     SUPPORTED.forEach(function(code){
       var item=document.createElement('a');
       item.textContent=NAMES[code];
-      item.style.cssText='display:block;padding:7px 12px;cursor:pointer;white-space:nowrap;color:'+(code===LANG?'rgba(160,215,255,0.95)':'rgba(255,255,255,0.6)')+';';
+      item.style.cssText='display:block;padding:13px 16px;min-height:44px;box-sizing:border-box;font-family:"Share Tech Mono",monospace;font-size:0.85rem;cursor:pointer;white-space:nowrap;color:'+(code===LANG?'rgba(160,215,255,0.95)':'rgba(255,255,255,0.7)')+';';
       item.addEventListener('click',function(){ try{localStorage.setItem('uc_lang',code);}catch(e){} location.reload(); });
-      item.addEventListener('mouseenter',function(){ item.style.background='rgba(255,255,255,0.06)'; });
-      item.addEventListener('mouseleave',function(){ item.style.background='transparent'; });
       list.appendChild(item);
     });
-    btn.addEventListener('click',function(e){ e.stopPropagation(); list.style.display=(list.style.display==='none'?'block':'none'); });
-    document.addEventListener('click',function(e){ if(!wrap.contains(e.target)) list.style.display='none'; });
-    wrap.appendChild(btn); wrap.appendChild(list);
-    document.body.appendChild(wrap);
+
+    function place(){ var r=btn.getBoundingClientRect(); list.style.top=(r.bottom+6)+'px'; list.style.right=Math.max(8,(window.innerWidth-r.right))+'px'; }
+    function toggle(open){ var show=(open===undefined)?(list.style.display==='none'):open; if(show){ place(); list.style.display='block'; } else { list.style.display='none'; } }
+    btn.addEventListener('click',function(e){ e.stopPropagation(); toggle(); });
+    document.addEventListener('click',function(){ toggle(false); });
+    window.addEventListener('resize',function(){ if(list.style.display==='block') place(); });
+
+    wrap.appendChild(btn);
+    document.body.appendChild(list);
+    if(nav){
+      wrap.style.cssText='display:inline-flex;align-items:center;margin-left:0.6rem;vertical-align:middle;';
+      nav.appendChild(wrap);
+    } else {
+      wrap.style.cssText='position:fixed;z-index:9000;top:calc(env(safe-area-inset-top,0px) + 12px);right:calc(env(safe-area-inset-right,0px) + 12px);';
+      document.body.appendChild(wrap);
+    }
   }
 
   window.UC_I18N = { lang:LANG, t:t, apply:apply, supported:SUPPORTED, names:NAMES };
