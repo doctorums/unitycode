@@ -97,13 +97,17 @@
 
   function buildSwitcher(){
     if(document.getElementById('uc-lang') || !document.body) return;
-    var nav = document.querySelector('header nav') || document.querySelector('nav');
+    // Язык выбирается один раз на входе (лендинг). На страницах с навигацией он
+    // наследуется из localStorage/браузера — отдельный селектор не нужен.
+    if(document.querySelector('header nav') || document.querySelector('nav')) return;
 
     var wrap=document.createElement('div'); wrap.id='uc-lang';
+    wrap.style.cssText='position:fixed;z-index:9000;top:calc(env(safe-area-inset-top,0px) + 12px);right:calc(env(safe-area-inset-right,0px) + 12px);';
+
     var btn=document.createElement('button');
     btn.type='button'; btn.setAttribute('aria-label','Language');
     btn.textContent=NAMES[LANG]+' \u25BE';
-    btn.style.cssText='font-family:"Share Tech Mono",monospace;font-size:0.72rem;letter-spacing:0.1em;color:rgba(180,215,255,0.9);background:rgba(10,16,24,0.55);border:1px solid rgba(255,255,255,0.22);border-radius:7px;padding:7px 11px;min-height:36px;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);';
+    btn.style.cssText='font-family:"Share Tech Mono",monospace;font-size:0.72rem;letter-spacing:0.1em;color:rgba(180,215,255,0.9);background:rgba(10,16,24,0.55);border:1px solid rgba(255,255,255,0.22);border-radius:7px;padding:8px 12px;min-height:38px;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);';
 
     var list=document.createElement('div');
     list.style.cssText='position:fixed;display:none;min-width:150px;background:rgba(8,14,22,0.97);border:1px solid rgba(255,255,255,0.2);border-radius:8px;overflow:hidden;z-index:9001;box-shadow:0 8px 30px rgba(0,0,0,0.5);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);';
@@ -123,13 +127,7 @@
 
     wrap.appendChild(btn);
     document.body.appendChild(list);
-    if(nav){
-      wrap.style.cssText='display:inline-flex;align-items:center;margin-left:0.6rem;vertical-align:middle;';
-      nav.appendChild(wrap);
-    } else {
-      wrap.style.cssText='position:fixed;z-index:9000;top:calc(env(safe-area-inset-top,0px) + 12px);right:calc(env(safe-area-inset-right,0px) + 12px);';
-      document.body.appendChild(wrap);
-    }
+    document.body.appendChild(wrap);
   }
 
   window.UC_I18N = { lang:LANG, t:t, apply:apply, supported:SUPPORTED, names:NAMES };
