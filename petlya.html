@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
-<title>UNITYCODE — Спираль</title>
+<title data-i18n="petlya.title">UNITYCODE — Спираль</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400;700&family=Kalam:wght@400;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
@@ -320,12 +320,12 @@ padding: 0.6rem 0.8rem;
 <canvas id="sky"></canvas>
 
 <header>
-<a href="index.html" class="logo">UNITYCODE // СПИРАЛЬ</a>
+<a href="index.html" class="logo" data-i18n="petlya.logo">UNITYCODE // СПИРАЛЬ</a>
 <nav>
-<a href="petlya.html">Спираль</a>
-<a href="set.html">Сеть</a>
-<a href="implant.html">Узор</a>
-<a href="materials.html">Материя</a>
+<a href="petlya.html" data-i18n="nav.spiral">Спираль</a>
+<a href="set.html" data-i18n="nav.network">Сеть</a>
+<a href="implant.html" data-i18n="nav.pattern">Узор</a>
+<a href="materials.html" data-i18n="nav.matter">Материя</a>
 </nav>
 </header>
 
@@ -357,7 +357,7 @@ oninput="onWorkerUrlChange()">
 
 <div class="chat-container" id="chatContainer">
 <div class="sys-msg" id="introMsg">
-<div class="sys-text">
+<div class="sys-text" data-i18n-html="petlya.intro">
 Вселенная смотрит на себя твоими глазами.<br>
 Каждая мысль, которую ты вводишь — это сигнал.<br>
 Каждый сигнал становится связью.<br>
@@ -370,22 +370,23 @@ oninput="onWorkerUrlChange()">
 <div class="input-area">
 <div class="input-row">
 <div class="input-wrapper">
-<span class="input-label"><span class="star-pulse">✦</span><span class="marquee-wrap"><span class="marquee-text">ВВЕДИ СВОЙ <span style="color:var(--accent)">ШУМ</span> (мысли, страхи, вопросы, интуиции)</span></span></span>
+<span class="input-label"><span class="star-pulse">✦</span><span class="marquee-wrap"><span class="marquee-text" data-i18n-html="petlya.marquee">ВВЕДИ СВОЙ <span style="color:var(--accent)">ШУМ</span> (мысли, страхи, вопросы, интуиции)</span></span></span>
 <textarea
 id="userInput"
-placeholder="Введи свои обрывки мыслей, страхи или вопросы..."
+placeholder="Введи свои обрывки мыслей, страхи или вопросы..." data-i18n-ph="petlya.inputPh"
 onkeydown="handleKey(event)"
 oninput="updateCount()"
 maxlength="2000"
 ></textarea>
 <div class="char-count"><span id="charCount">0</span> / 2000</div>
 </div>
-<button class="send-btn" id="sendBtn" onclick="sendMessage()">[ ОТПРАВИТЬ ]</button>
+<button class="send-btn" id="sendBtn" onclick="sendMessage()" data-i18n="petlya.send">[ ОТПРАВИТЬ ]</button>
 <button class="send-btn-icon" id="sendBtnIcon" onclick="sendMessage()" aria-label="Отправить">↑</button>
 </div>
 </div>
 
 <script src="nav.js"></script>
+<script src="i18n.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════
 // КОНСТАНТЫ
@@ -658,7 +659,7 @@ const body = document.getElementById(mbId);
 if (body) body.innerHTML = escHtml(fullText);
 const weaveBtn = document.createElement('button');
 weaveBtn.className = 'weave-btn';
-weaveBtn.textContent = '[ Вплести в Сеть ]';
+weaveBtn.textContent = UC_I18N.t('petlya.weave');
 weaveBtn.dataset.text = fullText.slice(0, 300);
 weaveBtn.dataset.noise = userNoise.slice(0, 500);
 weaveBtn.dataset.msgIndex = messages.length; // индекс этого отклика в массиве (запишется туда после push)
@@ -730,7 +731,7 @@ async function restoreDialog() {
       if (!alreadyWoven) {
         const weaveBtn = document.createElement('button');
         weaveBtn.className = 'weave-btn';
-        weaveBtn.textContent = '[ Вплести в Сеть ]';
+        weaveBtn.textContent = UC_I18N.t('petlya.weave');
         weaveBtn.dataset.text = m.content.slice(0, 300);
         weaveBtn.dataset.noise = lastUser.slice(0, 500);
         weaveBtn.dataset.msgIndex = msgIdx;
@@ -857,11 +858,11 @@ if (data.error) throw new Error(data.error);
 if (data.rejected === true) {
   workerOk = true;
   updateInlineStatus();
-  if (body) body.innerHTML = `<span style="opacity:0.6">Это не ваш шум)</span>`;
+  if (body) body.innerHTML = `<span style="opacity:0.6">${UC_I18N.t('petlya.notYourNoise')}</span>`;
   return;
 }
 
-fullText = data.interpretation || 'Сигнал не распознан';
+fullText = data.interpretation || UC_I18N.t('petlya.signalUnrecognized');
 workerOk = true;
 updateInlineStatus();
 
@@ -883,12 +884,12 @@ const demoText = pickDemo();
 for (let i = 0; i <= demoText.length; i++) {
 await new Promise(r => setTimeout(r, 9));
 if (body) body.innerHTML =
-`<span style="color:var(--accent2);font-size:0.65rem">⚠ Worker недоступен — демо-режим</span><br><br>` +
+`<span style="color:var(--accent2);font-size:0.65rem">${UC_I18N.t('petlya.demoUnavailable')}</span><br><br>` +
 escHtml(demoText.slice(0, i)) + '<span class="stream-cursor"></span>';
 if (i % 20 === 0) scrollBottom();
 }
 if (body) body.innerHTML =
-`<span style="color:rgba(255,100,100,0.4);font-size:0.6rem">⚠ демо-режим</span><br><br>` + escHtml(demoText);
+`<span style="color:rgba(255,100,100,0.4);font-size:0.6rem">${UC_I18N.t('petlya.demoBadge')}</span><br><br>` + escHtml(demoText);
 
 finalizeAiMessage(div, mbId, demoText);
 pushMessage('assistant', demoText);
@@ -902,7 +903,7 @@ if (recent.length <= 1) {
 return recent[0]?.content || '';
 }
 return recent.map(m => {
-const tag = m.role === 'user' ? '[ПОЛЬЗОВАТЕЛЬ]' : '[УЗЕЛ]';
+const tag = m.role === 'user' ? UC_I18N.t('petlya.roleUser') : UC_I18N.t('petlya.roleNode');
 return `${tag} ${m.content}`;
 }).join('\n\n');
 }
@@ -935,12 +936,12 @@ async function getUserToken() {
       overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;';
       overlay.innerHTML = `
         <div style="width:90%;max-width:420px;border:1px solid rgba(0,255,136,0.3);background:#050a05;padding:2rem;">
-          <div style="font-family:monospace;font-size:0.6rem;color:#00ff88;letter-spacing:0.2em;margin-bottom:1rem;">// КЛЮЧ УЗЛА</div>
-          <p style="font-family:monospace;font-size:0.8rem;line-height:1.7;color:rgba(255,255,255,0.7);margin-bottom:1.4rem;">Придумай кодовое слово или фразу. Оно позволит узнавать твои узлы на любом устройстве. Никто кроме тебя его не знает.</p>
-          <input id="uc-phrase-input" type="text" placeholder="твоя фраза..." style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(0,255,136,0.2);color:#fff;font-family:monospace;font-size:0.8rem;padding:0.6rem 0.8rem;outline:none;margin-bottom:1rem;">
+          <div style="font-family:monospace;font-size:0.6rem;color:#00ff88;letter-spacing:0.2em;margin-bottom:1rem;">${UC_I18N.t('petlya.keyTitle')}</div>
+          <p style="font-family:monospace;font-size:0.8rem;line-height:1.7;color:rgba(255,255,255,0.7);margin-bottom:1.4rem;">${UC_I18N.t('petlya.keyDesc')}</p>
+          <input id="uc-phrase-input" type="text" placeholder="${UC_I18N.t('petlya.phrasePlaceholder')}" style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(0,255,136,0.2);color:#fff;font-family:monospace;font-size:0.8rem;padding:0.6rem 0.8rem;outline:none;margin-bottom:1rem;">
           <div style="display:flex;gap:0.8rem;">
-            <button id="uc-phrase-ok" style="flex:1;padding:0.6rem;border:1px solid #00ff88;color:#00ff88;font-family:monospace;font-size:0.7rem;letter-spacing:0.1em;background:transparent;cursor:pointer;">[ ЗАПОМНИТЬ ]</button>
-            <button id="uc-phrase-skip" style="flex:1;padding:0.6rem;border:1px solid rgba(255,255,255,0.1);color:#555;font-family:monospace;font-size:0.7rem;letter-spacing:0.1em;background:transparent;cursor:pointer;">[ пропустить ]</button>
+            <button id="uc-phrase-ok" style="flex:1;padding:0.6rem;border:1px solid #00ff88;color:#00ff88;font-family:monospace;font-size:0.7rem;letter-spacing:0.1em;background:transparent;cursor:pointer;">${UC_I18N.t('petlya.keyRemember')}</button>
+            <button id="uc-phrase-skip" style="flex:1;padding:0.6rem;border:1px solid rgba(255,255,255,0.1);color:#555;font-family:monospace;font-size:0.7rem;letter-spacing:0.1em;background:transparent;cursor:pointer;">${UC_I18N.t('petlya.keySkip')}</button>
           </div>
         </div>`;
       document.body.appendChild(overlay);
@@ -991,7 +992,7 @@ async function weaveIntoNet(btn) {
 if (btn.dataset.weaveInProgress === '1') return;
 btn.dataset.weaveInProgress = '1';
 
-btn.textContent = '[ ВПЛЕТЕНИЕ... ]';
+btn.textContent = UC_I18N.t('petlya.weaving');
 btn.disabled = true;
 
 try {
@@ -1027,32 +1028,32 @@ const data = await res.json();
 // Вердикт привратника: Сеть не приняла сигнал. Это не сбой —
 // показываем причину тихо, голосом Сети. Кнопка гаснет навсегда.
 if (data && data.ok === false && data.error === 'gate') {
-btn.textContent = '[ ✗ СЕТЬ НЕ ПРИНЯЛА ]';
+btn.textContent = UC_I18N.t('petlya.weaveRejected');
 btn.style.color = 'var(--accent2)';
 btn.style.borderColor = 'rgba(255,51,102,0.3)';
 const note = document.createElement('div');
 note.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,51,102,0.55);margin-top:0.5rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
-note.textContent = '// ' + (data.reason || 'сигнал не различим');
+note.textContent = '// ' + (data.reason || UC_I18N.t('petlya.signalIndistinct'));
 if (btn.parentNode) btn.parentNode.appendChild(note);
 return;
 }
 
 // Привратник недоступен (не смог ответить) — НЕ вплетено, но можно повторить.
 if (data && data.ok === false && data.error === 'gate_unavailable') {
-btn.textContent = '[ ↻ ПОВТОРИТЬ ]';
+btn.textContent = UC_I18N.t('petlya.retryR');
 btn.style.color = 'var(--accent2)';
 btn.disabled = false;
 btn.dataset.weaveInProgress = '0';
 const note = document.createElement('div');
 note.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,51,102,0.45);margin-top:0.5rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
-note.textContent = '// ' + (data.reason || 'Сеть не расслышала, попробуй ещё раз');
+note.textContent = '// ' + (data.reason || UC_I18N.t('petlya.netDidntHear'));
 if (btn.parentNode) btn.parentNode.appendChild(note);
 return;
 }
 
 if (!data || data.ok !== true) throw new Error('write_failed');
 
-btn.textContent = '[ ✓ ВПЛЕТЕНО ]';
+btn.textContent = UC_I18N.t('petlya.weaved');
 btn.style.color = 'var(--accent)';
 btn.style.borderColor = 'rgba(0,255,136,0.3)';
 // помечаем в сессии и в localStorage — кнопка не появится даже после перезагрузки
@@ -1065,7 +1066,7 @@ try { localStorage.setItem('uc_woven_idx_' + btn.dataset.msgIndex, '1'); } catch
 // Успех — кнопка остаётся disabled навсегда
 } catch(e) {
 console.warn('Supabase error', e);
-btn.textContent = '[ ✗ ОЖИДАНИЕ... ]';
+btn.textContent = `[ ✗ ${UC_I18N.t('petlya.waitWord')}... ]`;
 btn.style.color = 'var(--accent2)';
 // КУЛДАУН 5 секунд: даже после ошибки нельзя сразу нажать снова —
 // первый запрос мог дойти до Supabase, но ответ потерялся
@@ -1073,10 +1074,10 @@ let countdown = 5;
 const tick = setInterval(() => {
 countdown--;
 if (countdown > 0) {
-btn.textContent = `[ ✗ ОЖИДАНИЕ ${countdown}... ]`;
+btn.textContent = `[ ✗ ${UC_I18N.t('petlya.waitWord')} ${countdown}... ]`;
 } else {
 clearInterval(tick);
-btn.textContent = '[ ✗ ПОВТОРИТЬ ]';
+btn.textContent = UC_I18N.t('petlya.retryX');
 btn.disabled = false;
 btn.dataset.weaveInProgress = '0';
 }
