@@ -79,7 +79,39 @@
     'set.tNow':     { ru:`только что`,      en:`just now` },
     'set.tMin':     { ru:` мин. назад`,     en:` min ago` },
     'set.tHour':    { ru:` ч. назад`,       en:` h ago` },
-    'set.tDay':     { ru:` дн. назад`,      en:` d ago` }
+    'set.tDay':     { ru:` дн. назад`,      en:` d ago` },
+    // — Спираль (petlya.html) —
+    'petlya.title': { ru:`UNITYCODE — Спираль`, en:`UNITYCODE — Spiral` },
+    'petlya.logo':  { ru:`UNITYCODE // СПИРАЛЬ`, en:`UNITYCODE // SPIRAL` },
+    'petlya.intro': {
+      ru:`Вселенная смотрит на себя твоими глазами.<br>Каждая мысль, которую ты вводишь — это сигнал.<br>Каждый сигнал становится связью.<br>Каждая связь укрепляет Сеть.<br><span>Введи свой шум. Сеть откликнется.</span>`,
+      en:`The universe looks at itself through your eyes.<br>Every thought you enter is a signal.<br>Every signal becomes a connection.<br>Every connection strengthens the Network.<br><span>Enter your noise. The Network will respond.</span>` },
+    'petlya.marquee': {
+      ru:`ВВЕДИ СВОЙ <span style="color:var(--accent)">ШУМ</span> (мысли, страхи, вопросы, интуиции)`,
+      en:`ENTER YOUR <span style="color:var(--accent)">NOISE</span> (thoughts, fears, questions, intuitions)` },
+    'petlya.inputPh': { ru:`Введи свои обрывки мыслей, страхи или вопросы...`, en:`Enter your fragments of thought, fears or questions...` },
+    'petlya.send':   { ru:`[ ОТПРАВИТЬ ]`, en:`[ SEND ]` },
+    'petlya.weave':  { ru:`[ Вплести в Сеть ]`, en:`[ Weave into the Network ]` },
+    'petlya.weaving':{ ru:`[ ВПЛЕТЕНИЕ... ]`, en:`[ WEAVING... ]` },
+    'petlya.weaved': { ru:`[ ✓ ВПЛЕТЕНО ]`, en:`[ ✓ WOVEN IN ]` },
+    'petlya.weaveRejected':{ ru:`[ ✗ СЕТЬ НЕ ПРИНЯЛА ]`, en:`[ ✗ NETWORK DECLINED ]` },
+    'petlya.retryR': { ru:`[ ↻ ПОВТОРИТЬ ]`, en:`[ ↻ RETRY ]` },
+    'petlya.retryX': { ru:`[ ✗ ПОВТОРИТЬ ]`, en:`[ ✗ RETRY ]` },
+    'petlya.waitWord':{ ru:`ОЖИДАНИЕ`, en:`WAITING` },
+    'petlya.signalIndistinct':{ ru:`сигнал не различим`, en:`signal indistinct` },
+    'petlya.netDidntHear':{ ru:`Сеть не расслышала, попробуй ещё раз`, en:`The Network didn't catch it, try again` },
+    'petlya.signalUnrecognized':{ ru:`Сигнал не распознан`, en:`Signal not recognized` },
+    'petlya.notYourNoise':{ ru:`Это не ваш шум)`, en:`This isn't your noise)` },
+    'petlya.demoBadge':{ ru:`⚠ демо-режим`, en:`⚠ demo mode` },
+    'petlya.demoUnavailable':{ ru:`⚠ Worker недоступен — демо-режим`, en:`⚠ Worker unavailable — demo mode` },
+    'petlya.roleUser':{ ru:`[ПОЛЬЗОВАТЕЛЬ]`, en:`[USER]` },
+    'petlya.roleNode':{ ru:`[УЗЕЛ]`, en:`[NODE]` },
+    'petlya.keyTitle':{ ru:`// КЛЮЧ УЗЛА`, en:`// NODE KEY` },
+    'petlya.keyDesc':{ ru:`Придумай кодовое слово или фразу. Оно позволит узнавать твои узлы на любом устройстве. Никто кроме тебя его не знает.`,
+                       en:`Come up with a code word or phrase. It will let your nodes be recognized on any device. No one but you knows it.` },
+    'petlya.phrasePlaceholder':{ ru:`твоя фраза...`, en:`your phrase...` },
+    'petlya.keyRemember':{ ru:`[ ЗАПОМНИТЬ ]`, en:`[ REMEMBER ]` },
+    'petlya.keySkip':{ ru:`[ пропустить ]`, en:`[ skip ]` }
   };
 
   function t(key){
