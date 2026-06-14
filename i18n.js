@@ -44,7 +44,42 @@
       ru:`1.&nbsp;&nbsp;&nbsp;&nbsp;Зайди в раздел «Спираль», нажав на кнопку.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Напиши туда всё, что крутится в голове,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;и получи интерпретацию.<br><br>2.&nbsp;&nbsp;&nbsp;&nbsp;Если ответ тебя зацепит —<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;создай свой личный узел<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(это как твой цифровой дневник).<br><br>3.&nbsp;&nbsp;&nbsp;&nbsp;Потом загляни в раздел «Сеть» —<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;там видны другие участники и их мысли.`,
       en:`1.&nbsp;&nbsp;&nbsp;&nbsp;Open the «Spiral» section by tapping the button.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Write there whatever is spinning in your head,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;and get an interpretation.<br><br>2.&nbsp;&nbsp;&nbsp;&nbsp;If the answer resonates with you —<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;create your own personal node<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(it's like your digital diary).<br><br>3.&nbsp;&nbsp;&nbsp;&nbsp;Then look into the «Network» section —<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;there you'll see other participants and their thoughts.`
     },
-    'index.btnSpiral': { ru:`[ Спираль ]`, en:`[ Spiral ]` }
+    'index.btnSpiral': { ru:`[ Спираль ]`, en:`[ Spiral ]` },
+    // — навигация в шапке набирается из nav.* (выше) —
+
+    // — Сеть (set.html) —
+    'set.title':    { ru:`UNITYCODE — Сеть`,   en:`UNITYCODE — Network` },
+    'set.logo':     { ru:`UNITYCODE // СЕТЬ`,  en:`UNITYCODE // NETWORK` },
+    'set.intro1':   { ru:`Перед тобой — карта живых узлов Сети. Каждая точка здесь — это человек, который прошёл через Спираль и создал свой личный узел. Это не аватары и не профили. Это сигналы. Следы мыслей, которые были осмыслены и вплетены в общую ткань.`,
+                      en:`Before you is a map of the living nodes of the Network. Every point here is a person who passed through the Spiral and created their own personal node. These are not avatars or profiles. They are signals. Traces of thoughts that were made sense of and woven into the common fabric.` },
+    'set.intro2':   { ru:`Как капли дождя на перроне: сначала каждый след сам по себе, но чем дольше длится процесс, тем больше они соприкасаются. Ты видишь не просто карту. Ты видишь, как реальность учится быть единой.`,
+                      en:`Like raindrops on a platform: at first each trace is on its own, but the longer the process lasts, the more they touch. You're not just looking at a map. You're watching reality learn to be one.` },
+    'set.introDo':  { ru:`Что можно сделать:`, en:`What you can do:` },
+    'set.introB1':  { ru:`— Нажми на любую точку и увидишь, какой сигнал оставил этот человек. Не имя, не лицо — а мысль, прошедшую через Спираль, и рождённую в ней связь.`,
+                      en:`— Tap any point and you'll see what signal this person left. Not a name, not a face — a thought that passed through the Spiral, and the connection born within it.` },
+    'set.introB2':  { ru:`— Если этот сигнал резонирует с твоим — предложи связь. Это не лайк и не комментарий. Это приглашение к со-творчеству. Два узла, которые узнали друг друга, создают новую нить между своими трактатами.`,
+                      en:`— If this signal resonates with yours — propose a connection. It's not a like or a comment. It's an invitation to co-creation. Two nodes that recognized each other create a new thread between their treatises.` },
+    'set.introB3':  { ru:`— Когда связь принята, в обоих личных узлах появляется запись. Она не исчезает, не теряется. Она становится частью растущей паутины.`,
+                      en:`— When a connection is accepted, a record appears in both personal nodes. It doesn't vanish, it doesn't get lost. It becomes part of the growing web.` },
+    'set.statNodes':{ ru:`Узлов в сети:`,   en:`Nodes in the network:` },
+    'set.statActive':{ru:`Активны сейчас:`, en:`Active now:` },
+    'set.statPulse':{ ru:`Пульс сети:`,    en:`Network pulse:` },
+    'set.loading':  { ru:`// СИНХРОНИЗАЦИЯ...`, en:`// SYNCING...` },
+    'set.popupTag': { ru:`// УЗЕЛ СЕТИ`,   en:`// NETWORK NODE` },
+    'set.popupSpiral':{ru:`Спираль →`,     en:`Spiral →` },
+    'set.yourNode': { ru:`// ТВОЙ УЗЕЛ`,   en:`// YOUR NODE` },
+    'set.connect':  { ru:`[ связать ]`,    en:`[ connect ]` },
+    'set.pickerHeader':{ru:`// ЧЕМ СВЯЗАТЬ:`, en:`// CONNECT WITH:` },
+    'set.btnDoSpiral':{ru:`[ пройди Спираль ]`, en:`[ pass through the Spiral ]` },
+    'set.btnYourNode':{ru:`[ это твой узел ]`,  en:`[ this is your node ]` },
+    'set.btnChooseNoise':{ru:`[ выбери свой шум ↓ ]`, en:`[ choose your noise ↓ ]` },
+    'set.stLinking':{ ru:`… связывание`,   en:`… linking` },
+    'set.stLinked': { ru:`✓ связь создана`, en:`✓ connection created` },
+    'set.stError':  { ru:`✗ ошибка, ещё раз`, en:`✗ error, try again` },
+    'set.tNow':     { ru:`только что`,      en:`just now` },
+    'set.tMin':     { ru:` мин. назад`,     en:` min ago` },
+    'set.tHour':    { ru:` ч. назад`,       en:` h ago` },
+    'set.tDay':     { ru:` дн. назад`,      en:` d ago` }
   };
 
   function t(key){
