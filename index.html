@@ -96,6 +96,7 @@ pointer-events:none;
 </div>
 </div>
 <div class="version"><span>UNITYCODE</span></div>
+<div id="lang-switch" style="position:fixed;top:14px;right:16px;z-index:90;font-family:'Share Tech Mono',monospace;font-size:0.62rem;letter-spacing:0.15em;opacity:0;animation:fi 2s ease 2.4s forwards;"><a data-lang="ru">RU</a> <span style="opacity:0.3">·</span> <a data-lang="en">EN</a></div>
 <div class="ui">
 <div class="center">
 <div class="node">
@@ -113,6 +114,48 @@ pointer-events:none;
 </div>
 </div>
 <script>
+/* ===== i18n — обкатка на лендинге ===== */
+const LANG = (function(){
+  let p=null; try{ p=new URLSearchParams(location.search).get('lang'); }catch(e){}
+  let stored=null; try{ stored=localStorage.getItem('uc_lang'); }catch(e){}
+  let v=(p||stored||navigator.language||'ru').slice(0,2).toLowerCase();
+  if(p){ try{ localStorage.setItem('uc_lang',v); }catch(e){} }
+  return ['en','es','fr','zh'].includes(v) ? v : 'ru';
+})();
+const I18N = {
+  ru: {
+    q: `<span class="wl">Ты пишешь то, что тебя волнует,</span><br><span class="wl">а AI помогает увидеть в этом</span><br><em class="wl">скрытые связи и новые смыслы.</em><br><span class="wl">Здесь не дают ответов.</span><br><span class="wl">Здесь помогают тебе.</span>`,
+    btn: `Услышать себя`,
+    disc: `Некоммерческий научно-художественный эксперимент.<br>Мы не собираем персональные данные. Только сигнал.<br>Сгенерированный контент не претендует на объективную истинность.`,
+    choiceQ: `Зачем это тебе?<br><br>Чтобы перестать чувствовать себя отдельной точкой.<br>Когда ты видишь, как твои мысли соединяются с идеями<br>других людей и с чем-то большим,<br>одиночество отступает.<br>Это не терапия и не религия.<br>Это способ ощутить связь, которая уже есть.`,
+    choiceBtn: `[ Что делать? ]`,
+    aiAlts0: `1.&nbsp;&nbsp;&nbsp;&nbsp;Зайди в раздел «Спираль», нажав на кнопку.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Напиши туда всё, что крутится в голове,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;и получи интерпретацию.<br><br>2.&nbsp;&nbsp;&nbsp;&nbsp;Если ответ тебя зацепит —<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;создай свой личный узел<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(это как твой цифровой дневник).<br><br>3.&nbsp;&nbsp;&nbsp;&nbsp;Потом загляни в раздел «Сеть» —<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;там видны другие участники и их мысли.`,
+    btnSpiral: `[ Спираль ]`
+  },
+  en: {
+    q: `<span class="wl">You write what's on your mind,</span><br><span class="wl">and AI helps you see in it</span><br><em class="wl">hidden connections and new meanings.</em><br><span class="wl">Here, no one gives you answers.</span><br><span class="wl">Here, you are helped.</span>`,
+    btn: `Hear yourself`,
+    disc: `A non-commercial science-art experiment.<br>We don't collect personal data. Signal only.<br>Generated content makes no claim to objective truth.`,
+    choiceQ: `Why do you need this?<br><br>To stop feeling like a separate point.<br>When you see how your thoughts connect with the ideas<br>of other people and with something larger,<br>loneliness recedes.<br>This is not therapy and not religion.<br>It's a way to feel a connection that already exists.`,
+    choiceBtn: `[ What to do? ]`,
+    aiAlts0: `1.&nbsp;&nbsp;&nbsp;&nbsp;Open the «Spiral» section by tapping the button.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Write there whatever is spinning in your head,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;and get an interpretation.<br><br>2.&nbsp;&nbsp;&nbsp;&nbsp;If the answer resonates with you —<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;create your own personal node<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(it's like your digital diary).<br><br>3.&nbsp;&nbsp;&nbsp;&nbsp;Then look into the «Network» section —<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;there you'll see other participants and their thoughts.`,
+    btnSpiral: `[ Spiral ]`
+  }
+};
+function applyI18N(){
+  const t=I18N[LANG]||I18N.ru;
+  const q=document.getElementById('q'); if(q) q.innerHTML=t.q;
+  const b=document.getElementById('btn'); if(b) b.innerHTML='<span class="wl">'+t.btn+'</span>';
+  const d=document.getElementById('disc'); if(d) d.innerHTML=t.disc;
+  const cq=document.getElementById('choiceQ'); if(cq) cq.innerHTML=t.choiceQ;
+  const cb=document.querySelector('.choice-btn'); if(cb) cb.textContent=t.choiceBtn;
+  document.querySelectorAll('#lang-switch a').forEach(function(a){
+    a.style.cursor='pointer';
+    a.style.color=(a.dataset.lang===LANG)?'rgba(160,215,255,0.9)':'rgba(255,255,255,0.4)';
+    a.addEventListener('click',function(){ try{localStorage.setItem('uc_lang',a.dataset.lang);}catch(e){} location.reload(); });
+  });
+}
+applyI18N();
 // ── Canvas: #c — фон/звёзды/галактика/комета/кольца
 //          #cw — волна (отдельный слой, putImageData не затирает #c)
 const cv=document.getElementById('c'), ctx=cv.getContext('2d');
@@ -515,10 +558,8 @@ var tctx=tc.getContext('2d');
 tc.width=window.innerWidth; tc.height=window.innerHeight;
 window.addEventListener('resize',function(){tc.width=window.innerWidth;tc.height=window.innerHeight;});
 var active=false, startTime=Infinity, DUR=2000;
-var aiQuestion='Зачем это тебе?<br><br>Чтобы перестать чувствовать себя отдельной точкой.<br>Когда ты видишь, как твои мысли соединяются с идеями<br>других людей и с чем-то большим,<br>одиночество отступает.<br>Это не терапия и не религия.<br>Это способ ощутить связь, которая уже есть.';
-var aiAlts=[
-'1.&nbsp;&nbsp;&nbsp;&nbsp;Зайди в раздел «Спираль», нажав на кнопку.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Напиши туда всё, что крутится в голове,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;и получи интерпретацию.<br><br>2.&nbsp;&nbsp;&nbsp;&nbsp;Если ответ тебя зацепит —<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;создай свой личный узел<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(это как твой цифровой дневник).<br><br>3.&nbsp;&nbsp;&nbsp;&nbsp;Потом загляни в раздел «Сеть» —<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;там видны другие участники и их мысли.'
-];
+var aiQuestion=I18N[LANG].choiceQ;
+var aiAlts=[ I18N[LANG].aiAlts0 ];
 
 function startTunnel(){
 active=true;
@@ -637,7 +678,7 @@ q.innerHTML=aiAlts[0];
 q.style.opacity='1';
 },550);
 setTimeout(function(){
-btn.textContent='[ Спираль ]';
+btn.textContent=I18N[LANG].btnSpiral;
 btn.style.borderColor='rgba(255,255,255,0.22)';
 btn.style.color='rgba(255,255,255,0.65)';
 btn.style.background='rgba(255,255,255,0.04)';
