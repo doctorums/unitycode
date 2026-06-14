@@ -114,6 +114,9 @@ pointer-events:none;
 </div>
 <script src="i18n.js"></script>
 <script>
+/* при возврате «назад» Safari отдаёт страницу из bfcache без перезапуска —
+   перезагружаем, чтобы интро-анимация проигралась заново */
+window.addEventListener('pageshow', function(e){ if(e.persisted) location.reload(); });
 /* i18n: подставляем перевод ДО анимации (она разбивает .wl по буквам) */
 (function(){
   var t = UC_I18N.t.bind(UC_I18N);
