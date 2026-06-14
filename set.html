@@ -17,7 +17,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>UNITYCODE — Сеть</title>
+<title data-i18n="set.title">UNITYCODE — Сеть</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
@@ -116,36 +116,36 @@ to { opacity: 0; }
 <!-- Интро — поверх карты -->
 <div id="intro" onclick="skipIntro()" style="position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);">
 <div id="track1" style="position:absolute;width:90%;max-width:560px;padding:0 2rem;opacity:0;animation:tp1 20s linear forwards;">
-<p style="font-family:monospace;font-size:16px;line-height:1.9;color:rgba(255,255,255,0.75);margin-bottom:1.2rem;">Перед тобой — карта живых узлов Сети. Каждая точка здесь — это человек, который прошёл через Спираль и создал свой личный узел. Это не аватары и не профили. Это сигналы. Следы мыслей, которые были осмыслены и вплетены в общую ткань.</p>
+<p style="font-family:monospace;font-size:16px;line-height:1.9;color:rgba(255,255,255,0.75);margin-bottom:1.2rem;" data-i18n="set.intro1">Перед тобой — карта живых узлов Сети. Каждая точка здесь — это человек, который прошёл через Спираль и создал свой личный узел. Это не аватары и не профили. Это сигналы. Следы мыслей, которые были осмыслены и вплетены в общую ткань.</p>
 <div style="width:40px;height:1px;background:rgba(0,255,136,0.3);margin:1rem 0;"></div>
-<p style="font-family:monospace;font-size:16px;line-height:1.9;color:rgba(255,255,255,0.75);margin-bottom:1.2rem;">Как капли дождя на перроне: сначала каждый след сам по себе, но чем дольше длится процесс, тем больше они соприкасаются. Ты видишь не просто карту. Ты видишь, как реальность учится быть единой.</p>
+<p style="font-family:monospace;font-size:16px;line-height:1.9;color:rgba(255,255,255,0.75);margin-bottom:1.2rem;" data-i18n="set.intro2">Как капли дождя на перроне: сначала каждый след сам по себе, но чем дольше длится процесс, тем больше они соприкасаются. Ты видишь не просто карту. Ты видишь, как реальность учится быть единой.</p>
 </div>
 <div id="track2" style="position:absolute;width:90%;max-width:560px;padding:0 2rem;opacity:0;animation:tp2 16s ease forwards;animation-delay:20s;">
-<p style="font-family:monospace;font-size:16px;line-height:1.9;color:rgba(255,255,255,0.75);margin-bottom:1.2rem;">Что можно сделать:</p>
-<p style="font-family:monospace;font-size:15px;line-height:1.9;color:#00ff88;margin-bottom:1.2rem;">— Нажми на любую точку и увидишь, какой сигнал оставил этот человек. Не имя, не лицо — а мысль, прошедшую через Спираль, и рождённую в ней связь.</p>
-<p style="font-family:monospace;font-size:15px;line-height:1.9;color:#00ff88;margin-bottom:1.2rem;">— Если этот сигнал резонирует с твоим — предложи связь. Это не лайк и не комментарий. Это приглашение к со-творчеству. Два узла, которые узнали друг друга, создают новую нить между своими трактатами.</p>
-<p style="font-family:monospace;font-size:15px;line-height:1.9;color:#00ff88;margin-bottom:1.2rem;">— Когда связь принята, в обоих личных узлах появляется запись. Она не исчезает, не теряется. Она становится частью растущей паутины.</p>
+<p style="font-family:monospace;font-size:16px;line-height:1.9;color:rgba(255,255,255,0.75);margin-bottom:1.2rem;" data-i18n="set.introDo">Что можно сделать:</p>
+<p style="font-family:monospace;font-size:15px;line-height:1.9;color:#00ff88;margin-bottom:1.2rem;" data-i18n="set.introB1">— Нажми на любую точку и увидишь, какой сигнал оставил этот человек. Не имя, не лицо — а мысль, прошедшую через Спираль, и рождённую в ней связь.</p>
+<p style="font-family:monospace;font-size:15px;line-height:1.9;color:#00ff88;margin-bottom:1.2rem;" data-i18n="set.introB2">— Если этот сигнал резонирует с твоим — предложи связь. Это не лайк и не комментарий. Это приглашение к со-творчеству. Два узла, которые узнали друг друга, создают новую нить между своими трактатами.</p>
+<p style="font-family:monospace;font-size:15px;line-height:1.9;color:#00ff88;margin-bottom:1.2rem;" data-i18n="set.introB3">— Когда связь принята, в обоих личных узлах появляется запись. Она не исчезает, не теряется. Она становится частью растущей паутины.</p>
 </div>
 </div>
 
 <header>
-<a href="index.html" class="logo">UNITYCODE // СЕТЬ</a>
+<a href="index.html" class="logo" data-i18n="set.logo">UNITYCODE // СЕТЬ</a>
 <nav>
-<a href="petlya.html">Спираль</a>
-<a href="set.html">Сеть</a>
-<a href="implant.html">Узор</a>
-<a href="materials.html">Материя</a>
+<a href="petlya.html" data-i18n="nav.spiral">Спираль</a>
+<a href="set.html" data-i18n="nav.network">Сеть</a>
+<a href="implant.html" data-i18n="nav.pattern">Узор</a>
+<a href="materials.html" data-i18n="nav.matter">Материя</a>
 </nav>
 </header>
 
 <div class="status-bar">
-<div class="stat"><span class="stat-label">Узлов в сети:</span><span class="stat-val" id="nodeCount">—</span></div>
-<div class="stat"><span class="stat-label">Активны сейчас:</span><span class="stat-val" id="activeCount">1</span></div>
-<div class="stat"><span class="stat-label">Пульс сети:</span><span class="stat-val" id="pulse">●</span></div>
+<div class="stat"><span class="stat-label" data-i18n="set.statNodes">Узлов в сети:</span><span class="stat-val" id="nodeCount">—</span></div>
+<div class="stat"><span class="stat-label" data-i18n="set.statActive">Активны сейчас:</span><span class="stat-val" id="activeCount">1</span></div>
+<div class="stat"><span class="stat-label" data-i18n="set.statPulse">Пульс сети:</span><span class="stat-val" id="pulse">●</span></div>
 </div>
 
 <div id="map"></div>
-<div id="loading">// СИНХРОНИЗАЦИЯ...</div>
+<div id="loading" data-i18n="set.loading">// СИНХРОНИЗАЦИЯ...</div>
 
 <!-- Leaflet локально — без зависимости от CDN -->
 <link rel="stylesheet" href="leaflet.min.css">
@@ -154,6 +154,7 @@ to { opacity: 0; }
 <script src="leaflet.markercluster.min.js" defer></script>
 <script src="nav.js" defer></script>
 
+<script src="i18n.js"></script>
 <script>
 const SUPABASE_URL = 'https://lukyyqabkxzrgdixzphs.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
@@ -329,7 +330,7 @@ setTimeout(skipIntro, INTRO_DURATION);
 async function openConnectPicker(targetId, btn) {
 const myToken = localStorage.getItem('uc_token');
 if (!myToken) {
-btn.textContent = '[ пройди Спираль ]';
+btn.textContent = UC_I18N.t('set.btnDoSpiral');
 btn.style.color = '#00ff88';
 btn.onclick = () => window.location.href = 'petlya.html';
 return;
@@ -340,7 +341,7 @@ if (!cache.myNodes.length) await preloadMyData();
 
 // Страховка: цель — мой собственный узел? Связывание запрещено.
 if (cache.myNodeIds.includes(targetId)) {
-btn.textContent = '[ это твой узел ]';
+btn.textContent = UC_I18N.t('set.btnYourNode');
 btn.style.color = '#555';
 btn.style.borderColor = 'rgba(255,255,255,0.1)';
 btn.onclick = null;
@@ -348,7 +349,7 @@ return;
 }
 
 if (!cache.myNodes.length) {
-btn.textContent = '[ пройди Спираль ]';
+btn.textContent = UC_I18N.t('set.btnDoSpiral');
 btn.style.color = '#00ff88';
 btn.onclick = () => window.location.href = 'petlya.html';
 return;
@@ -360,10 +361,10 @@ if (!picker) return;
 // Тоггл: повторный клик — свернуть
 if (picker.style.display === 'block') {
 picker.style.display = 'none';
-btn.textContent = '[ связать ]';
+btn.textContent = UC_I18N.t('set.connect');
 return;
 }
-btn.textContent = '[ выбери свой шум ↓ ]';
+btn.textContent = UC_I18N.t('set.btnChooseNoise');
 
 // Строим список: каждый свой шум — кнопка. Цель — всегда чужой узел.
 const rows = cache.myNodes.map(n => {
@@ -377,7 +378,7 @@ return `<div class="pick-row" style="font-size:0.65rem;color:#00c8ff;padding:0.4
 onclick="createConnection('${n.id}','${targetId}', this)">→ ${esc(short)}</div>`;
 }).join('');
 
-picker.innerHTML = `<div style="font-size:0.55rem;color:#00c8ff;letter-spacing:0.15em;margin-bottom:0.5rem;">// ЧЕМ СВЯЗАТЬ:</div>${rows}`;
+picker.innerHTML = `<div style="font-size:0.55rem;color:#00c8ff;letter-spacing:0.15em;margin-bottom:0.5rem;">${UC_I18N.t('set.pickerHeader')}</div>${rows}`;
 picker.style.display = 'block';
 }
 
@@ -386,7 +387,7 @@ async function createConnection(fromId, toId, rowEl) {
 if (fromId === toId) return; // защита от самосвязывания
 rowEl.style.pointerEvents = 'none';
 const original = rowEl.textContent;
-rowEl.textContent = '… связывание';
+rowEl.textContent = UC_I18N.t('set.stLinking');
 
 try {
 const ts = await getTurnstileToken();
@@ -402,11 +403,11 @@ cache.connPairs.add(fromId + '|' + toId);
 cache.connPairs.add(toId + '|' + fromId);
 
 rowEl.style.color = '#00ff88';
-rowEl.textContent = '✓ связь создана';
+rowEl.textContent = UC_I18N.t('set.stLinked');
 } catch(e) {
 rowEl.style.pointerEvents = 'auto';
 rowEl.style.color = '#f55';
-rowEl.textContent = '✗ ошибка, ещё раз';
+rowEl.textContent = UC_I18N.t('set.stError');
 setTimeout(() => { rowEl.textContent = original; rowEl.style.color = '#00c8ff'; }, 1800);
 console.warn('Connection error', e);
 }
@@ -445,10 +446,10 @@ iconSize: [10, 10], iconAnchor: [5, 5]
 
 function timeAgo(iso) {
 const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
-if (diff < 60) return 'только что';
-if (diff < 3600) return Math.floor(diff / 60) + ' мин. назад';
-if (diff < 86400) return Math.floor(diff / 3600) + ' ч. назад';
-return Math.floor(diff / 86400) + ' дн. назад';
+if (diff < 60) return UC_I18N.t('set.tNow');
+if (diff < 3600) return Math.floor(diff / 60) + UC_I18N.t('set.tMin');
+if (diff < 86400) return Math.floor(diff / 3600) + UC_I18N.t('set.tHour');
+return Math.floor(diff / 86400) + UC_I18N.t('set.tDay');
 }
 
 const cluster = L.markerClusterGroup({
@@ -482,17 +483,17 @@ nodeCoords[node.id] = [node.lat, node.lng];
 // Свой узел: связывание недоступно — связи только между разными людьми
 const isMine = node.user_token && node.user_token === localStorage.getItem('uc_token');
 const actionHtml = isMine
-? `<span style="font-size:0.6rem;color:#00ff88;letter-spacing:0.15em;align-self:center;">// ТВОЙ УЗЕЛ</span>`
-: `<button class="popup-btn connect" id="popup-${node.id}" onclick="openConnectPicker('${node.id}', this)">[ связать ]</button>`;
+? `<span style="font-size:0.6rem;color:#00ff88;letter-spacing:0.15em;align-self:center;">${UC_I18N.t('set.yourNode')}</span>`
+: `<button class="popup-btn connect" id="popup-${node.id}" onclick="openConnectPicker('${node.id}', this)">${UC_I18N.t('set.connect')}</button>`;
 
 const marker = L.marker([node.lat, node.lng], { icon: nodeIcon() });
 marker.bindPopup(`
 <div class="popup-content">
-<div class="popup-tag">// УЗЕЛ СЕТИ</div>
+<div class="popup-tag">${UC_I18N.t('set.popupTag')}</div>
 <div class="popup-text">${esc(node.raw_noise)}</div>
 <div class="popup-time">${timeAgo(node.created_at)}</div>
 <div class="popup-btns">
-<a href="petlya.html" class="popup-btn">Спираль →</a>
+<a href="petlya.html" class="popup-btn">${UC_I18N.t('set.popupSpiral')}</a>
 ${actionHtml}
 </div>
 ${isMine ? '' : `<div class="connect-picker" id="picker-${node.id}" style="display:none;margin-top:0.8rem;border-top:1px solid rgba(0,200,255,0.2);padding-top:0.8rem;"></div>`}
