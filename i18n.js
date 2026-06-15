@@ -81,6 +81,11 @@
     'set.tHour':    { ru:` ч. назад`,       en:` h ago` },
     'set.tDay':     { ru:` дн. назад`,      en:` d ago` },
     // — Спираль (petlya.html) —
+    'set.keyTitle': { ru:`// КЛЮЧ УЗЛА`, en:`// NODE KEY` },
+    'set.keyDesc': { ru:`Введи своё кодовое слово чтобы узнать свои узлы. Или пропусти — карта откроется без идентификации.`, en:`Enter your code word to recognize your own nodes. Or skip — the map opens without identification.` },
+    'set.keyPhrase': { ru:`твоя фраза...`, en:`your phrase...` },
+    'set.keyEnter': { ru:`[ ВОЙТИ ]`, en:`[ ENTER ]` },
+    'set.keyJustLook': { ru:`[ просто смотреть ]`, en:`[ just look ]` },
     'petlya.title': { ru:`UNITYCODE — Спираль`, en:`UNITYCODE — Spiral` },
     'petlya.logo':  { ru:`UNITYCODE // СПИРАЛЬ`, en:`UNITYCODE // SPIRAL` },
     'petlya.intro': {
