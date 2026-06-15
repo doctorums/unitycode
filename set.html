@@ -291,12 +291,12 @@ if (!localStorage.getItem('uc_token')) {
   overlay.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;';
   overlay.innerHTML = `
     <div style="width:90%;max-width:420px;border:1px solid rgba(0,255,136,0.3);background:#050a05;padding:2rem;">
-      <div style="font-family:monospace;font-size:0.6rem;color:#00ff88;letter-spacing:0.2em;margin-bottom:1rem;">// КЛЮЧ УЗЛА</div>
-      <p style="font-family:monospace;font-size:0.8rem;line-height:1.7;color:rgba(255,255,255,0.7);margin-bottom:1.4rem;">Введи своё кодовое слово чтобы узнать свои узлы. Или пропусти — карта откроется без идентификации.</p>
-      <input id="uc-set-phrase" type="text" placeholder="твоя фраза..." style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(0,255,136,0.2);color:#fff;font-family:monospace;font-size:0.8rem;padding:0.6rem 0.8rem;outline:none;margin-bottom:1rem;">
+      <div style="font-family:monospace;font-size:0.6rem;color:#00ff88;letter-spacing:0.2em;margin-bottom:1rem;">${UC_I18N.t('set.keyTitle')}</div>
+      <p style="font-family:monospace;font-size:0.8rem;line-height:1.7;color:rgba(255,255,255,0.7);margin-bottom:1.4rem;">${UC_I18N.t('set.keyDesc')}</p>
+      <input id="uc-set-phrase" type="text" placeholder="${UC_I18N.t('set.keyPhrase')}" style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(0,255,136,0.2);color:#fff;font-family:monospace;font-size:0.8rem;padding:0.6rem 0.8rem;outline:none;margin-bottom:1rem;">
       <div style="display:flex;gap:0.8rem;">
-        <button id="uc-set-ok" style="flex:1;padding:0.6rem;border:1px solid #00ff88;color:#00ff88;font-family:monospace;font-size:0.7rem;letter-spacing:0.1em;background:transparent;cursor:pointer;">[ ВОЙТИ ]</button>
-        <button id="uc-set-skip" style="flex:1;padding:0.6rem;border:1px solid rgba(255,255,255,0.1);color:#555;font-family:monospace;font-size:0.7rem;letter-spacing:0.1em;background:transparent;cursor:pointer;">[ просто смотреть ]</button>
+        <button id="uc-set-ok" style="flex:1;padding:0.6rem;border:1px solid #00ff88;color:#00ff88;font-family:monospace;font-size:0.7rem;letter-spacing:0.1em;background:transparent;cursor:pointer;">${UC_I18N.t('set.keyEnter')}</button>
+        <button id="uc-set-skip" style="flex:1;padding:0.6rem;border:1px solid rgba(255,255,255,0.1);color:#555;font-family:monospace;font-size:0.7rem;letter-spacing:0.1em;background:transparent;cursor:pointer;">${UC_I18N.t('set.keyJustLook')}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
