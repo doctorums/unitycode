@@ -106,6 +106,16 @@
     'implant.toSpiral': { ru:`[ Перейти в Спираль ]`, en:`[ Go to the Spiral ]` },
     'implant.netEmpty': { ru:`Сеть пока пуста.`, en:`The Network is empty for now.` },
     'implant.analyzeError': { ru:`Ошибка связи с узлом анализа.`, en:`Error connecting to the analysis node.` },
+    // — Материя (materials.html) —
+    'materials.title': { ru:`UNITYCODE — Материя`, en:`UNITYCODE — Matter` },
+    'materials.logo':  { ru:`UNITYCODE // МАТЕРИЯ`, en:`UNITYCODE // MATTER` },
+    'materials.book':    { ru:`Книга`, en:`Book` },
+    'materials.start':   { ru:`С чего начать`, en:`Where to start` },
+    'materials.forkHow': { ru:`Как форкнуть`, en:`How to fork` },
+    'materials.fork':    { ru:`Форкнуть`, en:`Fork` },
+    'materials.loading': { ru:`Загрузка…`, en:`Loading…` },
+    'materials.loadErrA': { ru:`Не удалось загрузить `, en:`Could not load ` },
+    'materials.loadErrB': { ru:`. Открой файл в репозитории напрямую.`, en:`. Open the file in the repository directly.` },
     'petlya.title': { ru:`UNITYCODE — Спираль`, en:`UNITYCODE — Spiral` },
     'petlya.logo':  { ru:`UNITYCODE // СПИРАЛЬ`, en:`UNITYCODE // SPIRAL` },
     'petlya.intro': {
