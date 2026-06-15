@@ -14,7 +14,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>UNITYCODE — Материя</title>
+<title data-i18n="materials.title">UNITYCODE — Материя</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400;700&family=Caveat:wght@500&family=Marck+Script&family=Pacifico&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
@@ -56,12 +56,12 @@
 <canvas id="sky"></canvas>
 
 <header>
-  <a href="index.html" class="logo">UNITYCODE // МАТЕРИЯ</a>
+  <a href="index.html" class="logo" data-i18n="materials.logo">UNITYCODE // МАТЕРИЯ</a>
   <nav>
-    <a href="petlya.html">Спираль</a>
-    <a href="set.html">Сеть</a>
-    <a href="implant.html">Узор</a>
-    <a href="materials.html" class="active">Материя</a>
+    <a href="petlya.html" data-i18n="nav.spiral">Спираль</a>
+    <a href="set.html" data-i18n="nav.network">Сеть</a>
+    <a href="implant.html" data-i18n="nav.pattern">Узор</a>
+    <a href="materials.html" class="active" data-i18n="nav.matter">Материя</a>
   </nav>
 </header>
 
@@ -71,6 +71,7 @@
   <div id="reader"><div id="readerBody"></div></div>
 </main>
 
+<script src="i18n.js"></script>
 <script>
 /* ╔══════════════════════════════════════════════════════════════════════╗
    ║  CONFIG — ПРИБОРНАЯ ПАНЕЛЬ СТРАНИЦЫ. Меняй значения здесь.            ║
@@ -198,10 +199,10 @@ const CONFIG = {
 
   //   link = страница сайта | reader = показать md тут | ext = внешняя ссылка
   materials: [
-    { id:"book", type:"link",   title:"Книга",        href:"kniga.html" },
-    { id:"new",  type:"reader", title:"С чего начать", src:"start.md" },
-    { id:"fork", type:"reader", title:"Как форкнуть", src:"FORK.md" },
-    { id:"repo", type:"ext",    title:"Форкнуть",     href:"@repo" }, // @repo = CONFIG.repoUrl
+    { id:"book", type:"link",   title:"Книга",        key:"materials.book",    href:"kniga.html" },
+    { id:"new",  type:"reader", title:"С чего начать", key:"materials.start",   src:"start.md" },
+    { id:"fork", type:"reader", title:"Как форкнуть", key:"materials.forkHow", src:"FORK.md" },
+    { id:"repo", type:"ext",    title:"Форкнуть",     key:"materials.fork",    href:"@repo" }, // @repo = CONFIG.repoUrl
   ],
 };
 /* ── конец панели. Ниже — движок, его обычно менять не нужно. ─────────── */
@@ -260,7 +261,7 @@ const reader=document.getElementById('reader'), readerBody=document.getElementBy
 CONFIG.materials.forEach(m=>{
   const href = m.href==='@repo' ? CONFIG.repoUrl : m.href;
   const el=document.createElement(m.type==='reader'?'button':'a');
-  el.className='mat-item'; el.dataset.id=m.id; el.textContent=m.title;
+  el.className='mat-item'; el.dataset.id=m.id; el.textContent=(m.key && window.UC_I18N) ? (UC_I18N.t(m.key)||m.title) : m.title;
   if(m.type==='link') el.href=href;
   if(m.type==='ext'){ el.href=href; el.target='_blank'; el.rel='noopener'; }
   if(m.type==='reader') el.onclick=()=>toggleReader(m);
@@ -295,10 +296,10 @@ async function openReader(m){
     const t = (typeof m.text==='object') ? (m.text[LANG] || m.text.ru || Object.values(m.text)[0]) : m.text;
     readerBody.innerHTML=renderMarkdown(t); return;
   }
-  readerBody.innerHTML='<p style="color:#9aa">Загрузка…</p>';
+  readerBody.innerHTML=('<p style="color:#9aa">'+(window.UC_I18N?UC_I18N.t('materials.loading'):'Загрузка…')+'</p>');
   const md = await loadLocalized(m.src);
   readerBody.innerHTML = (md!=null) ? renderMarkdown(md)
-    : '<p style="color:#9aa">Не удалось загрузить '+m.src+'. Открой файл в репозитории напрямую.</p>';
+    : ('<p style="color:#9aa">'+(window.UC_I18N?UC_I18N.t('materials.loadErrA'):'Не удалось загрузить ')+m.src+(window.UC_I18N?UC_I18N.t('materials.loadErrB'):'. Открой файл в репозитории напрямую.')+'</p>');
 }
 (function initLast(){
   let last=null; try{ last=localStorage.getItem(LAST_KEY); }catch(e){}
