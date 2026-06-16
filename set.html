@@ -516,7 +516,7 @@ function _appendTr(textEl, tr){
   if (textEl.querySelector('.popup-tr')) return;
   const d = document.createElement('div');
   d.className = 'popup-tr';
-  d.style.cssText = 'font-size:0.65rem;color:rgba(255,255,255,0.35);margin-top:0.5rem;padding-top:0.4rem;border-top:1px solid rgba(255,255,255,0.07);font-style:italic;line-height:1.5;';
+  d.style.cssText = 'font-size:0.75rem;color:rgba(255,255,255,0.7);margin-top:0.5rem;padding-top:0.4rem;border-top:1px solid rgba(255,255,255,0.07);line-height:1.6;';
   d.textContent = tr;
   textEl.appendChild(d);
 }
@@ -530,6 +530,8 @@ map.on('popupopen', async function(e){
   if (!popupEl) return;
   const textEl = popupEl.querySelector('.popup-text');
   if (!textEl) return;
+  // оригинал тускнеет — он становится фоном для перевода
+  textEl.style.color = 'rgba(255,255,255,0.35)';
   const ckey = 'uc_tr:' + mk._nodeId + ':' + lang;
   try {
     const cached = localStorage.getItem(ckey);
