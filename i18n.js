@@ -156,7 +156,8 @@
     'kniga.tabBm':    { ru:`Закладки`,   en:`Bookmarks` },
     'kniga.bmEmpty':  { ru:`Пока нет закладок. Наведи на абзац и нажми ⚑.`, en:`No bookmarks yet. Hover over a paragraph and tap ⚑.` },
     'kniga.backMatter': { ru:`← Материя`, en:`← Matter` },
-    'kniga.coverTitle': { ru:`Титул`, en:`Title` }
+    'kniga.navHeading': { ru:`Навигация`, en:`Navigation` },
+    'kniga.coverTitle': { ru:`Обложка`, en:`Cover` }
   };
 
   function t(key){
