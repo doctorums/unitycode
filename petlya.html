@@ -21,82 +21,6 @@ body { height: 100vh; height: 100dvh; display: flex; flex-direction: column; ove
 }
 header { flex-shrink: 0; position: relative; }
 /* ═══════════════════════════════
-ПАНЕЛЬ ОТЛАДКИ
-═══════════════════════════════ */
-.debug-panel {
-flex-shrink: 0;
-border-bottom: 1px solid rgba(0,255,136,0.08);
-background: rgba(0,0,0,0.7);
-position: relative;
-z-index: 20;
-}
-.debug-toggle {
-width: 100%;
-display: flex; align-items: center; gap: 0.8rem;
-padding: 0.5rem 2rem;
-background: none; border: none; cursor: pointer;
-font-family: 'Share Tech Mono', monospace;
-font-size: 0.6rem; letter-spacing: 0.15em;
-color: var(--dim); text-align: left;
-transition: color 0.2s;
-}
-.debug-toggle:hover { color: var(--accent); }
-.debug-arrow { transition: transform 0.3s; display: inline-block; }
-.debug-panel.open .debug-arrow { transform: rotate(90deg); }
-.debug-body {
-display: none;
-padding: 0 2rem 1rem;
-flex-direction: column; gap: 0.8rem;
-}
-.debug-panel.open .debug-body { display: flex; }
-.debug-row { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
-.debug-label { font-size: 0.6rem; color: var(--dim); letter-spacing: 0.12em; white-space: nowrap; }
-.debug-url-input {
-flex: 1; min-width: 200px;
-background: rgba(255,255,255,0.03);
-border: 1px solid var(--border);
-color: var(--white);
-font-family: 'Share Tech Mono', monospace;
-font-size: 0.7rem; padding: 0.35rem 0.8rem;
-outline: none; transition: border-color 0.2s;
-}
-.debug-url-input:focus { border-color: rgba(0,255,136,0.4); }
-.debug-btn {
-padding: 0.35rem 1rem;
-border: 1px solid var(--border); color: var(--dim);
-font-family: 'Share Tech Mono', monospace;
-font-size: 0.6rem; letter-spacing: 0.12em;
-cursor: pointer; background: transparent;
-transition: border-color 0.2s, color 0.2s;
-white-space: nowrap;
-}
-.debug-btn:hover { border-color: var(--accent); color: var(--accent); }
-.debug-status {
-font-size: 0.6rem; letter-spacing: 0.1em; white-space: nowrap;
-padding: 0.35rem 0.8rem;
-border: 1px solid transparent;
-}
-.debug-status.idle { color: var(--dim); border-color: transparent; }
-.debug-status.pinging { color: #ffaa00; border-color: rgba(255,170,0,0.2); animation: pulse 1s infinite; }
-.debug-status.ok { color: var(--accent); border-color: rgba(0,255,136,0.2); }
-.debug-status.err { color: var(--accent2); border-color: rgba(255,51,102,0.2); }
-.debug-status.demo { color: #ffaa00; border-color: rgba(255,170,0,0.2); }
-@keyframes pulse { 50% { opacity: 0.4; } }
-.debug-log {
-background: rgba(0,0,0,0.6);
-border: 1px solid rgba(255,255,255,0.05);
-padding: 0.8rem 1rem;
-font-size: 0.65rem; line-height: 1.7;
-color: rgba(255,255,255,0.4);
-max-height: 120px; overflow-y: auto;
-font-family: 'Share Tech Mono', monospace;
-}
-.debug-log .log-ok { color: var(--accent); }
-.debug-log .log-err { color: var(--accent2); }
-.debug-log .log-warn { color: #ffaa00; }
-.debug-log .log-time { color: rgba(255,255,255,0.2); }
-
-/* ═══════════════════════════════
 ЧАТ
 ═══════════════════════════════ */
 .chat-container {
@@ -224,11 +148,6 @@ transition: background 0.2s, color 0.2s;
 .send-btn-icon:disabled { opacity: 0.4; }
 
 @media (max-width: 600px) {
-/* Панель отладки — скрыта по умолчанию на мобиле, компактнее */
-.debug-toggle { padding: 0.4rem 1rem; font-size: 0.55rem; }
-.debug-body { padding: 0 1rem 0.8rem; }
-.debug-url-input { font-size: 0.65rem; }
-.debug-log { font-size: 0.6rem; max-height: 90px; }
 
 /* Чат */
 .chat-container { padding: 0.8rem 0.9rem; }
@@ -328,32 +247,6 @@ padding: 0.6rem 0.8rem;
 <a href="materials.html" data-i18n="nav.matter">Материя</a>
 </nav>
 </header>
-
-<!-- ПАНЕЛЬ ОТЛАДКИ -->
-<div class="debug-panel" id="debugPanel">
-<button class="debug-toggle" onclick="toggleDebug()">
-<span class="debug-arrow">▶</span>
-<span>// ОТЛАДКА СВЯЗИ С WORKER</span>
-<span id="debugStatusInline" style="color:#ffaa00;margin-left:0.5rem">● ДЕМО</span>
-</button>
-<div class="debug-body" id="debugBody">
-<div class="debug-row">
-<span class="debug-label">WORKER URL:</span>
-<input type="text" class="debug-url-input" id="workerUrlInput"
-value="https://unitycode-petlya.sv2txxznjm.workers.dev"
-placeholder="https://your-worker.workers.dev"
-oninput="onWorkerUrlChange()">
-<button class="debug-btn" onclick="pingWorker()">[ PING ]</button>
-<button class="debug-btn" onclick="testWorker()">[ TEST SIGNAL ]</button>
-<span class="debug-status demo" id="debugStatus">// ДЕМО-РЕЖИМ</span>
-</div>
-<div class="debug-log" id="debugLog">
-<span class="log-warn">▶ Панель отладки инициализирована</span><br>
-<span class="log-time">Нажмите PING для проверки связи с Worker</span><br>
-<span class="log-time">Нажмите TEST SIGNAL для полного теста (запрос + ответ)</span><br>
-</div>
-</div>
-</div>
 
 <div class="chat-container" id="chatContainer">
 <div class="sys-msg" id="introMsg">
@@ -510,134 +403,13 @@ if (!s) return '';
 return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/\n/g,'<br>');
 }
 
-// ═══════════════════════════════════════════════════════
-// ПАНЕЛЬ ОТЛАДКИ
-// ═══════════════════════════════════════════════════════
-function toggleDebug() {
-document.getElementById('debugPanel').classList.toggle('open');
-}
-
-function onWorkerUrlChange() {
-WORKER_URL = document.getElementById('workerUrlInput').value.trim();
-setDebugStatus('idle', '// ИЗМЕНЕНО — проверьте PING');
-workerOk = false;
-updateInlineStatus();
-}
-
-function setDebugStatus(type, text) {
-const el = document.getElementById('debugStatus');
-el.className = 'debug-status ' + type;
-el.textContent = text;
-}
-
+// updateInlineStatus: панель отладки удалена, оставлена безопасная заглушка
+// (вызывается из генератора при смене статуса Worker live/demo)
 function updateInlineStatus() {
 const el = document.getElementById('debugStatusInline');
-if (workerOk) {
-el.style.color = 'var(--accent)';
-el.textContent = '● LIVE';
-} else {
-el.style.color = '#ffaa00';
-el.textContent = '● ДЕМО';
-}
-}
-
-function debugLog(html) {
-const log = document.getElementById('debugLog');
-const time = new Date().toLocaleTimeString('ru', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-const line = document.createElement('div');
-line.innerHTML = `<span class="log-time">[${time}]</span> ${html}`;
-log.appendChild(line);
-// Тримминг: оставляем только последние DEBUG_LOG_MAX строк
-while (log.childElementCount > DEBUG_LOG_MAX) {
-log.removeChild(log.firstElementChild);
-}
-log.scrollTop = log.scrollHeight;
-}
-
-async function pingWorker() {
-const url = document.getElementById('workerUrlInput').value.trim();
-if (!url) { debugLog('<span class="log-err">✗ URL не указан</span>'); return; }
-WORKER_URL = url;
-setDebugStatus('pinging', '// ПИНГУЕМ...');
-debugLog(`Ping → <span style="color:rgba(255,255,255,0.6)">${escHtml(url)}</span>`);
-
-const t0 = Date.now();
-try {
-const resp = await fetch(url, {
-method: 'OPTIONS',
-signal: AbortSignal.timeout(8000)
-});
-const ms = Date.now() - t0;
-
-if (resp.ok || resp.status === 204 || resp.status === 405) {
-setDebugStatus('ok', `// OK — ${ms}ms`);
-debugLog(`<span class="log-ok">✓ Worker отвечает (${resp.status}) — ${ms}ms</span>`);
-debugLog(`<span class="log-ok">  CORS: ${resp.headers.get('access-control-allow-origin') || 'не указан'}</span>`);
-workerOk = true;
-} else {
-setDebugStatus('err', `// HTTP ${resp.status}`);
-debugLog(`<span class="log-err">✗ Неожиданный статус: ${resp.status} — ${ms}ms</span>`);
-workerOk = false;
-}
-} catch (err) {
-const ms = Date.now() - t0;
-setDebugStatus('err', '// НЕДОСТУПЕН');
-debugLog(`<span class="log-err">✗ Ошибка (${ms}ms): ${escHtml(err.message)}</span>`);
-if (err.message.includes('blocked') || err.message.includes('CORS')) {
-debugLog('<span class="log-warn">⚠ Возможно CORS или блокировка провайдером</span>');
-}
-workerOk = false;
-}
-updateInlineStatus();
-}
-
-async function testWorker() {
-const url = document.getElementById('workerUrlInput').value.trim();
-if (!url) { debugLog('<span class="log-err">✗ URL не указан</span>'); return; }
-WORKER_URL = url;
-setDebugStatus('pinging', '// ТЕСТ...');
-debugLog(`Test POST → <span style="color:rgba(255,255,255,0.6)">${escHtml(url)}</span>`);
-debugLog('Отправляем тестовый сигнал: "тест соединения"...');
-
-const t0 = Date.now();
-try {
-const resp = await fetch(url, {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ raw_noise: 'тест соединения' }),
-signal: AbortSignal.timeout(WORKER_TIMEOUT)
-});
-
-const ms = Date.now() - t0;
-if (!resp.ok) {
-throw new Error(`HTTP ${resp.status}`);
-}
-
-const data = await resp.json();
-const ms2 = Date.now() - t0;
-
-if (data.error) {
-setDebugStatus('err', '// ОШИБКА API');
-debugLog(`<span class="log-err">✗ Worker вернул ошибку (${ms2}ms): ${escHtml(data.error)}</span>`);
-workerOk = false;
-} else {
-setDebugStatus('ok', `// ПОЛНЫЙ УСПЕХ — ${ms2}ms`);
-debugLog(`<span class="log-ok">✓ Worker + YandexGPT работают (${ms2}ms)</span>`);
-const preview = (data.interpretation || '').slice(0, 80).replace(/\n/g, ' ');
-debugLog(`<span class="log-ok">  Ответ: ${escHtml(preview)}...</span>`);
-workerOk = true;
-}
-} catch (err) {
-const ms = Date.now() - t0;
-setDebugStatus('err', '// ОШИБКА');
-debugLog(`<span class="log-err">✗ Ошибка теста (${ms}ms): ${escHtml(err.message)}</span>`);
-if (err.name === 'TimeoutError') {
-debugLog(`<span class="log-warn">⚠ Таймаут ${WORKER_TIMEOUT/1000}с — Worker не отвечает или YandexGPT недоступен</span>`);
-debugLog('<span class="log-warn">  Проверь: работает ли workers.dev через VPN?</span>');
-}
-workerOk = false;
-}
-updateInlineStatus();
+if (!el) return;
+el.style.color = workerOk ? 'var(--accent)' : '#ffaa00';
+el.textContent = workerOk ? '● LIVE' : '● ДЕМО';
 }
 
 // ═══════════════════════════════════════════════════════
