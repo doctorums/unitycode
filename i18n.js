@@ -149,8 +149,8 @@
     'petlya.keySkip':{ ru:`[ пропустить ]`, en:`[ skip ]` },
 
     // — Книга (kniga.html) —
-    'kniga.title':    { ru:`Бог, бесконечность и ты · UnityCode`, en:`God, Infinity, and You · UnityCode` },
-    'kniga.bkTitle':  { ru:`Бог, бесконечность и ты`, en:`God, Infinity, and You` },
+    'kniga.title':    { ru:`Бог, бесконечность и ты · UnityCode`, en:`God, Infinity and You · UnityCode` },
+    'kniga.bkTitle':  { ru:`Бог, бесконечность и ты`, en:`God, Infinity and You` },
     'kniga.menuAriaLabel': { ru:`Оглавление`, en:`Table of contents` },
     'kniga.tabToc':   { ru:`Содержание`, en:`Contents` },
     'kniga.tabBm':    { ru:`Закладки`,   en:`Bookmarks` },
