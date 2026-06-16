@@ -157,6 +157,7 @@ to { opacity: 0; }
 <script src="i18n.js"></script>
 <script>
 const SUPABASE_URL = 'https://lukyyqabkxzrgdixzphs.supabase.co';
+const ANALYZE_URL   = 'https://unitycode-analyze.sv2txxznjm.workers.dev';
 const SUPABASE_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
 const REFRESH_INTERVAL = 10000;
 const INTRO_DURATION = 37000;
@@ -487,6 +488,7 @@ const actionHtml = isMine
 : `<button class="popup-btn connect" id="popup-${node.id}" onclick="openConnectPicker('${node.id}', this)">${UC_I18N.t('set.connect')}</button>`;
 
 const marker = L.marker([node.lat, node.lng], { icon: nodeIcon() });
+marker._nodeId = node.id; marker._nodeNoise = node.raw_noise || '';
 marker.bindPopup(`
 <div class="popup-content">
 <div class="popup-tag">${UC_I18N.t('set.popupTag')}</div>
@@ -501,6 +503,52 @@ ${isMine ? '' : `<div class="connect-picker" id="picker-${node.id}" style="displ
 cluster.addLayer(marker);
 nodeMarkers[node.id] = marker;
 }
+
+// ── АВТО-ПЕРЕВОД ШУМА В ПОПАПЕ ────────────────────────────────
+function _hasCyrillic(t){ return /[а-яёА-ЯЁ]/u.test(t); }
+function _needsTranslation(noise, lang){
+  if (!noise) return false;
+  const cy = _hasCyrillic(noise);
+  if (lang === 'ru') return !cy && /[a-zA-Z]{3,}/.test(noise);  // ru-интерфейс + латинский шум
+  return cy;                                                      // en/es/fr/zh + кириллический шум
+}
+function _appendTr(textEl, tr){
+  if (textEl.querySelector('.popup-tr')) return;
+  const d = document.createElement('div');
+  d.className = 'popup-tr';
+  d.style.cssText = 'font-size:0.65rem;color:rgba(255,255,255,0.35);margin-top:0.5rem;padding-top:0.4rem;border-top:1px solid rgba(255,255,255,0.07);font-style:italic;line-height:1.5;';
+  d.textContent = tr;
+  textEl.appendChild(d);
+}
+map.on('popupopen', async function(e){
+  const mk = e.popup._source;
+  if (!mk || !mk._nodeId) return;
+  const noise = mk._nodeNoise;
+  const lang = (window.UC_I18N ? UC_I18N.lang : null) || localStorage.getItem('uc_lang') || 'ru';
+  if (!_needsTranslation(noise, lang)) return;
+  const popupEl = e.popup.getElement();
+  if (!popupEl) return;
+  const textEl = popupEl.querySelector('.popup-text');
+  if (!textEl) return;
+  const ckey = 'uc_tr:' + mk._nodeId + ':' + lang;
+  try {
+    const cached = localStorage.getItem(ckey);
+    if (cached) { _appendTr(textEl, cached); return; }
+  } catch(_){}
+  try {
+    const res = await fetch(ANALYZE_URL, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ mode:'translate', text:noise, lang })
+    });
+    const d = await res.json();
+    if (d.translation) {
+      try { localStorage.setItem(ckey, d.translation); } catch(_){}
+      const te2 = e.popup.getElement()?.querySelector('.popup-text');
+      if (te2) _appendTr(te2, d.translation);
+    }
+  } catch(_){}
+});
+// ───────────────────────────────────────────────────────────────
 
 // Удаляет узел с карты (если был удалён из БД)
 function removeNodeFromMap(id) {
