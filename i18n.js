@@ -146,7 +146,17 @@
                        en:`Come up with a code word or phrase. It will let your nodes be recognized on any device. No one but you knows it.` },
     'petlya.phrasePlaceholder':{ ru:`твоя фраза...`, en:`your phrase...` },
     'petlya.keyRemember':{ ru:`[ ЗАПОМНИТЬ ]`, en:`[ REMEMBER ]` },
-    'petlya.keySkip':{ ru:`[ пропустить ]`, en:`[ skip ]` }
+    'petlya.keySkip':{ ru:`[ пропустить ]`, en:`[ skip ]` },
+
+    // — Книга (kniga.html) —
+    'kniga.title':    { ru:`Бог, бесконечность и ты · UnityCode`, en:`God, Infinity, and You · UnityCode` },
+    'kniga.bkTitle':  { ru:`Бог, бесконечность и ты`, en:`God, Infinity, and You` },
+    'kniga.menuAriaLabel': { ru:`Оглавление`, en:`Table of contents` },
+    'kniga.tabToc':   { ru:`Содержание`, en:`Contents` },
+    'kniga.tabBm':    { ru:`Закладки`,   en:`Bookmarks` },
+    'kniga.bmEmpty':  { ru:`Пока нет закладок. Наведи на абзац и нажми ⚑.`, en:`No bookmarks yet. Hover over a paragraph and tap ⚑.` },
+    'kniga.backMatter': { ru:`← Материя`, en:`← Matter` },
+    'kniga.coverTitle': { ru:`Титул`, en:`Title` }
   };
 
   function t(key){
@@ -160,6 +170,7 @@
     root.querySelectorAll('[data-i18n]').forEach(function(el){ el.textContent = t(el.getAttribute('data-i18n')); });
     root.querySelectorAll('[data-i18n-html]').forEach(function(el){ el.innerHTML = t(el.getAttribute('data-i18n-html')); });
     root.querySelectorAll('[data-i18n-ph]').forEach(function(el){ el.setAttribute('placeholder', t(el.getAttribute('data-i18n-ph'))); });
+    root.querySelectorAll('[data-i18n-aria]').forEach(function(el){ el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria'))); });
   }
 
   function buildSwitcher(){
