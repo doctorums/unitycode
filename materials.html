@@ -421,19 +421,45 @@ function renderMarkdown(md){
   (async ()=>{
     const SB_URL='https://lukyyqabkxzrgdixzphs.supabase.co';
     const SB_KEY='sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
+    const TR_URL='https://unitycode-analyze.sv2txxznjm.workers.dev';
     try{
       const r=await fetch(
-        SB_URL+'/rest/v1/nodes?select=essence&essence=not.is.null&order=created_at.desc&limit=40',
+        SB_URL+'/rest/v1/nodes?select=id,essence&essence=not.is.null&order=created_at.desc&limit=40',
         { headers:{ apikey:SB_KEY, Authorization:'Bearer '+SB_KEY } }
       );
       if(!r.ok) return;
       const rows=await r.json();
       if(!Array.isArray(rows)) return;
       const live=rows
-        .map(x=>(x.essence||'').trim())
-        .filter(t=>t.length>2 && !t.startsWith('__TRACE__'))
-        .map(t=>({ text:t, weight:18+Math.floor(Math.random()*36) })); // 18..53
+        .map(x=>({ id:x.id, text:(x.essence||'').trim() }))
+        .filter(o=>o.text.length>2 && !o.text.startsWith('__TRACE__'))
+        .map(o=>({ id:o.id, text:o.text, weight:18+Math.floor(Math.random()*36) }));
       if(live.length){ NS.live=NS.live.concat(live); window.__liveCount=NS.live.length; }
+
+      // авто-перевод essence: если язык не RU и текст кириллический — переводим асинхронно
+      // NS.live обновляется in-place: след. spawnNoise подхватит перевод, анимация не трогается
+      if(LANG && LANG!=='ru'){
+        const needsTr=live.filter(o=>/[а-яёА-ЯЁ]/u.test(o.text));
+        if(needsTr.length) (async()=>{
+          for(const o of needsTr){
+            const ckey='uc_tr:'+o.id+':ess:'+LANG;
+            try{
+              const cached=localStorage.getItem(ckey);
+              if(cached){ const lv=NS.live.find(x=>x.id===o.id); if(lv) lv.text=cached; continue; }
+            }catch(_){}
+            try{
+              await new Promise(r=>setTimeout(r,120)); // не DDoS-им воркер
+              const res=await fetch(TR_URL,{method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({mode:'translate',text:o.text,lang:LANG})});
+              const d=await res.json();
+              if(d.translation){
+                try{localStorage.setItem(ckey,d.translation);}catch(_){}
+                const lv=NS.live.find(x=>x.id===o.id); if(lv) lv.text=d.translation;
+              }
+            }catch(_){}
+          }
+        })();
+      }
     }catch(e){ /* остаётся то, что уже есть */ }
   })();
   let noises=[];         // активные шумы (до maxOnscreen)
