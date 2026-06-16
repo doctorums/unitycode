@@ -190,10 +190,10 @@
 <nav class="sidebar" id="sidebar">
   <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;font-size:0.7rem;opacity:0.7">
     <a href="materials.html" style="color:inherit;text-decoration:none" data-i18n="kniga.backMatter">← Материя</a>
-    <a href="petlya.html" style="color:inherit;text-decoration:none">Спираль</a>
-    <a href="set.html" style="color:inherit;text-decoration:none">Сеть</a>
+    <a href="petlya.html" style="color:inherit;text-decoration:none" data-i18n="nav.spiral">Спираль</a>
+    <a href="set.html" style="color:inherit;text-decoration:none" data-i18n="nav.network">Сеть</a>
   </div>
-  <h3>Навигация</h3>
+  <h3 data-i18n="kniga.navHeading">Навигация</h3>
   <div class="tabs">
     <button class="tab active" id="tabToc" data-i18n="kniga.tabToc">Содержание</button>
     <button class="tab" id="tabBm" data-i18n="kniga.tabBm">Закладки</button>
@@ -356,7 +356,7 @@ main.innerHTML=paneInner.map((inner,i)=>
 
 // build TOC
 toc.innerHTML=navList.map((n,i)=>{
-  if(n.level===0) return '<button class="toc-item chap" data-pane="'+i+'">Обложка</button>';
+  if(n.level===0) return '<button class="toc-item chap" data-pane="'+i+'">'+(window.UC_I18N?UC_I18N.t('kniga.coverTitle'):'Обложка')+'</button>';
   const cls=n.level===1?'toc-item part':'toc-item chap';
   return '<button class="'+cls+'" data-pane="'+i+'">'+escapeHTML(n.title)+'</button>';
 }).join('');
