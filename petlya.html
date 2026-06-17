@@ -506,7 +506,13 @@ async function restoreDialog() {
         weaveBtn.className = 'weave-btn';
         weaveBtn.textContent = UC_I18N.t('petlya.weave');
         weaveBtn.dataset.text = m.content.slice(0, 300);
-        weaveBtn.dataset.noise = lastUser.slice(0, 500);
+        // fallback: если lastUser потерян (iOS выгрузил вкладку) — берём из localStorage
+        const noiseForBtn = lastUser || (function(){ try {
+          // ищем шум пользователя перед этим ai-сообщением по индексу
+          const userIdx = msgIdx - 1;
+          return localStorage.getItem('uc_noise_' + userIdx) || '';
+        } catch(e){ return ''; } })();
+        weaveBtn.dataset.noise = noiseForBtn.slice(0, 500);
         weaveBtn.dataset.msgIndex = msgIdx;
         weaveBtn.dataset.idem = ensureIdem(msgIdx);
         weaveBtn.onclick = function() { weaveIntoNet(this); };
@@ -587,6 +593,11 @@ addMessage('user', text);
 hideIntro();
 dismissMemories();
 pushMessage('user', text);
+// Сохраняем шум в localStorage — выживет при выгрузке вкладки iOS
+try {
+  const noiseIdx = messages.length - 1;
+  localStorage.setItem('uc_noise_' + noiseIdx, text.slice(0, 500));
+} catch(e) {}
 textarea.value = '';
 updateCount();
 
@@ -762,7 +773,7 @@ pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
 
 function genIdem(){ try { return crypto.randomUUID(); } catch(e){ return Date.now().toString(36) + Math.random().toString(36).slice(2); } }
 function ensureIdem(idx){
-  if (isNaN(idx) || !messages[idx]) return '';  // пустой — воркер не дедуплицирует, но не создаёт фантомный idem
+  if (isNaN(idx) || !messages[idx]) return genIdem();
   if (!messages[idx].idem){ messages[idx].idem = genIdem(); try { sessionStorage.setItem('uc_petlya_dialog', JSON.stringify(messages)); } catch(e){} }
   return messages[idx].idem;
 }
@@ -776,29 +787,24 @@ btn.disabled = true;
 
 try {
 const { lat, lng } = await getCoords();
-
-if (lat === null || lng === null) {
-  btn.textContent = '[ геолокация недоступна ]';
-  btn.style.color = 'var(--accent2)';
-  btn.style.borderColor = 'rgba(255,51,102,0.3)';
-  btn.disabled = false;
-  btn.dataset.weaveInProgress = '0';
-  const note = document.createElement('div');
-  note.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,51,102,0.55);margin-top:0.5rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
-  note.textContent = '// разреши доступ к геолокации — узел должен знать своё место в Сети';
-  if (btn.parentNode) btn.parentNode.appendChild(note);
-  return;
-}
-
 const userToken = await getUserToken();
 
+// Если шум пользователя утерян — вплетение бессмысленно, блокируем
+const rawNoise = btn.dataset.noise || '';
+if (!rawNoise) {
+  btn.textContent = '[ шум утерян ]';
+  btn.style.color = 'var(--accent2)';
+  btn.disabled = false;
+  btn.dataset.weaveInProgress = '0';
+  return;
+}
 const payload = {
-raw_noise: btn.dataset.noise || btn.dataset.text,
+raw_noise: rawNoise,
 ai_interpretation: btn.dataset.text,
 user_token: userToken
 };
-payload.lat = lat;
-payload.lng = lng;
+if (lat !== null) payload.lat = lat;
+if (lng !== null) payload.lng = lng;
 
 const ts = await getTurnstileToken();
 const res = await fetch(WRITE_WORKER_URL, {
@@ -857,6 +863,7 @@ if (!isNaN(idx) && messages[idx]) {
   try { sessionStorage.setItem('uc_petlya_dialog', JSON.stringify(messages)); } catch(e){}
 }
 try { localStorage.setItem('uc_woven_idx_' + btn.dataset.msgIndex, '1'); } catch(e){}
+try { localStorage.removeItem('uc_noise_' + btn.dataset.msgIndex); } catch(e){}
 // Успех — кнопка остаётся disabled навсегда
 } catch(e) {
 console.warn('Supabase error', e);
