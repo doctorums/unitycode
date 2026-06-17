@@ -762,7 +762,7 @@ pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
 
 function genIdem(){ try { return crypto.randomUUID(); } catch(e){ return Date.now().toString(36) + Math.random().toString(36).slice(2); } }
 function ensureIdem(idx){
-  if (isNaN(idx) || !messages[idx]) return genIdem();
+  if (isNaN(idx) || !messages[idx]) return '';  // пустой — воркер не дедуплицирует, но не создаёт фантомный idem
   if (!messages[idx].idem){ messages[idx].idem = genIdem(); try { sessionStorage.setItem('uc_petlya_dialog', JSON.stringify(messages)); } catch(e){} }
   return messages[idx].idem;
 }
@@ -776,6 +776,20 @@ btn.disabled = true;
 
 try {
 const { lat, lng } = await getCoords();
+
+if (lat === null || lng === null) {
+  btn.textContent = '[ геолокация недоступна ]';
+  btn.style.color = 'var(--accent2)';
+  btn.style.borderColor = 'rgba(255,51,102,0.3)';
+  btn.disabled = false;
+  btn.dataset.weaveInProgress = '0';
+  const note = document.createElement('div');
+  note.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,51,102,0.55);margin-top:0.5rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
+  note.textContent = '// разреши доступ к геолокации — узел должен знать своё место в Сети';
+  if (btn.parentNode) btn.parentNode.appendChild(note);
+  return;
+}
+
 const userToken = await getUserToken();
 
 const payload = {
@@ -783,8 +797,8 @@ raw_noise: btn.dataset.noise || btn.dataset.text,
 ai_interpretation: btn.dataset.text,
 user_token: userToken
 };
-if (lat !== null) payload.lat = lat;
-if (lng !== null) payload.lng = lng;
+payload.lat = lat;
+payload.lng = lng;
 
 const ts = await getTurnstileToken();
 const res = await fetch(WRITE_WORKER_URL, {
