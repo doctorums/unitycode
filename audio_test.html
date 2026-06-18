@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audio Test</title>
+<style>
+  body { background:#080810; color:#c8c8e0; font-family:monospace; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; gap:20px; padding:20px; }
+  button { padding:30px 50px; background:#1a1a40; border:2px solid #5555aa; color:#aaaaff; font-family:monospace; font-size:18px; border-radius:10px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  #log { font-size:13px; color:#5555aa; text-align:center; line-height:2; white-space:pre; }
+</style>
+</head>
+<body>
+<div id="log">нажми кнопку</div>
+<button id="btn">▶ ТЕСТ</button>
+<script>
+const log = s => document.getElementById('log').textContent += '\n' + s;
+
+function play() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AC();
+  log('state: ' + ctx.state);
+  log('sampleRate: ' + ctx.sampleRate);
+
+  ctx.resume().then(() => {
+    log('resumed: ' + ctx.state);
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 440;
+    gain.gain.value = 1.0;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    const t = ctx.currentTime;
+    log('currentTime: ' + t.toFixed(4));
+    osc.start(t + 0.1);
+    osc.stop(t + 2.1);
+    log('osc scheduled');
+    osc.onended = () => log('ended');
+  });
+}
+
+// touchend для iOS
+document.getElementById('btn').addEventListener('touchend', function(e) {
+  e.preventDefault();
+  document.getElementById('log').textContent = 'touchend';
+  play();
+});
+
+// click fallback
+document.getElementById('btn').addEventListener('click', function() {
+  document.getElementById('log').textContent = 'click';
+  play();
+});
+</script>
+</body>
+</html>
