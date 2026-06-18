@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audio Test 3</title>
+<style>
+  body { background:#080810; color:#c8c8e0; font-family:monospace; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; gap:20px; padding:20px; }
+  button { padding:30px 50px; background:#1a1a40; border:2px solid #5555aa; color:#aaaaff; font-family:monospace; font-size:18px; border-radius:10px; -webkit-tap-highlight-color:transparent; }
+  #log { font-size:13px; color:#5555aa; text-align:center; line-height:2; white-space:pre; }
+</style>
+</head>
+<body>
+<div id="log">v3 — нажми</div>
+<button id="btn">▶ ТЕСТ v3</button>
+<script>
+const log = s => document.getElementById('log').textContent += '\n' + s;
+let unlocked = false;
+let sharedCtx = null;
+
+function getCtx() {
+  if (!sharedCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    sharedCtx = new AC();
+  }
+  return sharedCtx;
+}
+
+function play() {
+  const ctx = getCtx();
+  document.getElementById('log').textContent = 'v3 touchend';
+  log('dest channels: ' + ctx.destination.channelCount + '/' + ctx.destination.maxChannelCount);
+  log('state: ' + ctx.state);
+
+  ctx.resume().then(() => {
+    log('resumed: ' + ctx.state);
+
+    // Тон + buffer noise одновременно — что-то должно прорваться
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = 440;
+    gain.gain.value = 0.8;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 2);
+    log('playing 440hz x2sec');
+  });
+}
+
+const btn = document.getElementById('btn');
+btn.addEventListener('touchend', e => { e.preventDefault(); play(); });
+btn.addEventListener('click', play);
+</script>
+</body>
+</html>
