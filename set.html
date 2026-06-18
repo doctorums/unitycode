@@ -175,8 +175,8 @@ window.onloadTurnstileCallback = function(){
   try {
     _tsId = turnstile.render('#ts-box', {
       sitekey: TURNSTILE_SITEKEY, appearance: 'interaction-only', execution: 'execute',
-      callback: t => { if(_tsResolve){ _tsResolve(t); _tsResolve = null; } },
-      'error-callback': () => { if(_tsResolve){ _tsResolve(''); _tsResolve = null; } },
+      callback: t => { if(_tsResolve){ _tsResolve(t); _tsResolve = null; } try { document.getElementById('ts-box').style.visibility = 'hidden'; } catch(e){} },
+      'error-callback': () => { if(_tsResolve){ _tsResolve(''); _tsResolve = null; } try { document.getElementById('ts-box').style.visibility = 'hidden'; } catch(e){} },
     });
   } catch(e){}
 };
@@ -184,6 +184,7 @@ function getTurnstileToken(){
   return new Promise(resolve => {
     if (!window.turnstile || _tsId === null) { resolve(''); return; }
     _tsResolve = resolve;
+    try { document.getElementById('ts-box').style.visibility = 'visible'; } catch(e){}
     try { turnstile.reset(_tsId); } catch(e){}
     try { turnstile.execute(_tsId); } catch(e){ resolve(''); }
   });
