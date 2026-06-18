@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audio Test v4 — BT kick</title>
+<style>
+  body { background:#080810; color:#c8c8e0; font-family:monospace; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; gap:20px; padding:20px; }
+  button { padding:30px 50px; background:#1a1a40; border:2px solid #5555aa; color:#aaaaff; font-family:monospace; font-size:18px; border-radius:10px; -webkit-tap-highlight-color:transparent; }
+  #log { font-size:13px; color:#5555aa; text-align:center; line-height:2; white-space:pre; }
+</style>
+</head>
+<body>
+<div id="log">v4 — BT kick. Надень BT-наушники, нажми.</div>
+<button id="btn">▶ ТЕСТ v4</button>
+<script>
+const log = s => document.getElementById('log').textContent += '\n' + s;
+
+// Тихий короткий WAV в base64 (1 сэмпл тишины, валидный заголовок)
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+
+let ctx = null;
+let kicked = false;
+
+function btKick() {
+  // <audio> элемент переключает аудиосессию iOS на медиа-маршрут (вкл. Bluetooth)
+  const a = new Audio(SILENT_WAV);
+  a.loop = false;
+  a.volume = 0.01;
+  const p = a.play();
+  if (p) p.then(() => log('kick: audio.play() ok')).catch(e => log('kick err: ' + e.message));
+  kicked = true;
+}
+
+function play() {
+  document.getElementById('log').textContent = 'v4 touchend';
+
+  // 1. KICK первым делом, синхронно в жесте
+  btKick();
+
+  // 2. Web Audio
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!ctx) ctx = new AC();
+  log('state: ' + ctx.state);
+
+  ctx.resume().then(() => {
+    log('resumed: ' + ctx.state);
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.frequency.value = 440;
+    g.gain.value = 0.8;
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 2);
+    log('440hz x2sec — слышишь в BT?');
+  });
+}
+
+const btn = document.getElementById('btn');
+btn.addEventListener('touchend', e => { e.preventDefault(); play(); });
+btn.addEventListener('click', play);
+</script>
+</body>
+</html>
