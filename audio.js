@@ -75,7 +75,9 @@
     lfoGain.gain.value = vol * 0.3;
     lfo.connect(lfoGain);
     lfoGain.connect(gain.gain);
-    gain.gain.value = vol;
+    // fade-in вместо мгновенного скачка — убирает щелчок старта
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + 1.2);
     osc.connect(gain);
     gain.connect(masterGain);
     osc.start();
@@ -160,7 +162,8 @@
     osc.type = 'sine';
     osc.frequency.setValueAtTime(528, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(264, ctx.currentTime + 1.5);
-    g.gain.setValueAtTime(0.12, ctx.currentTime);
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.03);
     g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2);
     osc.connect(g); g.connect(masterGain);
     osc.start(); osc.stop(ctx.currentTime + 2.1);
@@ -205,7 +208,8 @@
     const g = ctx.createGain();
     osc.type = 'triangle';
     osc.frequency.value = 880;
-    g.gain.setValueAtTime(0.06, ctx.currentTime);
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0.06, ctx.currentTime + 0.02);
     g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
     osc.connect(g); g.connect(masterGain);
     osc.start(); osc.stop(ctx.currentTime + 0.9);
