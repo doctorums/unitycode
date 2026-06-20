@@ -230,6 +230,8 @@
       transform: scale(1);
       opacity: 1;
     }
+    /* во время проезда текста вверх — прячем overflow, чтобы уходил за край */
+    .oracle-window.outro { overflow: hidden; }
     .oracle-window::before {
       content: '';
       position: absolute; top: 0; left: 0; right: 0; height: 1px;
@@ -259,6 +261,27 @@
     @keyframes oracleBreathe {
       0%, 100% { opacity: 0.82; }
       50%      { opacity: 1; }
+    }
+    /* фаза 2: текст плавно растворяется */
+    .oracle-text.fading {
+      animation: none;
+      opacity: 0;
+      transition: opacity 2.5s ease;
+    }
+    /* фаза 4: текст проявляется снизу и уезжает вверх за край, тая в конце */
+    .oracle-text.rising-start {
+      opacity: 0;
+      transform: translateY(60px);
+      animation: none;
+    }
+    .oracle-text.rising {
+      animation: oracleRise 9s ease-in forwards;
+    }
+    @keyframes oracleRise {
+      0%   { opacity: 0;    transform: translateY(60px); }
+      15%  { opacity: 0.95; transform: translateY(20px); }
+      70%  { opacity: 0.95; transform: translateY(-120px); }
+      100% { opacity: 0;    transform: translateY(-260px); }
     }
 
     .oracle-cursor {
@@ -383,14 +406,21 @@ const headers = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_
 // ═══════════════════════════════════════════════════════
 let _oracleTimer = null;
 let _oracleSeq = 0; // версия сессии печати: отменяет старую, если открыли заново
+let _outroTimers = [];
+function clearOutro() { _outroTimers.forEach(clearTimeout); _outroTimers = []; }
+
+function resetOracleText(textEl) {
+  textEl.classList.remove('breathing', 'fading', 'rising', 'rising-start');
+}
 
 function openOracle(label) {
   const ov = document.getElementById('oracle');
   const textEl = document.getElementById('oracle-text');
   const closeBtn = document.getElementById('oracle-close');
   const labelEl = document.getElementById('oracle-label');
+  clearOutro();
+  resetOracleText(textEl);
   if (label) labelEl.textContent = label;
-  textEl.classList.remove('breathing');
   textEl.innerHTML = '<span class="oracle-waiting">// Сеть слушает<span class="oracle-cursor">▋</span></span>';
   closeBtn.classList.remove('show');
   ov.classList.add('open');
@@ -403,6 +433,8 @@ function typeOracle(text) {
   const closeBtn = document.getElementById('oracle-close');
   const mySeq = ++_oracleSeq;
   if (_oracleTimer) { clearTimeout(_oracleTimer); _oracleTimer = null; }
+  clearOutro();
+  resetOracleText(textEl);
 
   const words = String(text || '').trim().split(/(\s+)/); // сохраняем пробелы/переносы
   let i = 0;
@@ -419,6 +451,7 @@ function typeOracle(text) {
       textEl.classList.add('breathing'); // допечатали — текст «задышал»
       closeBtn.classList.add('show');
       _oracleTimer = null;
+      startOracleOutro(mySeq, text); // запускаем ритуал завершения
       return;
     }
     const chunk = words[i];
@@ -440,6 +473,41 @@ function typeOracle(text) {
   step();
 }
 
+// Ритуал завершения (один проход): постоял 30с → фейд → пауза 3с →
+// текст проплывает вверх и тает → окно схлопывается в центр.
+// Любое закрытие/новый анализ (рост _oracleSeq) отменяет цепочку.
+function startOracleOutro(mySeq, fullText) {
+  const textEl = document.getElementById('oracle-text');
+  clearOutro();
+  const alive = () => mySeq === _oracleSeq && document.getElementById('oracle').classList.contains('open');
+
+  // 1) постоял 30с → фейд-аут текста (2.5с)
+  _outroTimers.push(setTimeout(() => {
+    if (!alive()) return;
+    textEl.classList.remove('breathing');
+    textEl.classList.add('fading');
+  }, 30000));
+
+  // 2) фейд завершился (~2.5с) + пауза 3с → текст разом проплывает вверх
+  _outroTimers.push(setTimeout(() => {
+    if (!alive()) return;
+    const win = document.querySelector('.oracle-window');
+    if (win) win.classList.add('outro');
+    textEl.classList.remove('fading');
+    textEl.textContent = fullText;        // вернуть весь текст разом
+    textEl.classList.add('rising-start'); // поставить ниже, прозрачным
+    void textEl.offsetHeight;             // форс reflow
+    textEl.classList.remove('rising-start');
+    textEl.classList.add('rising');       // поехал вверх и тает
+  }, 30000 + 2500 + 3000));
+
+  // 3) проезд закончился (9с) → окно схлопывается в центр
+  _outroTimers.push(setTimeout(() => {
+    if (!alive()) return;
+    closeOracle();
+  }, 30000 + 2500 + 3000 + 9000));
+}
+
 function showOracleError(msg) {
   const textEl = document.getElementById('oracle-text');
   const closeBtn = document.getElementById('oracle-close');
@@ -452,9 +520,15 @@ function showOracleError(msg) {
 
 function closeOracle() {
   const ov = document.getElementById('oracle');
+  const textEl = document.getElementById('oracle-text');
   if (_oracleTimer) { clearTimeout(_oracleTimer); _oracleTimer = null; }
+  clearOutro();
   _oracleSeq++;
   ov.classList.remove('open');
+  const win = document.querySelector('.oracle-window');
+  if (win) win.classList.remove('outro');
+  // сброс классов фаз после закрытия (когда окно уже скрылось)
+  setTimeout(() => resetOracleText(textEl), 600);
 }
 
 // Esc закрывает окно
