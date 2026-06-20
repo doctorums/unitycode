@@ -659,6 +659,11 @@ async function runCollectiveAnalysis() {
     });
     const data = await aiRes.json();
     typeOracle(data.interpretation || UC_I18N.t('petlya.signalUnrecognized'));
+    setTimeout(() => {
+      const t = document.getElementById('oracle-text');
+      if (t) t.insertAdjacentHTML('beforeend',
+        `<div style="margin-top:1rem;font-size:0.5rem;color:#0a6;opacity:0.7;">cache_debug: ${esc(String(data.cache_debug||'—'))}</div>`);
+    }, 300);
 
   } catch(e) {
     showOracleError(UC_I18N.t('implant.analyzeError'));
