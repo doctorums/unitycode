@@ -230,8 +230,12 @@
       transform: scale(1);
       opacity: 1;
     }
-    /* во время проезда текста вверх — прячем overflow, чтобы уходил за край */
-    .oracle-window.outro { overflow: hidden; }
+    /* во время краула — окно становится «экраном»: фикс. высота, обрезка */
+    .oracle-window.outro {
+      overflow: hidden;
+      height: 60vh;
+      transition: height 0.6s ease;
+    }
     .oracle-window::before {
       content: '';
       position: absolute; top: 0; left: 0; right: 0; height: 1px;
@@ -268,20 +272,21 @@
       opacity: 0;
       transition: opacity 2.5s ease;
     }
-    /* фаза 4: текст проявляется снизу и уезжает вверх за край, тая в конце */
-    .oracle-text.rising-start {
-      opacity: 0;
-      transform: translateY(60px);
+    /* фаза 4: плоский краул — текст ползёт снизу вверх сплошным потоком.
+       Окно (.outro) обрезает overflow, текст абсолютно позиционирован
+       и едет от низа окна до полного ухода за верх. */
+    .oracle-text.crawl {
       animation: none;
+      position: absolute;
+      left: 1.8rem; right: 1.8rem;       /* совпадает с padding окна */
+      top: 100%;                          /* старт: сразу под нижним краем */
+      opacity: 1;
+      will-change: transform;
+      animation: oracleCrawl var(--crawl-dur, 15s) linear forwards;
     }
-    .oracle-text.rising {
-      animation: oracleRise 9s ease-in forwards;
-    }
-    @keyframes oracleRise {
-      0%   { opacity: 0;    transform: translateY(60px); }
-      15%  { opacity: 0.95; transform: translateY(20px); }
-      70%  { opacity: 0.95; transform: translateY(-120px); }
-      100% { opacity: 0;    transform: translateY(-260px); }
+    @keyframes oracleCrawl {
+      from { transform: translateY(0); }
+      to   { transform: translateY(calc(-100% - 80vh)); } /* уезжает целиком за верх */
     }
 
     .oracle-cursor {
@@ -410,7 +415,9 @@ let _outroTimers = [];
 function clearOutro() { _outroTimers.forEach(clearTimeout); _outroTimers = []; }
 
 function resetOracleText(textEl) {
-  textEl.classList.remove('breathing', 'fading', 'rising', 'rising-start');
+  textEl.classList.remove('breathing', 'fading', 'crawl');
+  textEl.style.removeProperty('--crawl-dur');
+  textEl.style.removeProperty('position');
 }
 
 function openOracle(label) {
@@ -488,24 +495,26 @@ function startOracleOutro(mySeq, fullText) {
     textEl.classList.add('fading');
   }, 30000));
 
-  // 2) фейд завершился (~2.5с) + пауза 3с → текст разом проплывает вверх
+  // 2) фейд завершился (~2.5с) + пауза 3с → текст ползёт снизу вверх (краул)
+  // Длительность краула зависит от длины текста: дольше для длинного,
+  // чтобы успеть прочитать ползущее. Диапазон ~12..20с.
+  const crawlDur = Math.min(20, Math.max(12, Math.round(String(fullText).length / 18)));
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     const win = document.querySelector('.oracle-window');
     if (win) win.classList.add('outro');
-    textEl.classList.remove('fading');
-    textEl.textContent = fullText;        // вернуть весь текст разом
-    textEl.classList.add('rising-start'); // поставить ниже, прозрачным
-    void textEl.offsetHeight;             // форс reflow
-    textEl.classList.remove('rising-start');
-    textEl.classList.add('rising');       // поехал вверх и тает
+    textEl.classList.remove('fading', 'breathing');
+    textEl.textContent = fullText;
+    textEl.style.setProperty('--crawl-dur', crawlDur + 's');
+    void textEl.offsetHeight;          // форс reflow перед стартом анимации
+    textEl.classList.add('crawl');     // поехал снизу вверх сплошным потоком
   }, 30000 + 2500 + 3000));
 
-  // 3) проезд закончился (9с) → окно схлопывается в центр
+  // 3) краул закончился (текст ушёл за верх) → окно схлопывается в центр
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     closeOracle();
-  }, 30000 + 2500 + 3000 + 9000));
+  }, 30000 + 2500 + 3000 + crawlDur * 1000 + 500));
 }
 
 function showOracleError(msg) {
