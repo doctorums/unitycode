@@ -658,13 +658,7 @@ async function runCollectiveAnalysis() {
       }),
     });
     const data = await aiRes.json();
-    console.log('[UC cache]', 'cached=', data.cached, 'debug=', data.cache_debug); // диагностика кэша
     typeOracle(data.interpretation || UC_I18N.t('petlya.signalUnrecognized'));
-    setTimeout(() => {
-      const t = document.getElementById('oracle-text');
-      if (t) t.insertAdjacentHTML('beforeend',
-        `<div style="margin-top:1rem;font-size:0.5rem;color:#0a6;opacity:0.6;">cache: ${esc(String(data.cached))} / ${esc(String(data.cache_debug||'—'))}</div>`);
-    }, 300);
 
   } catch(e) {
     showOracleError(UC_I18N.t('implant.analyzeError'));
