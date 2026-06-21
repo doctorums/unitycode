@@ -259,9 +259,6 @@
       white-space: pre-wrap;
       font-family: 'Share Tech Mono', monospace;
     }
-    .oracle-text {
-      transition: opacity 3s ease;
-    }
     .oracle-text.breathing {
       animation: oracleBreathe 5.5s ease-in-out infinite;
     }
@@ -269,11 +266,8 @@
       0%, 100% { opacity: 0.82; }
       50%      { opacity: 1; }
     }
-    /* фаза 2: текст плавно растворяется (3с) */
-    .oracle-text.fading {
-      animation: none !important;
-      opacity: 0 !important;
-    }
+    /* фаза 2: растворение — управляется из JS (inline transition+opacity),
+       чтобы гарантированно отрабатывал плавный переход без конфликта с animation */
     /* фаза 4: плоский краул — текст ползёт снизу вверх сплошным потоком.
        Окно (.outro) — «экран» фикс. высоты с обрезкой. Текст абсолютный,
        стартует ниже экрана (translateY +60vh) и уезжает за верх. */
@@ -385,7 +379,7 @@
 <!-- Вылетающее окно анализа (оракул) -->
 <div class="oracle-overlay" id="oracle" onclick="if(event.target===this) closeOracle()">
   <div class="oracle-window">
-    <div class="oracle-label" id="oracle-label">// НАБЛЮДЕНИЕ СЕТИ</div>
+    <div class="oracle-label" id="oracle-label" data-i18n="implant.labelNetPattern">// НАБЛЮДЕНИЕ СЕТИ</div>
     <div class="oracle-text" id="oracle-text"></div>
     <button class="oracle-close" id="oracle-close" onclick="closeOracle()">// закрыть</button>
   </div>
@@ -420,6 +414,8 @@ function resetOracleText(textEl) {
   textEl.classList.remove('breathing', 'fading', 'crawl');
   textEl.style.removeProperty('--crawl-dur');
   textEl.style.removeProperty('position');
+  textEl.style.removeProperty('opacity');
+  textEl.style.removeProperty('transition');
 }
 
 function openOracle(label) {
@@ -430,7 +426,17 @@ function openOracle(label) {
   clearOutro();
   resetOracleText(textEl);
   if (label) labelEl.textContent = label;
-  textEl.innerHTML = '<span class="oracle-waiting">// Сеть слушает<span class="oracle-cursor">▋</span></span>';
+  // надпись ожидания по текущему языку (i18n.js недоступен для правки —
+  // фолбэк прямо здесь; при желании вынести в словарь ключом implant.listening)
+  const wlang = (window.UC_I18N ? UC_I18N.lang : 'ru');
+  const waitMsg = {
+    ru: '// Сеть слушает',
+    en: '// The Network is listening',
+    es: '// La Red está escuchando',
+    fr: '// Le Réseau écoute',
+    zh: '// 网络正在倾听',
+  }[wlang] || '// Сеть слушает';
+  textEl.innerHTML = '<span class="oracle-waiting">' + waitMsg + '<span class="oracle-cursor">▋</span></span>';
   closeBtn.classList.remove('show');
   ov.classList.add('open');
 }
@@ -499,22 +505,27 @@ function startOracleOutro(mySeq, fullText) {
   clearOutro();
   const alive = () => mySeq === _oracleSeq && document.getElementById('oracle').classList.contains('open');
 
-  // 1) постоял 15с → фейд-аут текста (плавно, 3с)
+  // 1) постоял 15с → фейд-аут текста (плавно, 3с) через inline-стили
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
-    textEl.classList.remove('breathing');
-    textEl.classList.add('fading');
+    textEl.classList.remove('breathing');   // снять дыхание (animation)
+    textEl.style.opacity = '1';             // зафиксировать видимое состояние
+    textEl.style.transition = 'opacity 3s ease';
+    void textEl.offsetHeight;               // форс reflow — браузер запомнил opacity:1
+    textEl.style.opacity = '0';             // теперь плавно поедет к 0 за 3с
   }, 15000));
 
   // 2) фейд завершился (3с) + пауза 1.5с → текст ползёт снизу вверх (краул)
   // Скорость краула по длине текста. Делитель меньше = быстрее.
   // 14..22с — читаемо, не вяло. (был слишком медленный 24..40)
-  const crawlDur = Math.min(25, Math.max(18, Math.round(String(fullText).length / 10)));
+  const crawlDur = Math.min(22, Math.max(14, Math.round(String(fullText).length / 15)));
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     const win = document.querySelector('.oracle-window');
     if (win) { win.scrollTop = 0; win.classList.add('outro'); }
     textEl.classList.remove('fading', 'breathing');
+    textEl.style.removeProperty('transition');  // убрать фейд-переход
+    textEl.style.removeProperty('opacity');     // вернуть видимость (краул сам ставит opacity)
     textEl.textContent = fullText;
     textEl.style.setProperty('--crawl-dur', crawlDur + 's');
     void textEl.offsetHeight;          // форс reflow перед стартом анимации
