@@ -47,10 +47,7 @@
     startCarrier();          // 1. носитель сессии для BT
     initCtx();               // 2. web audio
     if (ctx.state === 'suspended') ctx.resume();
-    // если переход со страницы где звук уже играл — стартуем без задержки
-    const warm = sessionStorage.getItem('uc_audio_warm') === '1';
-    sessionStorage.setItem('uc_audio_warm', '1');
-    setTimeout(startAmbient, warm ? 0 : 300);
+    setTimeout(startAmbient, 300);
     updateBtn();
   }
 
@@ -60,24 +57,82 @@
     const now = ctx.currentTime;
     masterGain.gain.cancelScheduledValues(now);
     masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-    masterGain.gain.linearRampToValueAtTime(0, now + 0.25);
+    masterGain.gain.linearRampToValueAtTime(0, now + 0.8);
   }
   window.addEventListener('pagehide', fadeOutForNav);
   window.addEventListener('beforeunload', fadeOutForNav);
 
-  // Перехват внутренних переходов: задерживаем навигацию на 220мс,
-  // чтобы fade-out успел отыграть, прежде чем браузер выгрузит страницу.
+  // Эффект перехода "Портал → Бездна": мягкий портал на -2 окт. затухает,
+  // дыхание бездны подхватывает на хвосте — без провала тишины.
+  function fxSubspace() {
+    if (!ctx || muted) return;
+    fxPortal();
+    setTimeout(fxAbyss, 900);
+  }
+
+  function fxPortal() {
+    const t = ctx.currentTime;
+    const dur = 1.4;
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const g = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    osc1.type = 'sine'; osc2.type = 'triangle';
+    osc1.frequency.setValueAtTime(82.5, t);
+    osc1.frequency.linearRampToValueAtTime(55, t + dur);
+    osc2.frequency.setValueAtTime(165, t);
+    osc2.frequency.linearRampToValueAtTime(110, t + dur);
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(700, t);
+    filter.frequency.linearRampToValueAtTime(250, t + dur);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.22, t + 0.3);
+    g.gain.linearRampToValueAtTime(0.16, t + dur * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur + 0.4);
+    osc1.connect(filter); osc2.connect(filter);
+    filter.connect(g); g.connect(masterGain);
+    osc1.start(); osc2.start();
+    osc1.stop(t + dur + 0.5);
+    osc2.stop(t + dur + 0.5);
+  }
+
+  function fxAbyss() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const dur = 1.8;
+    const bufSize = ctx.sampleRate * dur;
+    const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(150, t);
+    filter.frequency.linearRampToValueAtTime(500, t + dur * 0.5);
+    filter.frequency.linearRampToValueAtTime(80, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.2, t + dur * 0.45);
+    g.gain.linearRampToValueAtTime(0.001, t + dur);
+    src.connect(filter); filter.connect(g); g.connect(masterGain);
+    src.start(t); src.stop(t + dur + 0.1);
+  }
+
+  // Переход на внутреннюю страницу: fade-out общего звука + эффект подпространства,
+  // затем честная навигация (новый ambient стартует с нуля на новой странице).
   document.addEventListener('click', function (e) {
     const a = e.target.closest && e.target.closest('a[href]');
     if (!a) return;
     const href = a.getAttribute('href');
     if (!href || href.startsWith('#') || href.startsWith('http') || a.target === '_blank') return;
-    if (!started) return; // звук ещё не запущен — навигация как обычно
+    if (!started) return; // звук ещё не запущен — переход как обычно
 
     e.preventDefault();
+    fxSubspace();
     fadeOutForNav();
-    sessionStorage.setItem('uc_audio_warm', '1');
-    setTimeout(() => { window.location.href = href; }, 220);
+    sessionStorage.setItem('uc_audio_came_from_nav', '1');
+    setTimeout(() => { window.location.href = href; }, 900);
   }, true);
 
   // ---------- Ambient ----------
@@ -308,9 +363,9 @@
 
   function boot() {
     buildBtn();
-    if (sessionStorage.getItem('uc_audio_warm') === '1' && !muted) {
-      // продолжение звука после внутреннего перехода — без нового тапа
-      try { start(); } catch (e) { /* если браузер всё же блокирует — ждём тап */ }
+    if (sessionStorage.getItem('uc_audio_came_from_nav') === '1' && !muted) {
+      sessionStorage.removeItem('uc_audio_came_from_nav');
+      try { start(); } catch (e) { /* если браузер блокирует — ждём тап */ }
     }
     document.addEventListener('touchend', firstGesture);
     document.addEventListener('click', firstGesture);
