@@ -273,20 +273,20 @@
       transition: opacity 2.5s ease;
     }
     /* фаза 4: плоский краул — текст ползёт снизу вверх сплошным потоком.
-       Окно (.outro) обрезает overflow, текст абсолютно позиционирован
-       и едет от низа окна до полного ухода за верх. */
+       Окно (.outro) — «экран» фикс. высоты с обрезкой. Текст абсолютный,
+       стартует ниже экрана (translateY +60vh) и уезжает за верх. */
     .oracle-text.crawl {
-      animation: none;
       position: absolute;
       left: 1.8rem; right: 1.8rem;       /* совпадает с padding окна */
-      top: 100%;                          /* старт: сразу под нижним краем */
+      top: 0;
       opacity: 1;
       will-change: transform;
+      transform: translateY(60vh);        /* старт: под нижним краем экрана */
       animation: oracleCrawl var(--crawl-dur, 15s) linear forwards;
     }
     @keyframes oracleCrawl {
-      from { transform: translateY(0); }
-      to   { transform: translateY(calc(-100% - 80vh)); } /* уезжает целиком за верх */
+      from { transform: translateY(60vh); }              /* под экраном */
+      to   { transform: translateY(calc(-100% - 10vh)); } /* весь текст ушёл за верх */
     }
 
     .oracle-cursor {
@@ -458,12 +458,21 @@ function typeOracle(text) {
       textEl.classList.add('breathing'); // допечатали — текст «задышал»
       closeBtn.classList.add('show');
       _oracleTimer = null;
+      // доскроллить окно к низу — показать кнопку «закрыть»
+      const win = document.querySelector('.oracle-window');
+      if (win) win.scrollTo({ top: win.scrollHeight, behavior: 'smooth' });
       startOracleOutro(mySeq, text); // запускаем ритуал завершения
       return;
     }
     const chunk = words[i];
     textEl.textContent += chunk;
     i++;
+
+    // автоскролл окна вниз за печатью, если текст уже не влезает
+    const win = document.querySelector('.oracle-window');
+    if (win && win.scrollHeight > win.clientHeight) {
+      win.scrollTop = win.scrollHeight;
+    }
 
     // «дыхание» темпа: синусоида в диапазоне 0.7..1.3 от базы
     phase += 0.5;
@@ -502,7 +511,7 @@ function startOracleOutro(mySeq, fullText) {
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     const win = document.querySelector('.oracle-window');
-    if (win) win.classList.add('outro');
+    if (win) { win.scrollTop = 0; win.classList.add('outro'); }
     textEl.classList.remove('fading', 'breathing');
     textEl.textContent = fullText;
     textEl.style.setProperty('--crawl-dur', crawlDur + 's');
