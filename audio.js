@@ -25,7 +25,8 @@
     const AC = window.AudioContext || window.webkitAudioContext;
     ctx = new AC();
     masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(muted ? 0 : MASTER_VOL, ctx.currentTime);
+    masterGain.gain.setValueAtTime(0, ctx.currentTime);
+    masterGain.gain.linearRampToValueAtTime(muted ? 0 : MASTER_VOL, ctx.currentTime + 0.6);
     masterGain.connect(ctx.destination);
   }
 
@@ -46,10 +47,22 @@
     startCarrier();          // 1. носитель сессии для BT
     initCtx();               // 2. web audio
     if (ctx.state === 'suspended') ctx.resume();
-    // 3. ambient через паузу — даём носителю удержать маршрут
-    setTimeout(startAmbient, 300);
+    // если переход со страницы где звук уже играл — стартуем без задержки
+    const warm = sessionStorage.getItem('uc_audio_warm') === '1';
+    sessionStorage.setItem('uc_audio_warm', '1');
+    setTimeout(startAmbient, warm ? 0 : 300);
     updateBtn();
   }
+
+  // ---------- Плавный уход со страницы ----------
+  function fadeOutForNav() {
+    if (!ctx || !masterGain) return;
+    masterGain.gain.cancelScheduledValues(ctx.currentTime);
+    masterGain.gain.setValueAtTime(masterGain.gain.value, ctx.currentTime);
+    masterGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.25);
+  }
+  window.addEventListener('pagehide', fadeOutForNav);
+  window.addEventListener('beforeunload', fadeOutForNav);
 
   // ---------- Ambient ----------
   function startAmbient() {
