@@ -126,19 +126,6 @@
 
   // Переход на внутреннюю страницу через обычные <a href>: fade-out + эффект
   // подпространства, затем честная навигация с задержкой под длительность эффекта.
-  document.addEventListener('click', function (e) {
-    const a = e.target.closest && e.target.closest('a[href]');
-    if (!a) return;
-    const href = a.getAttribute('href');
-    if (!href || href.startsWith('#') || href.startsWith('http') || a.target === '_blank') return;
-    if (!started) return; // звук ещё не запущен — переход как обычно
-
-    e.preventDefault();
-    fxSubspace();
-    prepNav();
-    setTimeout(() => { window.location.href = href; }, 900);
-  }, true);
-
   // ---------- Ambient ----------
   function startAmbient() {
     if (!ctx) return;
