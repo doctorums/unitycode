@@ -323,7 +323,7 @@
     btn.setAttribute('aria-label', 'Звук');
     btn.innerHTML = '&#9834;'; // ♪
     Object.assign(btn.style, {
-      position: 'fixed', bottom: '20px', right: '20px',
+      position: 'fixed', top: 'max(16px, env(safe-area-inset-top))', right: '16px',
       width: '42px', height: '42px', borderRadius: '50%',
       background: 'rgba(20,20,45,0.85)', border: '1px solid #333366',
       color: '#8888cc', fontSize: '18px', cursor: 'pointer',
