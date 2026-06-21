@@ -67,12 +67,12 @@
   function fxSubspace() {
     if (!ctx || muted) return;
     fxPortal();
-    setTimeout(fxAbyss, 900);
+    setTimeout(fxAbyss, 1300);
   }
 
   function fxPortal() {
     const t = ctx.currentTime;
-    const dur = 1.4;
+    const dur = 2.0;
     const osc1 = ctx.createOscillator();
     const osc2 = ctx.createOscillator();
     const g = ctx.createGain();
@@ -99,7 +99,7 @@
   function fxAbyss() {
     if (!ctx) return;
     const t = ctx.currentTime;
-    const dur = 1.8;
+    const dur = 2.2;
     const bufSize = ctx.sampleRate * dur;
     const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
