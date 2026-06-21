@@ -509,7 +509,7 @@ function startOracleOutro(mySeq, fullText) {
   // 2) фейд завершился (3с) + пауза 1.5с → текст ползёт снизу вверх (краул)
   // Скорость краула по длине текста. Делитель меньше = быстрее.
   // 14..22с — читаемо, не вяло. (был слишком медленный 24..40)
-  const crawlDur = Math.min(22, Math.max(14, Math.round(String(fullText).length / 15)));
+  const crawlDur = Math.min(25, Math.max(18, Math.round(String(fullText).length / 10)));
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     const win = document.querySelector('.oracle-window');
