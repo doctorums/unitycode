@@ -119,8 +119,13 @@
     src.start(t); src.stop(t + dur + 0.1);
   }
 
-  // Переход на внутреннюю страницу: fade-out общего звука + эффект подпространства,
-  // затем честная навигация (новый ambient стартует с нуля на новой странице).
+  function prepNav() {
+    fadeOutForNav();
+    sessionStorage.setItem('uc_audio_came_from_nav', '1');
+  }
+
+  // Переход на внутреннюю страницу через обычные <a href>: fade-out + эффект
+  // подпространства, затем честная навигация с задержкой под длительность эффекта.
   document.addEventListener('click', function (e) {
     const a = e.target.closest && e.target.closest('a[href]');
     if (!a) return;
@@ -130,8 +135,7 @@
 
     e.preventDefault();
     fxSubspace();
-    fadeOutForNav();
-    sessionStorage.setItem('uc_audio_came_from_nav', '1');
+    prepNav();
     setTimeout(() => { window.location.href = href; }, 900);
   }, true);
 
@@ -219,7 +223,7 @@
       case 'submit':  fxSubmit(); break;
       case 'node':    fxNode(); break;
       case 'connect': fxConnect(); break;
-      case 'page':    fxPage(); break;
+      case 'page':    fxSubspace(); break;
       case 'ping':    fxPing(); break;
       case 'error':   fxError(); break;
     }
@@ -382,6 +386,7 @@
     fx: fx,
     toggleMute: toggleMute,
     isMuted: () => muted,
-    start: start
+    start: start,
+    prepNav: prepNav
   };
 })();
