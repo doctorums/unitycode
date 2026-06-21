@@ -26,7 +26,7 @@
     ctx = new AC();
     masterGain = ctx.createGain();
     masterGain.gain.setValueAtTime(0, ctx.currentTime);
-    masterGain.gain.linearRampToValueAtTime(muted ? 0 : MASTER_VOL, ctx.currentTime + 0.6);
+    masterGain.gain.linearRampToValueAtTime(muted ? 0 : MASTER_VOL, ctx.currentTime + 1.2);
     masterGain.connect(ctx.destination);
   }
 
@@ -57,23 +57,29 @@
   // ---------- Плавный уход со страницы ----------
   function fadeOutForNav() {
     if (!ctx || !masterGain) return;
-    masterGain.gain.cancelScheduledValues(ctx.currentTime);
-    masterGain.gain.setValueAtTime(masterGain.gain.value, ctx.currentTime);
-    masterGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.25);
+    const now = ctx.currentTime;
+    masterGain.gain.cancelScheduledValues(now);
+    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+    masterGain.gain.linearRampToValueAtTime(0, now + 0.4);
   }
   window.addEventListener('pagehide', fadeOutForNav);
   window.addEventListener('beforeunload', fadeOutForNav);
+  // на iOS навигация может начаться раньше pagehide — ловим тап по ссылкам/кнопкам перехода заранее
+  document.addEventListener('click', function (e) {
+    const a = e.target.closest && e.target.closest('a[href], [data-nav]');
+    if (a) fadeOutForNav();
+  }, true);
 
   // ---------- Ambient ----------
   function startAmbient() {
     if (!ctx) return;
     createDrone(55, 0.06, 0);
-    createDrone(82.4, 0.04, 3.7);
-    createDrone(110, 0.035, 7.1);
+    setTimeout(() => createDrone(82.4, 0.04, 3.7), 80);
+    setTimeout(() => createDrone(110, 0.035, 7.1), 160);
     createPulse(440, 0.015, 5);
     createPulse(528, 0.012, 11);
     createPulse(396, 0.010, 17);
-    createSpaceNoise(0.022);
+    setTimeout(() => createSpaceNoise(0.022), 240);
   }
 
   function createDrone(freq, vol, detune) {
