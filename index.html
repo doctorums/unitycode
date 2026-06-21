@@ -1,392 +1,735 @@
-/* ============================================================
-   UnityCode · Global Audio Module
-   Web Audio синтез + BT-носитель для iOS
-   Подключение: <script src="audio.js" defer></script>
-   ============================================================ */
-(function () {
-  'use strict';
-
-  // Тихий зацикленный WAV — держит медиа-сессию iOS на текущем выходе (вкл. Bluetooth)
-  const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
-
-  const LS_KEY = 'uc_audio_muted';
-  const MASTER_VOL = 0.55;
-
-  let ctx = null;
-  let masterGain = null;
-  let carrier = null;        // <audio> носитель сессии
-  let started = false;
-  let muted = localStorage.getItem(LS_KEY) === '1';
-  let ambientNodes = [];
-
-  // ---------- Инициализация ----------
-  function initCtx() {
-    if (ctx) return;
-    const AC = window.AudioContext || window.webkitAudioContext;
-    ctx = new AC();
-    masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(0, ctx.currentTime);
-    masterGain.gain.linearRampToValueAtTime(muted ? 0 : MASTER_VOL, ctx.currentTime + 1.2);
-    masterGain.connect(ctx.destination);
-  }
-
-  function startCarrier() {
-    if (carrier) return;
-    carrier = new Audio(SILENT_WAV);
-    carrier.loop = true;
-    carrier.volume = 0.0001;
-    carrier.setAttribute('playsinline', '');
-    const p = carrier.play();
-    if (p && p.catch) p.catch(() => {});
-  }
-
-  // ---------- Запуск всей системы (внутри user gesture) ----------
-  function start() {
-    if (started) return;
-    started = true;
-    startCarrier();          // 1. носитель сессии для BT
-    initCtx();               // 2. web audio
-    if (ctx.state === 'suspended') ctx.resume();
-    setTimeout(startAmbient, 300);
-    updateBtn();
-  }
-
-  // ---------- Плавный уход со страницы ----------
-  function fadeOutForNav() {
-    if (!ctx || !masterGain) return;
-    const now = ctx.currentTime;
-    masterGain.gain.cancelScheduledValues(now);
-    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-    masterGain.gain.linearRampToValueAtTime(0, now + 0.8);
-  }
-  window.addEventListener('pagehide', fadeOutForNav);
-  window.addEventListener('beforeunload', fadeOutForNav);
-
-  // Эффект перехода "Портал → Бездна": мягкий портал на -2 окт. затухает,
-  // дыхание бездны подхватывает на хвосте — без провала тишины.
-  function fxSubspace() {
-    if (!ctx || muted) return;
-    fxPortal();
-    setTimeout(fxAbyss, 900);
-  }
-
-  function fxPortal() {
-    const t = ctx.currentTime;
-    const dur = 1.4;
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const g = ctx.createGain();
-    const filter = ctx.createBiquadFilter();
-    osc1.type = 'sine'; osc2.type = 'triangle';
-    osc1.frequency.setValueAtTime(82.5, t);
-    osc1.frequency.linearRampToValueAtTime(55, t + dur);
-    osc2.frequency.setValueAtTime(165, t);
-    osc2.frequency.linearRampToValueAtTime(110, t + dur);
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(700, t);
-    filter.frequency.linearRampToValueAtTime(250, t + dur);
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.22, t + 0.3);
-    g.gain.linearRampToValueAtTime(0.16, t + dur * 0.6);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur + 0.4);
-    osc1.connect(filter); osc2.connect(filter);
-    filter.connect(g); g.connect(masterGain);
-    osc1.start(); osc2.start();
-    osc1.stop(t + dur + 0.5);
-    osc2.stop(t + dur + 0.5);
-  }
-
-  function fxAbyss() {
-    if (!ctx) return;
-    const t = ctx.currentTime;
-    const dur = 1.8;
-    const bufSize = ctx.sampleRate * dur;
-    const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(150, t);
-    filter.frequency.linearRampToValueAtTime(500, t + dur * 0.5);
-    filter.frequency.linearRampToValueAtTime(80, t + dur);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.2, t + dur * 0.45);
-    g.gain.linearRampToValueAtTime(0.001, t + dur);
-    src.connect(filter); filter.connect(g); g.connect(masterGain);
-    src.start(t); src.stop(t + dur + 0.1);
-  }
-
-  function prepNav() {
-    fadeOutForNav();
-    sessionStorage.setItem('uc_audio_came_from_nav', '1');
-  }
-
-  // Переход на внутреннюю страницу через обычные <a href>: fade-out + эффект
-  // подпространства, затем честная навигация с задержкой под длительность эффекта.
-  document.addEventListener('click', function (e) {
-    const a = e.target.closest && e.target.closest('a[href]');
-    if (!a) return;
-    const href = a.getAttribute('href');
-    if (!href || href.startsWith('#') || href.startsWith('http') || a.target === '_blank') return;
-    if (!started) return; // звук ещё не запущен — переход как обычно
-
-    e.preventDefault();
-    fxSubspace();
-    prepNav();
-    setTimeout(() => { window.location.href = href; }, 900);
-  }, true);
-
-  // ---------- Ambient ----------
-  function startAmbient() {
-    if (!ctx) return;
-    createDrone(55, 0.06, 0);
-    setTimeout(() => createDrone(82.4, 0.04, 3.7), 80);
-    setTimeout(() => createDrone(110, 0.035, 7.1), 160);
-    createPulse(440, 0.015, 5);
-    createPulse(528, 0.012, 11);
-    createPulse(396, 0.010, 17);
-    setTimeout(() => createSpaceNoise(0.022), 240);
-  }
-
-  function createDrone(freq, vol, detune) {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const lfo = ctx.createOscillator();
-    const lfoGain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = freq;
-    osc.detune.value = detune;
-    lfo.frequency.value = 0.05 + Math.random() * 0.08;
-    lfoGain.gain.value = vol * 0.3;
-    lfo.connect(lfoGain);
-    lfoGain.connect(gain.gain);
-    // fade-in вместо мгновенного скачка — убирает щелчок старта
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + 1.2);
-    osc.connect(gain);
-    gain.connect(masterGain);
-    osc.start();
-    lfo.start();
-    ambientNodes.push(osc, lfo);
-  }
-
-  function createPulse(freq, vol, interval) {
-    const scheduleNext = () => {
-      if (!started) return;
-      if (!muted) {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq + (Math.random() * 4 - 2);
-        gain.gain.setValueAtTime(0, ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + 1.5);
-        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 4);
-        osc.connect(gain);
-        gain.connect(masterGain);
-        osc.start();
-        osc.stop(ctx.currentTime + 5);
-      }
-      setTimeout(scheduleNext, (interval + Math.random() * interval) * 1000);
-    };
-    setTimeout(scheduleNext, interval * 1000);
-  }
-
-  function createSpaceNoise(vol) {
-    const bufSize = ctx.sampleRate * 2;
-    const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 300;
-    const gain = ctx.createGain();
-    gain.gain.value = vol;
-    source.connect(filter);
-    filter.connect(gain);
-    gain.connect(masterGain);
-    source.start();
-    ambientNodes.push(source);
-  }
-
-  // ---------- Эффекты ----------
-  function fx(type) {
-    if (!started) { start(); }
-    if (!ctx || muted) return;
-    if (ctx.state === 'suspended') ctx.resume();
-    switch (type) {
-      case 'submit':  fxSubmit(); break;
-      case 'node':    fxNode(); break;
-      case 'connect': fxConnect(); break;
-      case 'page':    fxSubspace(); break;
-      case 'ping':    fxPing(); break;
-      case 'error':   fxError(); break;
-    }
-  }
-
-  function fxSubmit() {
-    [220, 330, 440].forEach((f, i) => {
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = f;
-      g.gain.setValueAtTime(0, ctx.currentTime + i * 0.08);
-      g.gain.linearRampToValueAtTime(0.08, ctx.currentTime + i * 0.08 + 0.1);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.08 + 1.2);
-      osc.connect(g); g.connect(masterGain);
-      osc.start(ctx.currentTime + i * 0.08);
-      osc.stop(ctx.currentTime + i * 0.08 + 1.3);
-    });
-  }
-
-  function fxNode() {
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(528, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(264, ctx.currentTime + 1.5);
-    g.gain.setValueAtTime(0, ctx.currentTime);
-    g.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.03);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2);
-    osc.connect(g); g.connect(masterGain);
-    osc.start(); osc.stop(ctx.currentTime + 2.1);
-  }
-
-  function fxConnect() {
-    [396, 528].forEach((f, i) => {
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = f;
-      g.gain.setValueAtTime(0, ctx.currentTime);
-      g.gain.linearRampToValueAtTime(0.07, ctx.currentTime + 0.3 + i * 0.15);
-      g.gain.linearRampToValueAtTime(0.07, ctx.currentTime + 1.2);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.5);
-      osc.connect(g); g.connect(masterGain);
-      osc.start(); osc.stop(ctx.currentTime + 2.6);
-    });
-  }
-
-  function fxPage() {
-    const bufSize = ctx.sampleRate * 0.5;
-    const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(200, ctx.currentTime);
-    filter.frequency.exponentialRampToValueAtTime(2000, ctx.currentTime + 0.4);
-    filter.Q.value = 0.5;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.15, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-    src.connect(filter); filter.connect(g); g.connect(masterGain);
-    src.start(); src.stop(ctx.currentTime + 0.6);
-  }
-
-  function fxPing() {
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.value = 880;
-    g.gain.setValueAtTime(0, ctx.currentTime);
-    g.gain.linearRampToValueAtTime(0.06, ctx.currentTime + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
-    osc.connect(g); g.connect(masterGain);
-    osc.start(); osc.stop(ctx.currentTime + 0.9);
-  }
-
-  function fxError() {
-    [200, 180].forEach((f, i) => {
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.value = f;
-      g.gain.setValueAtTime(0, ctx.currentTime + i * 0.12);
-      g.gain.linearRampToValueAtTime(0.06, ctx.currentTime + i * 0.12 + 0.05);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.12 + 0.3);
-      osc.connect(g); g.connect(masterGain);
-      osc.start(ctx.currentTime + i * 0.12);
-      osc.stop(ctx.currentTime + i * 0.12 + 0.4);
-    });
-  }
-
-  // ---------- Mute ----------
-  function toggleMute() {
-    if (!started) start();
-    muted = !muted;
-    localStorage.setItem(LS_KEY, muted ? '1' : '0');
-    if (masterGain && ctx) {
-      masterGain.gain.linearRampToValueAtTime(muted ? 0 : MASTER_VOL, ctx.currentTime + 0.3);
-    }
-    updateBtn();
-  }
-
-  // ---------- Кнопка ----------
-  function buildBtn() {
-    const btn = document.createElement('button');
-    btn.id = 'uc-audio-btn';
-    btn.setAttribute('aria-label', 'Звук');
-    btn.innerHTML = '&#9834;'; // ♪
-    Object.assign(btn.style, {
-      position: 'fixed', bottom: '20px', right: '20px',
-      width: '42px', height: '42px', borderRadius: '50%',
-      background: 'rgba(20,20,45,0.85)', border: '1px solid #333366',
-      color: '#8888cc', fontSize: '18px', cursor: 'pointer',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: '9999', transition: 'color .3s, border-color .3s',
-      webkitTapHighlightColor: 'transparent', backdropFilter: 'blur(4px)'
-    });
-    btn.addEventListener('touchend', e => { e.preventDefault(); toggleMute(); });
-    btn.addEventListener('click', toggleMute);
-    document.body.appendChild(btn);
-    updateBtn();
-  }
-
-  function updateBtn() {
-    const btn = document.getElementById('uc-audio-btn');
-    if (!btn) return;
-    btn.style.color = muted ? '#444466' : '#8888cc';
-    btn.style.borderColor = muted ? '#222244' : '#333366';
-    btn.title = muted ? 'Включить звук' : 'Выключить звук';
-  }
-
-  // ---------- Автозапуск при первом жесте ----------
-  function firstGesture() {
-    start();
-    document.removeEventListener('touchend', firstGesture);
-    document.removeEventListener('click', firstGesture);
-  }
-
-  function boot() {
-    buildBtn();
-    if (sessionStorage.getItem('uc_audio_came_from_nav') === '1' && !muted) {
-      sessionStorage.removeItem('uc_audio_came_from_nav');
-      try { start(); } catch (e) { /* если браузер блокирует — ждём тап */ }
-    }
-    document.addEventListener('touchend', firstGesture);
-    document.addEventListener('click', firstGesture);
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
-  }
-
-  // ---------- Публичный API ----------
-  window.UCAudio = {
-    fx: fx,
-    toggleMute: toggleMute,
-    isMuted: () => muted,
-    start: start,
-    prepNav: prepNav
-  };
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UnityCode — это пространство нейротворчества.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400&display=swap" rel="stylesheet"></noscript>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;}
+body{font-family:'Share Tech Mono',monospace;cursor:crosshair;background:#061120;}
+canvas{position:fixed;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;touch-action:none;}
+#c{z-index:0;}
+#cw{z-index:1;}
+.ui{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-bottom:15vh;pointer-events:none;}
+.ui a{pointer-events:all;}
+.version{position:fixed;top:1.4rem;left:0;right:0;font-size:0.55rem;letter-spacing:0.22em;color:rgba(255,255,255,0.28);z-index:20;overflow:hidden;white-space:nowrap;}
+.version span{display:inline-block;animation:marquee 60s linear infinite alternate, flicker 4s ease-in-out infinite;}
+@keyframes marquee{
+0% {transform:translateX(100vw);}
+100%{transform:translateX(-100%);}
+}
+@keyframes flicker{
+0%,100%{opacity:1;}
+15%{opacity:0.3;}
+18%{opacity:0.9;}
+21%{opacity:0.4;}
+24%{opacity:1;}
+60%{opacity:1;}
+62%{opacity:0.5;}
+64%{opacity:1;}
+}
+nav{position:fixed;top:1.4rem;right:1.6rem;display:flex;gap:1.6rem;z-index:20;}
+nav a{font-size:0.55rem;letter-spacing:0.15em;color:rgba(255,255,255,0.35);text-decoration:none;text-transform:uppercase;transition:color 0.3s,transform 0.3s ease,letter-spacing 0.3s;pointer-events:all;display:inline-block;transform-origin:center bottom;cursor:pointer;-webkit-tap-highlight-color:rgba(255,255,255,0.1);padding:0.5rem;}
+nav a:hover{color:rgba(255,255,255,0.85);transform:scale(1.45);letter-spacing:0.22em;}
+.center{text-align:center;max-width:640px;padding:2rem;transform:translateY(3rem);}
+.node{width:70px;height:70px;margin:0 auto 2.8rem;position:relative;}
+.node-core{width:8px;height:8px;background:rgba(255,255,255,0.75);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);animation:pc 22s ease-in-out infinite;}
+@keyframes pc{
+0%{transform:translate(-50%,-50%) scale(0.20);box-shadow:0 0 4px rgba(255,255,255,0.2),0 0 10px rgba(180,210,255,0.15);}
+3%{transform:translate(-50%,-50%) scale(0.08);box-shadow:0 0 2px rgba(255,255,255,0.1);}
+50%{transform:translate(-50%,-50%) scale(1.09);box-shadow:0 0 10px rgba(255,255,255,0.5),0 0 28px rgba(160,200,255,0.35),0 0 50px rgba(120,170,255,0.12);}
+97%{transform:translate(-50%,-50%) scale(0.08);box-shadow:0 0 2px rgba(255,255,255,0.1);}
+100%{transform:translate(-50%,-50%) scale(0.20);box-shadow:0 0 4px rgba(255,255,255,0.2),0 0 10px rgba(180,210,255,0.15);}
+}
+/* крест-звезда в минимуме */
+.node::before,.node::after{
+content:'';position:absolute;top:50%;left:50%;
+background:linear-gradient(to right,rgba(255,255,255,0) 0%,rgba(255,255,255,0.5) 50%,rgba(255,255,255,0) 100%);
+transform-origin:center;
+animation:star 22s ease-in-out infinite;
+animation-delay:-5s;
+pointer-events:none;
+}
+.node::before{width:60px;height:0.5px;margin-top:-0.25px;margin-left:-30px;}
+.node::after{width:0.5px;height:60px;margin-left:-0.25px;margin-top:-30px;}
+@keyframes star{
+0%,100%{opacity:0.6;}
+8%,92%{opacity:0;}
+50%{opacity:0;}
+}
+.label{font-size:0.8rem;letter-spacing:0.18em;color:rgba(255,255,255,0.32);text-transform:uppercase;margin-bottom:1rem;will-change:transform;opacity:0;animation:fi 1.2s ease 0.2s forwards;text-shadow:0 0 8px rgba(255,255,255,0.3),0 0 20px rgba(160,210,255,0.2);}
+.question{font-family:'Unbounded',sans-serif;font-weight:400;font-size:clamp(0.95rem,2.6vw,1.4rem);line-height:1.8;color:rgba(255,255,255,0.9);margin-bottom:1rem;text-shadow:0 2px 30px rgba(0,20,60,0.9);will-change:transform;opacity:0;animation:fi 1.5s ease 0.6s forwards;}
+.question em{font-style:normal;color:rgba(160,215,255,0.92);}
+.btn{display:inline-block;padding:0.6rem 1.6rem;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.65);font-family:'Share Tech Mono',monospace;font-size:0.65rem;letter-spacing:0.2em;text-transform:uppercase;text-decoration:none;background:rgba(255,255,255,0.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);opacity:0;animation:fi 1.5s ease 1.3s forwards;transition:all 0.3s;will-change:transform;cursor:pointer;pointer-events:all;border-radius:6px;}
+#btn{font-family:'Unbounded',sans-serif;font-size:clamp(0.95rem,2.6vw,1.4rem);letter-spacing:normal;text-transform:none;padding:0.6rem 1.6rem;border:1px solid rgba(255,255,255,0.22);background:rgba(255,255,255,0.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:rgba(160,215,255,0.92);}
+.ui a{pointer-events:all;}
+.ui span#btn{pointer-events:all;}
+.btn:hover{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.45);color:rgba(255,255,255,0.9);}
+.disclaimer{margin-top:24vh;font-size:0.58rem;color:rgba(200,210,220,0.25);line-height:2.1;will-change:transform;opacity:0;animation:fi 2s ease 2.2s forwards;cursor:pointer;pointer-events:all;transition:transform 0.4s ease, color 0.4s ease;}
+@keyframes fi{to{opacity:1;}}
+.wl{display:inline-block;will-change:transform;}
+#tunnel-canvas{position:fixed;inset:0;z-index:60;pointer-events:none;display:none;}
+#choice{position:fixed;inset:0;z-index:80;background:linear-gradient(135deg, #061120 0%, #040d1a 50%, #030b16 100%);display:none;flex-direction:column;align-items:center;justify-content:center;gap:2rem;}
+.choice-inner{display:flex;flex-direction:column;align-items:center;gap:2rem;min-height:420px;justify-content:center;}
+.choice-q{font-family:'Unbounded',sans-serif;font-size:clamp(0.7rem,1.8vw,1rem);color:rgba(255,255,255,0.55);text-align:left;line-height:1.8;max-width:600px;}
+.choice-btns{display:flex;flex-direction:column;gap:1rem;align-items:center;}
+.choice-btn{padding:0.6rem 1.6rem;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.65);font-family:'Share Tech Mono',monospace;font-size:0.65rem;letter-spacing:0.2em;text-transform:uppercase;background:rgba(255,255,255,0.04);cursor:pointer;transition:all 0.3s;text-align:center;border-radius:6px;min-width:220px;}
+.choice-btn:hover,.choice-btn:active{border-color:rgba(90,185,250,0.5);color:rgba(90,185,250,0.9);}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<canvas id="cw"></canvas>
+<canvas id="tunnel-canvas"></canvas>
+<div id="choice">
+<canvas id="choice-stars" style="position:absolute;inset:0;pointer-events:none;z-index:0;"></canvas>
+<div class="choice-inner">
+<div class="choice-q" id="choiceQ" style="position:relative;z-index:1;">Зачем это тебе?<br><br>Чтобы перестать чувствовать себя отдельной точкой.<br>Когда ты видишь, как твои мысли соединяются с идеями<br>других людей и с чем-то большим,<br>одиночество отступает.<br>Это не терапия и не религия.<br>Это способ ощутить связь, которая уже есть.</div>
+<div class="choice-btns" style="position:relative;z-index:1;">
+<div class="choice-btn" onclick="chooseAlt()" ontouchend="chooseAlt()">[ Что делать? ]</div>
+</div>
+</div>
+</div>
+<div class="version"><span>UNITYCODE</span></div>
+<div class="ui">
+<div class="center">
+<div class="node">
+<div class="node-core"></div>
+</div>
+<h1 class="question" id="q">
+<span class="wl">Ты пишешь то, что тебя волнует,</span><br>
+<span class="wl">а AI помогает увидеть в этом</span><br>
+<em class="wl">скрытые связи и новые смыслы.</em><br>
+<span class="wl">Здесь не дают ответов.</span><br>
+<span class="wl">Здесь помогают тебе.</span>
+</h1>
+<span class="btn" id="btn" onclick="tunnelGo(event)" ontouchend="tunnelGo(event)"><span class="wl">Услышать себя</span></span>
+<p class="disclaimer" id="disc">Некоммерческий научно-художественный эксперимент.<br>Мы не собираем персональные данные. Только сигнал.<br>Сгенерированный контент не претендует на объективную истинность.</p>
+</div>
+</div>
+<script src="i18n.js"></script>
+<script src="audio.js" defer></script>
+<script>
+/* при возврате «назад» Safari отдаёт страницу из bfcache без перезапуска —
+   перезагружаем, чтобы интро-анимация проигралась заново */
+window.addEventListener('pageshow', function(e){ if(e.persisted) location.reload(); });
+/* i18n: подставляем перевод ДО анимации (она разбивает .wl по буквам) */
+(function(){
+  var t = UC_I18N.t.bind(UC_I18N);
+  var q=document.getElementById('q'); if(q) q.innerHTML=t('index.q');
+  var b=document.getElementById('btn'); if(b) b.innerHTML='<span class="wl">'+t('index.btn')+'</span>';
+  var d=document.getElementById('disc'); if(d) d.innerHTML=t('index.disc');
+  var cq=document.getElementById('choiceQ'); if(cq) cq.innerHTML=t('index.choiceQ');
+  var cb=document.querySelector('.choice-btn'); if(cb) cb.textContent=t('index.choiceBtn');
 })();
+// ── Canvas: #c — фон/звёзды/галактика/комета/кольца
+//          #cw — волна (отдельный слой, putImageData не затирает #c)
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const cw=document.getElementById('cw'), ctxW=cw.getContext('2d');
+let W,H,cols,rows,buf0,buf1,damp;
+const CELL=4, BORDER=14;
+let waveImg=null;
+
+// ── Звёзды ────────────────────────────────────────────────────────────────
+const stars=Array.from({length:500},()=>({
+x:Math.random(), y:Math.pow(Math.random(),2.5)*.42,
+r:Math.random()<.15?1.5:1,
+a:.15+Math.random()*.55,
+sp:.3+Math.random()*1.1,
+ph:Math.random()*Math.PI*2
+}));
+
+// ── Ветер ─────────────────────────────────────────────────────────────────
+const windBands=Array.from({length:7},()=>({
+x:Math.random(),y:Math.random(),
+vx:(Math.random()-.5)*.00006, vy:(Math.random()-.5)*.00005,
+amp:.085+Math.random()*.17, ph:Math.random()*Math.PI*2,
+wanderPh:Math.random()*Math.PI*2
+}));
+const WIND_NOISE=new Float32Array(256).map(()=>Math.random()-.5);
+let windNI=0;
+function rnd(){return WIND_NOISE[(windNI++)&255];}
+let windT=0;
+
+// ── Кольца / комета ───────────────────────────────────────────────────────
+const rings=[];
+let cometT=null, cometParams={};
+
+// ── Init ──────────────────────────────────────────────────────────────────
+function init(){
+W=cv.width=cw.width=window.innerWidth;
+H=cv.height=cw.height=window.innerHeight;
+cols=Math.ceil(W/CELL)+2; rows=Math.ceil(H/CELL)+2;
+buf0=new Float32Array(cols*rows);
+buf1=new Float32Array(cols*rows);
+damp=new Float32Array(cols*rows);
+for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+const ex=Math.min(c,cols-1-c,BORDER)/BORDER;
+const ey=Math.min(r,rows-1-r,BORDER)/BORDER;
+const e=Math.min(ex,ey); const s=e<1?e*e*(3-2*e):1;
+damp[r*cols+c]=0.945*s;
+}
+waveImg=ctxW.createImageData(W,H);
+invalidateRectCache();
+}
+function idx(c,r){return r*cols+c;}
+
+// ── Физика ────────────────────────────────────────────────────────────────
+function step(){
+for(let r=1;r<rows-1;r++)for(let c=1;c<cols-1;c++){
+const i=idx(c,r);
+buf1[i]=(buf0[idx(c-1,r)]+buf0[idx(c+1,r)]+buf0[idx(c,r-1)]+buf0[idx(c,r+1)])*.5-buf1[i];
+buf1[i]*=damp[i];
+}
+const tmp=buf0;buf0=buf1;buf1=tmp;
+}
+function dropImmediate(x,y,s,rad){
+const cc=Math.round(x/CELL), rr=Math.round(y/CELL);
+for(let dr=-rad;dr<=rad;dr++)for(let dc=-rad;dc<=rad;dc++){
+const dist=Math.sqrt(dr*dr+dc*dc); if(dist>rad)continue;
+const c=cc+dc, r=rr+dr;
+if(c>0&&c<cols-1&&r>0&&r<rows-1)buf0[idx(c,r)]+=s*(1-dist/(rad+1));
+}
+}
+// Плавный вброс энергии — растягиваем импульс на несколько кадров
+const pendingDrops=[];
+function drop(x,y,s,rad,steps=6){
+pendingDrops.push({x,y,s:s/steps,rad,left:steps});
+}
+function flushDrops(){
+for(let i=pendingDrops.length-1;i>=0;i--){
+const d=pendingDrops[i];
+dropImmediate(d.x,d.y,d.s,d.rad);
+if(--d.left<=0)pendingDrops.splice(i,1);
+}
+}
+
+// ── Ветер ─────────────────────────────────────────────────────────────────
+function liveWater(dt,t){
+windT+=dt;
+for(const wb of windBands){
+wb.wanderPh+=0.0008;
+wb.vx+=Math.sin(wb.wanderPh*1.3)*0.000008;
+wb.vy+=Math.cos(wb.wanderPh)*0.000008;
+const spd=Math.sqrt(wb.vx*wb.vx+wb.vy*wb.vy);
+if(spd>0.00012){wb.vx*=0.00012/spd; wb.vy*=0.00012/spd;}
+wb.x+=wb.vx; wb.y+=wb.vy;
+if(wb.x<-.1)wb.x=1.1; if(wb.x>1.1)wb.x=-.1;
+if(wb.y<-.1)wb.y=1.1; if(wb.y>1.1)wb.y=-.1;
+const str=wb.amp*(.5+.5*Math.sin(t*.4+wb.ph));
+if(str>.12){
+for(let s=0;s<4;s++){
+const angle=wb.wanderPh+s*1.4;
+const spread=60+rnd()*80;
+drop(wb.x*W+Math.cos(angle)*spread*rnd(), wb.y*H+Math.sin(angle)*spread*rnd(), str, 1, 8);
+}
+}
+}
+if(windT>4.0+rnd()*3.0+1.5){
+windT=0;
+const mx=W*.12;
+drop(mx+rnd()*2*(W-mx*2)+W*.5, mx+rnd()*2*(H-mx*2)+H*.5, .8+rnd()*.6+1.0, 1, 8);
+}
+}
+
+// ── Кольца ────────────────────────────────────────────────────────────────
+function addRing(x,y){
+const baseSpd=(.2+Math.random()*.5)*1.1;
+rings.push({x,y,r:2,max:360,a:.28,spd:baseSpd,w:1.8});
+drop(x,y,8,3,14);
+setTimeout(()=>{rings.push({x,y,r:2,max:260,a:.18,spd:baseSpd*.72,w:.55}); drop(x,y,3,2,18);},550);
+setTimeout(()=>{rings.push({x,y,r:2,max:170,a:.09,spd:baseSpd*.48,w:.32}); drop(x,y,1.5,1,18);},1100);
+}
+
+// ── Комета ────────────────────────────────────────────────────────────────
+function scheduleComet(){
+setTimeout(()=>{
+const edge=Math.random();
+let sx,sy;
+if(edge<0.6){sx=W*(0.4+Math.random()*0.6);sy=10+Math.random()*30;}
+else{sx=W-10-Math.random()*30;sy=H*Math.random()*0.4;}
+let dx,dy;
+if(Math.random()<0.3){
+const tx=W*(0.4+Math.random()*0.2), ty=H*(0.4+Math.random()*0.2);
+const len=Math.sqrt((tx-sx)**2+(ty-sy)**2);
+const dist=W*(0.55+Math.random()*0.3);
+dx=(tx-sx)/len*dist; dy=(ty-sy)/len*dist;
+}else{
+const a=(195+Math.random()*110)*Math.PI/180;
+const dist=W*(0.45+Math.random()*0.35);
+dx=Math.cos(a)*dist; dy=Math.sin(a)*dist;
+}
+cometParams={sx,sy,dx,dy,dur:12+Math.random()*22};
+cometT=performance.now()/1000;
+},(3+Math.random()*5)*1000);
+}
+scheduleComet();
+
+// ── Галактика ─────────────────────────────────────────────────────────────
+let lastGalaxyAngle=-999, galaxyCache=null;
+function drawGalaxy(t){
+const gAngle=t*.008;
+if(Math.abs(gAngle-lastGalaxyAngle)<0.05 && galaxyCache){
+ctx.drawImage(galaxyCache,0,0); return;
+}
+lastGalaxyAngle=gAngle;
+if(!galaxyCache||galaxyCache.width!==W){
+galaxyCache=document.createElement('canvas');
+galaxyCache.width=W; galaxyCache.height=H;
+}
+const gc2=galaxyCache.getContext('2d');
+gc2.clearRect(0,0,W,H);
+const gx=W*.72, gy=H*.13;
+const gg=gc2.createRadialGradient(gx,gy,0,gx,gy,W*.18);
+gg.addColorStop(0,'rgba(180,160,255,0.055)'); gg.addColorStop(0.3,'rgba(140,120,230,0.03)');
+gg.addColorStop(0.7,'rgba(80,80,180,0.012)'); gg.addColorStop(1,'rgba(0,0,80,0)');
+gc2.fillStyle=gg; gc2.beginPath();
+gc2.ellipse(gx,gy,W*.18,W*.07,gAngle+.4,0,Math.PI*2); gc2.fill();
+const gc3=gc2.createRadialGradient(gx,gy,0,gx,gy,W*.025);
+gc3.addColorStop(0,'rgba(255,245,220,0.22)'); gc3.addColorStop(0.4,'rgba(200,180,255,0.1)');
+gc3.addColorStop(1,'rgba(100,80,200,0)');
+gc2.fillStyle=gc3; gc2.beginPath();
+gc2.ellipse(gx,gy,W*.025,W*.012,gAngle,0,Math.PI*2); gc2.fill();
+for(let arm=0;arm<2;arm++){
+for(let i=0;i<180;i++){
+const frac=i/180, angle=gAngle+arm*Math.PI+frac*Math.PI*2.4;
+const r=W*(.008+frac*.13), spread=W*.022*frac;
+const px=gx+Math.cos(angle)*r*2.2+Math.sin(angle+1)*spread*.3;
+const py=gy+Math.sin(angle)*r*.55+Math.cos(angle+1)*spread*.15;
+const bright=(.55-frac*.45)*0.7; if(bright<.04)continue;
+const rv=Math.round(180+frac*40), gv=Math.round(160+frac*50);
+gc2.fillStyle=`rgba(${rv},${gv},255,${(bright*.18).toFixed(3)})`;
+gc2.fillRect(px,py,frac<.15?.8:.6,frac<.15?.8:.6);
+}
+}
+ctx.drawImage(galaxyCache,0,0);
+}
+
+// ── Рисование основного canvas ────────────────────────────────────────────
+function draw(t){
+// фон
+const bg=ctx.createLinearGradient(0,0,0,H);
+bg.addColorStop(0,'#0d2438'); bg.addColorStop(.5,'#091825'); bg.addColorStop(1,'#061120');
+ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+// галактика
+drawGalaxy(t);
+// комета
+if(cometT!==null){
+const ct=t-cometT, DUR=cometParams.dur||28;
+if(ct<DUR){
+const p=ct/DUR;
+const alpha=(p<.05?p/.05:1)*(p>.85?1-(p-.85)/.15:1);
+const cx2=cometParams.sx+cometParams.dx*p;
+const cy2=cometParams.sy+cometParams.dy*p;
+const tailLen=(80+p*160)*alpha;
+const ang=Math.atan2(cometParams.dy,cometParams.dx);
+const tx=cx2-Math.cos(ang)*tailLen, ty=cy2-Math.sin(ang)*tailLen;
+const tg=ctx.createLinearGradient(tx,ty,cx2,cy2);
+tg.addColorStop(0,'rgba(180,210,255,0)');
+tg.addColorStop(0.5,`rgba(200,225,255,${.08*alpha})`);
+tg.addColorStop(0.85,`rgba(230,240,255,${.25*alpha})`);
+tg.addColorStop(1,'rgba(255,255,255,0)');
+ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(cx2,cy2);
+ctx.strokeStyle=tg;ctx.lineWidth=1.5*alpha;ctx.stroke();
+const t2g=ctx.createLinearGradient(tx,ty,cx2,cy2);
+t2g.addColorStop(0,'rgba(160,200,255,0)');
+t2g.addColorStop(1,`rgba(180,215,255,${.04*alpha})`);
+ctx.beginPath();ctx.moveTo(tx-Math.sin(ang)*3,ty+Math.cos(ang)*3);ctx.lineTo(cx2,cy2);
+ctx.strokeStyle=t2g;ctx.lineWidth=4*alpha;ctx.stroke();
+const hg=ctx.createRadialGradient(cx2,cy2,0,cx2,cy2,5);
+hg.addColorStop(0,`rgba(255,255,255,${.9*alpha})`);
+hg.addColorStop(0.4,`rgba(220,235,255,${.4*alpha})`);
+hg.addColorStop(1,'rgba(180,210,255,0)');
+ctx.fillStyle=hg;ctx.beginPath();ctx.arc(cx2,cy2,5,0,Math.PI*2);ctx.fill();
+ctx.fillStyle=`rgba(255,255,255,${alpha})`;
+ctx.beginPath();ctx.arc(cx2,cy2,1.2,0,Math.PI*2);ctx.fill();
+}else{cometT=null;scheduleComet();}
+}
+// звёзды
+for(const s of stars){
+const twinkle=.4+.6*Math.sin(t*s.sp+s.ph);
+ctx.fillStyle=`rgba(220,235,255,${(s.a*twinkle).toFixed(3)})`;
+ctx.fillRect(s.x*W,s.y*H,s.r,s.r);
+}
+// кольца
+for(let i=rings.length-1;i>=0;i--){
+const rg=rings[i]; const progress=rg.r/rg.max;
+const bell=Math.sin(progress*Math.PI); const alpha=rg.a*bell;
+if(alpha>0.004){
+const lw=rg.w>1?rg.w*bell:rg.w*(1-progress*.5);
+ctx.beginPath();ctx.arc(rg.x,rg.y,rg.r,0,Math.PI*2);
+ctx.strokeStyle=`rgba(${Math.round(110-progress*80)},${Math.round(205-progress*120)},255,${alpha})`;
+ctx.lineWidth=lw; ctx.stroke();
+}
+rg.r+=rg.spd; if(rg.r>rg.max)rings.splice(i,1);
+}
+// спарклы
+ctx.save();ctx.globalCompositeOperation='lighter';
+for(let r=2;r<rows-2;r+=2)for(let c=2;c<cols-2;c+=2){
+const v=buf0[idx(c,r)];
+if(v>4.5){ctx.fillStyle=`rgba(200,238,255,${Math.min(.04,(v-4.5)*.015)})`;ctx.fillRect(c*CELL-1,r*CELL-1,2,2);}
+}
+ctx.restore();
+}
+
+// ── Волна на отдельном canvas #cw ─────────────────────────────────────────
+function drawWave(){
+const data=waveImg.data;
+data.fill(0);
+for(let r=1;r<rows-1;r++){
+const py=r*CELL; if(py>=H)continue;
+for(let c=1;c<cols-1;c++){
+const v=buf0[idx(c,r)]; if(Math.abs(v)<.05)continue;
+const px=c*CELL; if(px>=W)continue;
+const absV=Math.abs(v);
+const b=Math.min(.153,absV*absV*absV*.255);
+if(b<0.005)continue;
+const a=Math.round(b*255);
+for(let dy=0;dy<CELL+1&&py+dy<H;dy++){
+let off=((py+dy)*W+px)*4;
+for(let dx=0;dx<CELL+1&&px+dx<W;dx++,off+=4){
+if(v>0){data[off]=90;data[off+1]=185;data[off+2]=250;data[off+3]=a;}
+else {data[off]=0; data[off+1]=12; data[off+2]=55; data[off+3]=Math.round(a*.85);}
+}
+}
+}
+}
+ctxW.putImageData(waveImg,0,0);
+}
+
+// ── Текст ─────────────────────────────────────────────────────────────────
+const waveLines=Array.from(document.querySelectorAll('.wl')).map((el,i)=>({
+el, phase:i*0.55, freq:0.32+i*0.03, amp:0.35+Math.random()*0.25, cx:0, cy:0
+}));
+// кнопка качается как часть текста
+const btnEl2=document.getElementById('btn');
+if(btnEl2) waveLines.push({el:btnEl2, phase:1.8, freq:0.35, amp:0.38, cx:0, cy:0});
+
+function invalidateRectCache(){
+for(const e of waveLines){
+const rect=e.el.getBoundingClientRect();
+e.cx=rect.left+rect.width/2; e.cy=rect.top+rect.height/2;
+}
+}
+let rectFrame=0;
+function waveAt(x,y){
+const c=Math.round(x/CELL),r=Math.round(y/CELL);
+if(c<2||c>cols-3||r<2||r>rows-3)return null;
+return{v:buf0[idx(c,r)],vx:buf0[idx(c+1,r)]-buf0[idx(c-1,r)],vy:buf0[idx(c,r+1)]-buf0[idx(c,r-1)]};
+}
+function animText(t){
+if(++rectFrame>90){rectFrame=0;invalidateRectCache();}
+for(const e of waveLines){
+const dy0=e.amp*Math.sin(t*e.freq+e.phase);
+const dx0=e.amp*.22*Math.sin(t*e.freq*.7+e.phase+1.3);
+const w=waveAt(e.cx,e.cy);
+const wdx=w?w.vx*6:0;
+const wdy=w?(w.vy*6 + w.v*4):0;
+const wsk=w?w.vx*.35:0;
+e.el.style.transform=`translate(${(dx0+wdx).toFixed(2)}px,${(dy0+wdy).toFixed(2)}px) skewX(${wsk.toFixed(2)}deg)`;
+// буквы качаются по синусоиде
+if(e.letters){
+e.letters.forEach(function(l,i){
+const ly=0.8*Math.sin(t*1.2+e.phase+i*0.35);
+l.style.transform=`translateY(${ly.toFixed(2)}px)`;
+});
+}
+}
+}
+
+// ── Обёртка букв в span ───────────────────────────────────────────────────
+(function(){
+document.querySelectorAll('.wl').forEach(function(el){
+// только строки вопроса и disclaimer — не label и не кнопка
+if(el.closest('#btn')||el.closest('.disclaimer'))return;
+var text=el.textContent;
+if(!text.trim())return;
+el.innerHTML=text.split('').map(function(ch){
+return ch===' '?'<span style="display:inline-block;width:0.3em"> </span>':'<span style="display:inline-block">'+ch+'</span>';
+}).join('');
+// сохраняем ссылки на буквы
+var entry=waveLines.find(function(e){return e.el===el;});
+if(entry) entry.letters=Array.from(el.querySelectorAll('span'));
+});
+})();
+
+// ── Events ────────────────────────────────────────────────────────────────
+document.addEventListener('mousemove',e=>drop(e.clientX,e.clientY,.15,1,12));
+document.addEventListener('click',e=>{addRing(e.clientX,e.clientY);});
+document.addEventListener('touchstart',e=>{
+if(e.target.closest('nav,a,.btn'))return;
+for(const t of e.touches){addRing(t.clientX,t.clientY);}
+},{passive:true});
+document.addEventListener('touchmove',e=>{
+if(e.target.closest('nav,a,.btn'))return;
+for(const t of e.touches)drop(t.clientX,t.clientY,.8,1,8);
+e.preventDefault();
+},{passive:false});
+
+(function(){
+const lbl=document.querySelector('.center');
+let lastX=0,lastY=0,lastT=0,shakeEnergy=0,cooldown=false;
+function launchFromLbl(){
+if(cooldown||cometT!==null)return;
+cooldown=true;setTimeout(()=>cooldown=false,5000);
+const rect=lbl.getBoundingClientRect();
+const sx=rect.left+Math.random()*rect.width, sy=rect.top+Math.random()*rect.height;
+const a=(180+Math.random()*180)*Math.PI/180;
+const dist=W*(0.4+Math.random()*0.45);
+cometParams={sx,sy,dx:Math.cos(a)*dist,dy:Math.sin(a)*dist};
+cometT=performance.now()/1000;
+}
+function onMove(cx,cy){
+const now=performance.now(),dt=(now-lastT)/1000||0.016;
+const speed=Math.sqrt((cx-lastX)**2+(cy-lastY)**2)/dt;
+lastX=cx;lastY=cy;lastT=now;
+shakeEnergy=shakeEnergy*.85+speed*.15;
+if(shakeEnergy>1800)launchFromLbl();
+}
+lbl.addEventListener('mousemove',e=>onMove(e.clientX,e.clientY));
+lbl.addEventListener('touchmove',e=>onMove(e.touches[0].clientX,e.touches[0].clientY),{passive:true});
+})();
+
+window.addEventListener('resize',()=>{
+galaxyCache=null;
+waveImg=null;
+init();
+});
+
+init();
+invalidateRectCache();
+setTimeout(()=>dropImmediate(W*.5,H*.45,4,2),300);
+setTimeout(()=>dropImmediate(W*.3,H*.6,2.5,1),900);
+setTimeout(()=>dropImmediate(W*.7,H*.35,2.5,1),1600);
+setTimeout(()=>dropImmediate(W*.45,H*.25,2,1),2300);
+setTimeout(()=>dropImmediate(W*.65,H*.7,2,1),3000);
+
+let prev=performance.now();
+(function loop(now){
+const dt=(now-prev)/1000; prev=now; const t=now/1000;
+liveWater(dt,t);
+flushDrops();
+if(Math.random()<.25)step();
+draw(t);
+drawWave();
+animText(t);
+if(window._tunnelDraw) window._tunnelDraw(now);
+requestAnimationFrame(loop);
+})(performance.now());
+
+// ── Tunnel ────────────────────────────────────────────────────────────────
+(function(){
+var tc=document.getElementById('tunnel-canvas');
+var tctx=tc.getContext('2d');
+tc.width=window.innerWidth; tc.height=window.innerHeight;
+window.addEventListener('resize',function(){tc.width=window.innerWidth;tc.height=window.innerHeight;});
+var active=false, startTime=Infinity, DUR=2000;
+var aiQuestion=UC_I18N.t('index.choiceQ');
+var aiAlts=[ UC_I18N.t('index.aiAlts0') ];
+
+function startTunnel(){
+active=true;
+startTime=performance.now();
+tc.style.display='block';
+}
+window.tunnelGo=function(e){
+e.preventDefault();
+if(active)return;
+if(window.UCAudio){ UCAudio.fx('page'); UCAudio.prepNav && UCAudio.prepNav(); }
+startTunnel();
+};
+window._tunnelDraw=function(now){
+if(!active)return;
+var p=Math.min((now-startTime)/DUR,1);
+var ease=1-Math.pow(1-p,2.5);
+var W=tc.width,H=tc.height,cx=W/2,cy=H/2;
+var maxLen=Math.sqrt(cx*cx+cy*cy)*1.5;
+tctx.clearRect(0,0,W,H);
+// линии
+tctx.save();
+for(var i=0;i<48;i++){
+var angle=(i/48)*Math.PI*2;
+var phOff=(Math.sin(i*2.3)*0.15+Math.cos(i*1.7)*0.1);
+var le=Math.min(1,Math.max(0,ease+phOff));
+var segLen=maxLen*(0.15+Math.sin(i*1.1)*0.08);
+var endLen=maxLen*(1-le);
+var startLen=Math.min(maxLen,endLen+segLen);
+var alpha=Math.min(0.9,ease*2)*(1-Math.max(0,(le-0.85)/0.15));
+if(alpha<0.01)continue;
+// каждая линия слегка разного цвета — от голубого через белый к тёплому
+var hue=i/48;
+var r=Math.round(90+hue*80);    // 90→170 (голубой→тёплый)
+var g=Math.round(185-hue*40);   // 185→145
+var b2=Math.round(250-hue*120); // 250→130 (холодный→тёплый)
+tctx.beginPath();
+tctx.moveTo(cx+Math.cos(angle)*startLen,cy+Math.sin(angle)*startLen);
+tctx.lineTo(cx+Math.cos(angle)*Math.max(0,endLen),cy+Math.sin(angle)*Math.max(0,endLen));
+tctx.strokeStyle='rgba('+r+','+g+','+b2+','+alpha+')';
+tctx.lineWidth=Math.max(0.3,(1-ease)*2+0.3);
+tctx.stroke();
+}
+tctx.restore();
+// центральная точка + крест-звезда при схождении
+if(ease>0.6){
+var ca=(ease-0.6)/0.4;
+var r=Math.max(1,30*(1-ease));
+var g=tctx.createRadialGradient(cx,cy,0,cx,cy,r);
+g.addColorStop(0,'rgba(255,255,255,'+ca+')');
+g.addColorStop(1,'rgba(90,185,250,0)');
+tctx.fillStyle=g;
+tctx.beginPath();tctx.arc(cx,cy,r,0,Math.PI*2);tctx.fill();
+if(ease>0.75){
+var starP=Math.min((ease-0.75)/0.25, 1);
+var starAlpha=Math.sin(starP*Math.PI*0.5)*(1-starP*0.3);
+var starLen=Math.max(1, 220*(1-starP));
+tctx.save();
+tctx.lineWidth=Math.max(0.5,2*(1-starP));
+[[0,1],[0,-1],[1,0],[-1,0]].forEach(function(d){
+var grad=tctx.createLinearGradient(cx,cy,cx+d[0]*starLen,cy+d[1]*starLen);
+grad.addColorStop(0,'rgba(255,255,255,'+starAlpha+')');
+grad.addColorStop(1,'rgba(255,255,255,0)');
+tctx.beginPath();tctx.moveTo(cx,cy);
+tctx.lineTo(cx+d[0]*starLen,cy+d[1]*starLen);
+tctx.strokeStyle=grad;tctx.stroke();
+});
+[[0.707,0.707],[0.707,-0.707],[-0.707,0.707],[-0.707,-0.707]].forEach(function(d){
+var dLen=starLen*0.6;
+var grad=tctx.createLinearGradient(cx,cy,cx+d[0]*dLen,cy+d[1]*dLen);
+grad.addColorStop(0,'rgba(255,255,255,'+(starAlpha*0.7)+')');
+grad.addColorStop(1,'rgba(255,255,255,0)');
+tctx.beginPath();tctx.moveTo(cx,cy);
+tctx.lineTo(cx+d[0]*dLen,cy+d[1]*dLen);
+tctx.strokeStyle=grad;tctx.stroke();
+});
+tctx.restore();
+}
+}
+// вспышка → чёрный
+if(ease>0.96){
+var fa=(ease-0.96)/0.04;
+if(fa<=0.5){tctx.fillStyle='rgba(255,255,255,'+(fa/0.5)+')';tctx.fillRect(0,0,W,H);}
+else{
+tctx.fillStyle='rgba(255,255,255,'+(1-(fa-0.5)*2)+')';tctx.fillRect(0,0,W,H);
+tctx.fillStyle='rgba(0,0,0,'+((fa-0.5)*2)+')';tctx.fillRect(0,0,W,H);
+}
+}
+// UI уходит
+var ui=Math.max(0,1-ease*2.5).toFixed(2);
+document.querySelector('.ui').style.opacity=ui;
+document.querySelector('.version').style.opacity=ui;
+var navEl=document.querySelector('nav'); if(navEl) navEl.style.opacity=ui;
+if(p>=1){
+active=false;
+setTimeout(function(){window.location.href='petlya.html';},300);
+}
+};
+window.chooseYes=function(){
+var c=document.getElementById('choice');
+c.style.transition='opacity 0.3s';c.style.opacity='0';
+// чёрный экран поверх всего
+var black=document.createElement('div');
+black.style.cssText='position:fixed;inset:0;background:#000;z-index:200;opacity:0;transition:opacity 0.3s ease;';
+document.body.appendChild(black);
+setTimeout(function(){black.style.opacity='1';},50);
+setTimeout(function(){window.location.href='petlya.html';},400);
+};
+window.chooseAlt=function(){
+var q=document.getElementById('choiceQ');
+var btn=document.querySelector('.choice-btn');
+q.style.transition='opacity 0.5s ease';
+q.style.opacity='0';
+btn.style.transition='opacity 0.3s ease';
+btn.style.opacity='0';
+setTimeout(function(){
+q.innerHTML=aiAlts[0];
+q.style.opacity='1';
+},550);
+setTimeout(function(){
+btn.textContent=UC_I18N.t('index.btnSpiral');
+btn.style.borderColor='rgba(255,255,255,0.22)';
+btn.style.color='rgba(255,255,255,0.65)';
+btn.style.background='rgba(255,255,255,0.04)';
+btn.style.transition='opacity 0.5s ease';
+btn.style.opacity='1';
+btn.onclick=function(){ chooseYes(); };
+btn.ontouchend=function(){ chooseYes(); };
+},1200);
+};
+})();
+
+// ── Звёзды на экране выбора ───────────────────────────────────────────────
+(function(){
+var cv=document.getElementById('choice-stars');
+if(!cv)return;
+var ctx2=cv.getContext('2d');
+var stars=[];
+function resize(){
+cv.width=cv.offsetWidth;
+cv.height=cv.offsetHeight;
+}
+function initStars(){
+stars=[];
+for(var i=0;i<120;i++){
+stars.push({
+x:Math.random()*cv.width,
+y:Math.random()*cv.height,
+r:Math.random()*1.2+0.2,
+a:Math.random(),
+speed:0.0003+Math.random()*0.0008,
+phase:Math.random()*Math.PI*2
+});
+}
+}
+var running=false;
+function loop(now){
+if(!running)return;
+ctx2.clearRect(0,0,cv.width,cv.height);
+for(var i=0;i<stars.length;i++){
+var s=stars[i];
+var alpha=s.a*(0.4+0.6*Math.sin(now*s.speed+s.phase));
+ctx2.beginPath();
+ctx2.arc(s.x,s.y,s.r,0,Math.PI*2);
+ctx2.fillStyle='rgba(255,255,255,'+alpha.toFixed(3)+')';
+ctx2.fill();
+}
+requestAnimationFrame(loop);
+}
+// запускаем когда choice показывается
+var observer=new MutationObserver(function(){
+var c=document.getElementById('choice');
+if(c.style.display==='flex'){
+resize(); initStars(); running=true; requestAnimationFrame(loop);
+} else {
+running=false;
+}
+});
+observer.observe(document.getElementById('choice'),{attributes:true,attributeFilter:['style']});
+})();
+
+// ── Disclaimer zoom ───────────────────────────────────────────────────────
+(function(){
+var d=document.getElementById('disc');
+var zoomed=false;
+d.addEventListener('touchend',function(e){
+e.preventDefault();
+e.stopPropagation();
+zoomed=true;
+d.style.transform='scale(1.31)';
+d.style.color='rgba(255,255,255,0.45)';
+},{passive:false});
+document.addEventListener('touchend',function(e){
+if(zoomed && e.target!==d && !d.contains(e.target)){
+zoomed=false;
+d.style.transform='';
+d.style.color='';
+}
+},{passive:true});
+})();
+</script>
+</body>
+</html>
