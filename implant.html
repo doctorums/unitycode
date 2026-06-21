@@ -230,11 +230,25 @@
       transform: scale(1);
       opacity: 1;
     }
-    /* во время краула — окно становится «экраном»: фикс. высота, обрезка */
-    .oracle-window.outro {
+    /* "locked" — окно зафиксировано в размере, который у него был на момент
+       конца печати. Включается JS-ом сразу после допечатки и держится все
+       фазы завершения (стоит/фейд/краул), пока окно не закроется. Раскладка
+       через flex: подпись и кнопка — фиксированные блоки, вьюпорт текста —
+       занимает всё оставшееся место. Кнопка физически не может сдвинуться,
+       что бы ни происходило с текстом внутри вьюпорта (даже position:absolute). */
+    .oracle-window.locked {
+      display: flex;
+      flex-direction: column;
       overflow: hidden;
-      height: 60vh;
-      transition: height 0.6s ease;
+    }
+    .oracle-window.locked .oracle-label,
+    .oracle-window.locked .oracle-close {
+      flex: 0 0 auto;
+    }
+    .oracle-window.locked .oracle-viewport {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
     }
     .oracle-window::before {
       content: '';
@@ -249,6 +263,13 @@
       text-transform: uppercase;
       margin-bottom: 1.4rem;
       opacity: 0.8;
+    }
+
+    /* вьюпорт текста — во время печати обычный блок (текст растёт внутри
+       окна как раньше), во время "locked" режима — точка отсчёта (relative)
+       для абсолютного краула, без влияния на размер окна */
+    .oracle-viewport {
+      position: relative;
     }
 
     .oracle-text {
@@ -268,16 +289,16 @@
     }
     /* фаза 2: растворение — управляется из JS (inline transition+opacity),
        чтобы гарантированно отрабатывал плавный переход без конфликта с animation */
-    /* фаза 4: плоский краул — текст ползёт снизу вверх сплошным потоком.
-       Окно (.outro) — «экран» фикс. высоты с обрезкой. Текст абсолютный,
-       стартует ниже экрана (translateY +60vh) и уезжает за верх. */
+    /* фаза 4: плоский краул — текст ползёт снизу вверх сплошным потоком
+       внутри зафиксированного вьюпорта (родитель уже locked, своих
+       размеров не меняет — кнопка ниже него неподвижна). */
     .oracle-text.crawl {
       position: absolute;
-      left: 1.8rem; right: 1.8rem;       /* совпадает с padding окна */
+      left: 0; right: 0;
       top: 0;
       opacity: 1;
       will-change: transform;
-      transform: translateY(60vh);        /* старт: под нижним краем экрана */
+      transform: translateY(60vh);        /* старт: ниже видимой области */
       animation: oracleCrawl var(--crawl-dur, 15s) linear forwards;
     }
     @keyframes oracleCrawl {
@@ -380,8 +401,10 @@
 <div class="oracle-overlay" id="oracle" onclick="if(event.target===this) closeOracle()">
   <div class="oracle-window">
     <div class="oracle-label" id="oracle-label" data-i18n="implant.labelNetPattern">// НАБЛЮДЕНИЕ СЕТИ</div>
-    <div class="oracle-text" id="oracle-text"></div>
-    <button class="oracle-close" id="oracle-close" onclick="closeOracle()">// закрыть</button>
+    <div class="oracle-viewport" id="oracle-viewport">
+      <div class="oracle-text" id="oracle-text"></div>
+    </div>
+    <button class="oracle-close" id="oracle-close" onclick="closeOracle()" data-i18n="implant.close">// закрыть</button>
   </div>
 </div>
 
@@ -423,19 +446,16 @@ function openOracle(label) {
   const textEl = document.getElementById('oracle-text');
   const closeBtn = document.getElementById('oracle-close');
   const labelEl = document.getElementById('oracle-label');
+  const win = document.querySelector('.oracle-window');
   clearOutro();
   resetOracleText(textEl);
+  if (win) {
+    win.classList.remove('locked');
+    win.style.removeProperty('height');
+    win.style.removeProperty('max-height');
+  }
   if (label) labelEl.textContent = label;
-  // надпись ожидания по текущему языку (i18n.js недоступен для правки —
-  // фолбэк прямо здесь; при желании вынести в словарь ключом implant.listening)
-  const wlang = (window.UC_I18N ? UC_I18N.lang : 'ru');
-  const waitMsg = {
-    ru: '// Сеть слушает',
-    en: '// The Network is listening',
-    es: '// La Red está escuchando',
-    fr: '// Le Réseau écoute',
-    zh: '// 网络正在倾听',
-  }[wlang] || '// Сеть слушает';
+  const waitMsg = (window.UC_I18N ? UC_I18N.t('implant.listening') : '// Сеть слушает');
   textEl.innerHTML = '<span class="oracle-waiting">' + waitMsg + '<span class="oracle-cursor">▋</span></span>';
   closeBtn.classList.remove('show');
   ov.classList.add('open');
@@ -466,9 +486,17 @@ function typeOracle(text) {
       textEl.classList.add('breathing'); // допечатали — текст «задышал»
       closeBtn.classList.add('show');
       _oracleTimer = null;
-      // доскроллить окно к низу — показать кнопку «закрыть»
+      // доскроллить окно к низу, показать кнопку, и ЗАФИКСИРОВАТЬ размер —
+      // он не должен меняться во время стояния/фейда/краула (иначе кнопка
+      // и текст «прыгают»)
       const win = document.querySelector('.oracle-window');
-      if (win) win.scrollTo({ top: win.scrollHeight, behavior: 'smooth' });
+      if (win) {
+        win.scrollTo({ top: win.scrollHeight, behavior: 'smooth' });
+        const h = win.getBoundingClientRect().height;
+        win.style.height = h + 'px';
+        win.style.maxHeight = 'none';
+        win.classList.add('locked');
+      }
       startOracleOutro(mySeq, text); // запускаем ритуал завершения
       return;
     }
@@ -521,8 +549,6 @@ function startOracleOutro(mySeq, fullText) {
   const crawlDur = Math.min(22, Math.max(14, Math.round(String(fullText).length / 15)));
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
-    const win = document.querySelector('.oracle-window');
-    if (win) { win.scrollTop = 0; win.classList.add('outro'); }
     textEl.classList.remove('fading', 'breathing');
     textEl.style.removeProperty('transition');  // убрать фейд-переход
     textEl.style.removeProperty('opacity');     // вернуть видимость (краул сам ставит opacity)
@@ -557,7 +583,11 @@ function closeOracle() {
   _oracleSeq++;
   ov.classList.remove('open');
   const win = document.querySelector('.oracle-window');
-  if (win) win.classList.remove('outro');
+  if (win) {
+    win.classList.remove('locked');
+    win.style.removeProperty('height');
+    win.style.removeProperty('max-height');
+  }
   // сброс классов фаз после закрытия (когда окно уже скрылось)
   setTimeout(() => resetOracleText(textEl), 600);
 }
@@ -747,10 +777,25 @@ async function runCollectiveAnalysis() {
       return;
     }
 
+    // Точный ПОЛНЫЙ счётчик узлов — свежий запрос прямо сейчас, а не из
+    // window._graphCounts (он считается один раз при загрузке страницы и
+    // устаревает, если узлы добавили/удалили без перезагрузки — кэш тогда
+    // не замечает изменения графа). Prefer:count=exact + limit=1 — лёгко,
+    // не тянет все строки, только число в заголовке Content-Range.
+    let totalNodes = nodes.length;
+    try {
+      const cntRes = await fetch(`${SUPABASE_URL}/rest/v1/nodes?select=id&limit=1`, {
+        headers: { ...headers, Prefer: 'count=exact' },
+      });
+      const cr = cntRes.headers.get('content-range'); // формат "0-0/123"
+      const total = cr ? parseInt(cr.split('/')[1], 10) : NaN;
+      if (Number.isFinite(total)) totalNodes = total;
+    } catch (e) { /* не вышло — используем nodes.length как раньше */ }
+
     // Шлём граф Агенту-Аналитику в режиме коллективного среза.
-    // graph_counts — полные счётчики всей Сети (не обрезанные 30),
-    // по ним worker решает: отдать кэш или пересчитать.
-    const gc = window._graphCounts || { nodes: nodes.length, conns: (Array.isArray(conns) ? conns.length : 0) };
+    // graph_counts — свежие полные счётчики, по ним worker решает:
+    // отдать кэш или пересчитать.
+    const gc = { nodes: totalNodes, conns: Array.isArray(conns) ? conns.length : 0 };
     const aiRes = await fetch(ANALYZE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -764,6 +809,11 @@ async function runCollectiveAnalysis() {
     });
     const data = await aiRes.json();
     typeOracle(data.interpretation || UC_I18N.t('petlya.signalUnrecognized'));
+    setTimeout(() => {
+      const t = document.getElementById('oracle-text');
+      if (t && data.diag) t.insertAdjacentHTML('beforeend',
+        `<div style="margin-top:1rem;font-size:0.45rem;color:#0a6;opacity:0.7;white-space:pre-wrap;">DIAG: ${esc(JSON.stringify(data.diag))}</div>`);
+    }, 400);
 
   } catch(e) {
     showOracleError(UC_I18N.t('implant.analyzeError'));
