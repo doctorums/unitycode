@@ -239,7 +239,10 @@
     .oracle-window.locked {
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      /* overflow НЕ hidden здесь — иначе скролл выключается слишком рано
+         (сразу при остановке), и длинный текст, не уместившийся в одно
+         окно, становится недоступен. Скролл остаётся живым на фазах
+         «стоит»/«фейд» — отключаем только на момент самого краула (JS). */
     }
     .oracle-window.locked .oracle-label,
     .oracle-window.locked .oracle-close {
@@ -248,7 +251,7 @@
     .oracle-window.locked .oracle-viewport {
       flex: 1 1 auto;
       min-height: 0;
-      overflow: hidden;
+      overflow-y: auto;   /* можно скроллить, если текст не влез целиком */
     }
     .oracle-window::before {
       content: '';
@@ -454,6 +457,8 @@ function openOracle(label) {
     win.style.removeProperty('height');
     win.style.removeProperty('max-height');
   }
+  const vp = document.getElementById('oracle-viewport');
+  if (vp) vp.style.removeProperty('overflow');
   if (label) labelEl.textContent = label;
   const waitMsg = (window.UC_I18N ? UC_I18N.t('implant.listening') : '// Сеть слушает');
   textEl.innerHTML = '<span class="oracle-waiting">' + waitMsg + '<span class="oracle-cursor">▋</span></span>';
@@ -496,6 +501,10 @@ function typeOracle(text) {
         win.style.height = h + 'px';
         win.style.maxHeight = 'none';
         win.classList.add('locked');
+        // вьюпорт после смены layout стартует со своего верха — доскроллим
+        // его вниз, чтобы не было прыжка от «конца текста» к «началу»
+        const vp = document.getElementById('oracle-viewport');
+        if (vp) vp.scrollTop = vp.scrollHeight;
       }
       startOracleOutro(mySeq, text); // запускаем ритуал завершения
       return;
@@ -552,6 +561,8 @@ function startOracleOutro(mySeq, fullText) {
   const crawlDur = Math.max(14, Math.round(String(fullText).length / 15));
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
+    const vp = document.getElementById('oracle-viewport');
+    if (vp) { vp.scrollTop = 0; vp.style.overflow = 'hidden'; } // только теперь — для чистого краула
     textEl.classList.remove('fading', 'breathing');
     textEl.style.removeProperty('transition');  // убрать фейд-переход
     textEl.style.removeProperty('opacity');     // вернуть видимость (краул сам ставит opacity)
@@ -591,6 +602,8 @@ function closeOracle() {
     win.style.removeProperty('height');
     win.style.removeProperty('max-height');
   }
+  const vp = document.getElementById('oracle-viewport');
+  if (vp) vp.style.removeProperty('overflow');
   // сброс классов фаз после закрытия (когда окно уже скрылось)
   setTimeout(() => resetOracleText(textEl), 600);
 }
