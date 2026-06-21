@@ -60,14 +60,24 @@
     const now = ctx.currentTime;
     masterGain.gain.cancelScheduledValues(now);
     masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-    masterGain.gain.linearRampToValueAtTime(0, now + 0.4);
+    masterGain.gain.linearRampToValueAtTime(0, now + 0.25);
   }
   window.addEventListener('pagehide', fadeOutForNav);
   window.addEventListener('beforeunload', fadeOutForNav);
-  // на iOS навигация может начаться раньше pagehide — ловим тап по ссылкам/кнопкам перехода заранее
+
+  // Перехват внутренних переходов: задерживаем навигацию на 220мс,
+  // чтобы fade-out успел отыграть, прежде чем браузер выгрузит страницу.
   document.addEventListener('click', function (e) {
-    const a = e.target.closest && e.target.closest('a[href], [data-nav]');
-    if (a) fadeOutForNav();
+    const a = e.target.closest && e.target.closest('a[href]');
+    if (!a) return;
+    const href = a.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('http') || a.target === '_blank') return;
+    if (!started) return; // звук ещё не запущен — навигация как обычно
+
+    e.preventDefault();
+    fadeOutForNav();
+    sessionStorage.setItem('uc_audio_warm', '1');
+    setTimeout(() => { window.location.href = href; }, 220);
   }, true);
 
   // ---------- Ambient ----------
@@ -298,6 +308,10 @@
 
   function boot() {
     buildBtn();
+    if (sessionStorage.getItem('uc_audio_warm') === '1' && !muted) {
+      // продолжение звука после внутреннего перехода — без нового тапа
+      try { start(); } catch (e) { /* если браузер всё же блокирует — ждём тап */ }
+    }
     document.addEventListener('touchend', firstGesture);
     document.addEventListener('click', firstGesture);
   }
