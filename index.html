@@ -540,6 +540,7 @@ tc.style.display='block';
 window.tunnelGo=function(e){
 e.preventDefault();
 if(active)return;
+active=true; // ставим сразу, чтобы второй синтетический клик (touchend+click) не дублировал звук
 if(window.UCAudio){ UCAudio.fx('page'); UCAudio.prepNav && UCAudio.prepNav(); }
 startTunnel();
 };
