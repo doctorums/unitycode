@@ -545,8 +545,11 @@ function startOracleOutro(mySeq, fullText) {
 
   // 2) фейд завершился (3с) + пауза 1.5с → текст ползёт снизу вверх (краул)
   // Скорость краула по длине текста. Делитель меньше = быстрее.
-  // 14..22с — читаемо, не вяло. (был слишком медленный 24..40)
-  const crawlDur = Math.min(22, Math.max(14, Math.round(String(fullText).length / 15)));
+  // Минимум 14с (короткий текст), потолка НЕТ — длинный текст (например,
+  // когда у графа много связей и анализ растёт на пару абзацев) получает
+  // пропорционально больше времени, иначе текст пролетает слишком быстро
+  // и кажется, что часть «не показали», хотя технически всё прошло.
+  const crawlDur = Math.max(14, Math.round(String(fullText).length / 15));
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     textEl.classList.remove('fading', 'breathing');
