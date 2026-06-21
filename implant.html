@@ -259,6 +259,9 @@
       white-space: pre-wrap;
       font-family: 'Share Tech Mono', monospace;
     }
+    .oracle-text {
+      transition: opacity 3s ease;
+    }
     .oracle-text.breathing {
       animation: oracleBreathe 5.5s ease-in-out infinite;
     }
@@ -266,11 +269,10 @@
       0%, 100% { opacity: 0.82; }
       50%      { opacity: 1; }
     }
-    /* фаза 2: текст плавно растворяется */
+    /* фаза 2: текст плавно растворяется (3с) */
     .oracle-text.fading {
-      animation: none;
-      opacity: 0;
-      transition: opacity 2.5s ease;
+      animation: none !important;
+      opacity: 0 !important;
     }
     /* фаза 4: плоский краул — текст ползёт снизу вверх сплошным потоком.
        Окно (.outro) — «экран» фикс. высоты с обрезкой. Текст абсолютный,
@@ -497,17 +499,17 @@ function startOracleOutro(mySeq, fullText) {
   clearOutro();
   const alive = () => mySeq === _oracleSeq && document.getElementById('oracle').classList.contains('open');
 
-  // 1) постоял 30с → фейд-аут текста (2.5с)
+  // 1) постоял 15с → фейд-аут текста (плавно, 3с)
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     textEl.classList.remove('breathing');
     textEl.classList.add('fading');
-  }, 30000));
+  }, 15000));
 
-  // 2) фейд завершился (~2.5с) + пауза 3с → текст ползёт снизу вверх (краул)
-  // Длительность краула зависит от длины текста: дольше для длинного,
-  // чтобы успеть прочитать ползущее. Диапазон ~12..20с.
-  const crawlDur = Math.min(20, Math.max(12, Math.round(String(fullText).length / 18)));
+  // 2) фейд завершился (3с) + пауза 1.5с → текст ползёт снизу вверх (краул)
+  // Скорость краула по длине текста. Делитель меньше = быстрее.
+  // 14..22с — читаемо, не вяло. (был слишком медленный 24..40)
+  const crawlDur = Math.min(22, Math.max(14, Math.round(String(fullText).length / 15)));
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     const win = document.querySelector('.oracle-window');
@@ -517,13 +519,13 @@ function startOracleOutro(mySeq, fullText) {
     textEl.style.setProperty('--crawl-dur', crawlDur + 's');
     void textEl.offsetHeight;          // форс reflow перед стартом анимации
     textEl.classList.add('crawl');     // поехал снизу вверх сплошным потоком
-  }, 30000 + 2500 + 3000));
+  }, 15000 + 3000 + 1500));
 
-  // 3) краул закончился (текст ушёл за верх) → окно схлопывается в центр
+  // 3) краул закончился → окно схлопывается в центр
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     closeOracle();
-  }, 30000 + 2500 + 3000 + crawlDur * 1000 + 500));
+  }, 15000 + 3000 + 1500 + crawlDur * 1000 + 500));
 }
 
 function showOracleError(msg) {
