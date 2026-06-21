@@ -106,6 +106,8 @@
     'implant.toSpiral': { ru:`[ Перейти в Спираль ]`, en:`[ Go to the Spiral ]` },
     'implant.netEmpty': { ru:`Сеть пока пуста.`, en:`The Network is empty for now.` },
     'implant.analyzeError': { ru:`Ошибка связи с узлом анализа.`, en:`Error connecting to the analysis node.` },
+    'implant.listening': { ru:`// Сеть слушает`, en:`// The Network is listening`, es:`// La Red está escuchando`, fr:`// Le Réseau écoute`, zh:`// 网络正在倾听` },
+    'implant.close': { ru:`// закрыть`, en:`// close`, es:`// cerrar`, fr:`// fermer`, zh:`// 关闭` },
     // — Материя (materials.html) —
     'materials.title': { ru:`UNITYCODE — Материя`, en:`UNITYCODE — Matter` },
     'materials.logo':  { ru:`UNITYCODE // МАТЕРИЯ`, en:`UNITYCODE // MATTER` },
