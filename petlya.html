@@ -737,11 +737,17 @@ async function getUserToken() {
         document.body.removeChild(overlay);
         let token;
         if (phrase) {
+          // фраза введена — закрепляем личность навсегда (этот браузер
+          // больше не увидит окно, токен детерминирован фразой)
           token = await phraseToToken(phrase);
+          localStorage.setItem('uc_token', token);
         } else {
+          // пропуск — гостевой одноразовый токен ТОЛЬКО для этого
+          // вплетения. В localStorage НЕ сохраняем — окно появится
+          // снова при следующем вплетении, и можно снова выбрать:
+          // ввести фразу (стать собой навсегда) или пропустить (остаться гостем ещё раз).
           token = (crypto.randomUUID?.()) || (Math.random().toString(36).slice(2) + Date.now().toString(36));
         }
-        localStorage.setItem('uc_token', token);
         resolve(token);
       }
 
