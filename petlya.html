@@ -806,6 +806,10 @@ user_token: userToken
 };
 if (lat !== null) payload.lat = lat;
 if (lng !== null) payload.lng = lng;
+// Зона автора — только копим на будущее (связь шума с местным временем
+// человека), сейчас никак не используется. IANA-имя надёжнее смещения
+// в минутах: верно учитывает переход на летнее/зимнее время.
+try { payload.tz = Intl.DateTimeFormat().resolvedOptions().timeZone || undefined; } catch(e) { /* не критично */ }
 
 const ts = await getTurnstileToken();
 const res = await fetch(WRITE_WORKER_URL, {
@@ -820,6 +824,7 @@ raw_noise: payload.raw_noise,
 ai_interpretation: payload.ai_interpretation,
 lat: payload.lat,
 lng: payload.lng,
+tz: payload.tz,
 }),
 });
 
