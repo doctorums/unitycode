@@ -638,7 +638,7 @@ async function loadPersonal() {
 
   // Сначала — свои узлы
   const nodesRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/nodes?user_token=eq.${myToken}&select=id,created_at,raw_noise&order=created_at.desc`,
+    `${SUPABASE_URL}/rest/v1/nodes?user_token=eq.${myToken}&select=id,created_at,raw_noise,ai_interpretation&order=created_at.desc`,
     { headers }
   );
   const myNodes = await nodesRes.json();
@@ -713,7 +713,7 @@ async function loadPersonal() {
   });
 
   // Сохраняем шумы для анализа
-  window._myNodes = myNodes; // [{id, created_at, raw_noise}] — для анализа
+  window._myNodes = myNodes; // [{id, created_at, raw_noise, ai_interpretation}] — для анализа
 }
 
 // ═══════════════════════════════════════════════════════
@@ -737,7 +737,7 @@ async function runPersonalAnalysis() {
       body: JSON.stringify({
         scope: 'personal',
         lang: (window.UC_I18N ? UC_I18N.lang : 'ru'),
-        nodes: myNodes.map(n => ({ id: n.id, raw_noise: n.raw_noise })),
+        nodes: myNodes.map(n => ({ id: n.id, raw_noise: n.raw_noise, ai_interpretation: n.ai_interpretation })),
         connections: window._myConns || [],
       }),
     });
@@ -782,7 +782,7 @@ async function runCollectiveAnalysis() {
   try {
     // Берём последние 30 шумов (с id) + пары связей для анализа мостов
     const [nodesRes, connsRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/nodes?select=id,raw_noise&order=created_at.desc&limit=30`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/nodes?select=id,raw_noise,ai_interpretation&order=created_at.desc&limit=30`, { headers }),
       fetch(`${SUPABASE_URL}/rest/v1/connections?select=from_node_id,to_node_id&status=eq.accepted`, { headers }),
     ]);
     const nodes = await nodesRes.json();
