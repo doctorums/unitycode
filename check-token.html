@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ru"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>uc_token</title>
+<style>
+  body{background:#000;color:#0f8;font-family:monospace;padding:1.5rem;line-height:1.6}
+  .box{background:#0a0a0a;border:1px solid #333;padding:1rem;word-break:break-all;font-size:1rem;margin-top:0.5rem}
+  .label{color:#888;font-size:0.8rem;margin-top:1.2rem}
+</style>
+</head><body>
+<h3>// ПРОВЕРКА ТОКЕНА (без консоли)</h3>
+<p style="color:#888;font-size:0.85rem">Показывает значение localStorage прямо на экране — для iPad без инспектора.</p>
+
+<div class="label">localStorage uc_token (на этой странице/домене):</div>
+<div class="box" id="tok">—</div>
+
+<div class="label">localStorage uc_intro_seen:</div>
+<div class="box" id="intro">—</div>
+
+<script>
+document.getElementById('tok').textContent = localStorage.getItem('uc_token') || '(пусто — нет токена)';
+document.getElementById('intro').textContent = localStorage.getItem('uc_intro_seen') || '(пусто)';
+</script>
+</body></html>
