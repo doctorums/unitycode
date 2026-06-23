@@ -353,8 +353,8 @@
   }
 
   function boot() {
-    const skipBtn = /implant\.html/i.test(location.pathname);
-    if (!skipBtn) buildBtn();
+    // Кнопка звука отключена везде — мешала интерфейсу на всех страницах.
+    // Звук (ambient + fx) работает как прежде, просто без видимого тоггла.
     if (sessionStorage.getItem('uc_audio_came_from_nav') === '1' && !muted) {
       sessionStorage.removeItem('uc_audio_came_from_nav');
       try { start(); } catch (e) { /* если браузер блокирует — ждём тап */ }
