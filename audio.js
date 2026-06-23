@@ -353,7 +353,8 @@
   }
 
   function boot() {
-    buildBtn();
+    const skipBtn = /implant\.html/i.test(location.pathname);
+    if (!skipBtn) buildBtn();
     if (sessionStorage.getItem('uc_audio_came_from_nav') === '1' && !muted) {
       sessionStorage.removeItem('uc_audio_came_from_nav');
       try { start(); } catch (e) { /* если браузер блокирует — ждём тап */ }
