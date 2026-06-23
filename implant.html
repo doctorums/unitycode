@@ -1,846 +1,380 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title data-i18n="implant.title">UNITYCODE — Узор</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-  <noscript><link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400;700&display=swap" rel="stylesheet"></noscript>
-  <link rel="stylesheet" href="shared.css">
-  <style>
-    body { min-height: 100vh; display: flex; flex-direction: column; }
+/* ============================================================
+   UnityCode · Global Audio Module
+   Web Audio синтез + BT-носитель для iOS
+   Подключение: <script src="audio.js" defer></script>
+   ============================================================ */
+(function () {
+  'use strict';
 
-    main {
-      flex: 1;
-      max-width: 800px;
-      width: 100%;
-      margin: 0 auto;
-      padding: 2rem;
-      position: relative;
-      z-index: 1;
-    }
+  // Тихий зацикленный WAV — держит медиа-сессию iOS на текущем выходе (вкл. Bluetooth)
+  const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
 
-    .section {
-      border: 1px solid var(--border);
-      margin-bottom: 2rem;
-      padding: 1.5rem;
-      position: relative;
-    }
+  const LS_KEY = 'uc_audio_muted';
+  const MASTER_VOL = 0.55;
 
-    .section::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--accent), transparent);
-    }
+  let ctx = null;
+  let masterGain = null;
+  let carrier = null;        // <audio> носитель сессии
+  let started = false;
+  let muted = localStorage.getItem(LS_KEY) === '1';
+  let ambientNodes = [];
 
-    .section-tag {
-      font-size: 0.55rem;
-      color: var(--accent);
-      letter-spacing: 0.2em;
-      margin-bottom: 1.2rem;
-      text-transform: uppercase;
-    }
-
-    .section-desc {
-      font-size: 0.75rem;
-      color: var(--dim);
-      line-height: 1.7;
-      margin-bottom: 1.5rem;
-    }
-
-    /* Шумы пользователя */
-    .noise-list {
-      margin-bottom: 1.5rem;
-    }
-
-    .noise-item {
-      border-left: 2px solid rgba(0,255,136,0.2);
-      padding: 0.6rem 1rem;
-      margin-bottom: 0.8rem;
-      font-size: 0.75rem;
-      color: rgba(255,255,255,0.7);
-      line-height: 1.6;
-    }
-
-    .noise-item .noise-time {
-      font-size: 0.55rem;
-      color: var(--dim);
-      margin-top: 0.3rem;
-    }
-
-    .noise-empty {
-      font-size: 0.75rem;
-      color: var(--dim);
-      text-align: center;
-      padding: 2rem;
-    }
-
-    /* Кнопка анализа */
-    .analyze-btn {
-      display: inline-block;
-      padding: 0.8rem 2rem;
-      border: 1px solid var(--accent);
-      color: var(--accent);
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.7rem;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      cursor: pointer;
-      background: transparent;
-      transition: background 0.2s, color 0.2s;
-      width: 100%;
-    }
-
-    .analyze-btn:hover { background: var(--accent); color: var(--black); }
-    .analyze-btn:disabled { opacity: 0.4; cursor: default; }
-
-    /* Результат анализа */
-    .analysis-result {
-      margin-top: 1.5rem;
-      display: none;
-    }
-
-    .analysis-result.visible { display: block; }
-
-    .analysis-block {
-      margin-bottom: 1.5rem;
-    }
-
-    .analysis-label {
-      font-size: 0.55rem;
-      color: var(--accent);
-      letter-spacing: 0.2em;
-      margin-bottom: 0.8rem;
-    }
-
-    .analysis-text {
-      font-size: 0.8rem;
-      line-height: 1.8;
-      color: rgba(255,255,255,0.8);
-      white-space: pre-wrap;
-    }
-
-    .analysis-divider {
-      width: 40px;
-      height: 1px;
-      background: rgba(0,255,136,0.2);
-      margin: 1.2rem 0;
-    }
-
-    /* Загрузка */
-    .loading-dots {
-      display: none;
-      font-size: 0.7rem;
-      color: var(--dim);
-      letter-spacing: 0.2em;
-      margin-top: 1rem;
-      text-align: center;
-    }
-    .loading-dots.visible { display: block; }
-
-    /* Статы */
-    .stats-row {
-      display: flex;
-      gap: 2rem;
-      margin-bottom: 1.5rem;
-      flex-wrap: wrap;
-    }
-
-    .stat-box {
-      display: flex;
-      flex-direction: column;
-      gap: 0.3rem;
-    }
-
-    .stat-box .stat-label {
-      font-size: 0.5rem;
-      color: var(--dim);
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-    }
-
-    .stat-box .stat-val {
-      font-size: 1.2rem;
-      color: var(--accent);
-    }
-
-    /* Нет токена */
-    .no-token {
-      text-align: center;
-      padding: 3rem 1rem;
-    }
-
-    .no-token p {
-      font-size: 0.8rem;
-      color: var(--dim);
-      line-height: 1.7;
-      margin-bottom: 1.5rem;
-    }
-
-    .no-token a {
-      display: inline-block;
-      padding: 0.7rem 1.5rem;
-      border: 1px solid var(--accent);
-      color: var(--accent);
-      font-size: 0.7rem;
-      letter-spacing: 0.15em;
-      text-decoration: none;
-      text-transform: uppercase;
-      transition: background 0.2s, color 0.2s;
-    }
-
-    .no-token a:hover { background: var(--accent); color: var(--black); }
-
-    /* ═══ Вылетающее окно анализа ═══ */
-    .oracle-overlay {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0);
-      backdrop-filter: blur(0px);
-      -webkit-backdrop-filter: blur(0px);
-      z-index: 9000;
-      display: flex; align-items: center; justify-content: center;
-      padding: 1.5rem;
-      opacity: 0; pointer-events: none;
-      transition: opacity 0.5s ease, background 0.5s ease, backdrop-filter 0.5s ease;
-    }
-    .oracle-overlay.open {
-      opacity: 1; pointer-events: auto;
-      background: rgba(0,0,0,0.72);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-    }
-
-    .oracle-window {
-      position: relative;
-      max-width: 560px; width: 100%;
-      max-height: 80vh; overflow-y: auto;
-      border: 1px solid var(--accent);
-      background: rgba(6,10,12,0.96);
-      padding: 2.2rem 1.8rem 1.8rem;
-      box-shadow: 0 0 40px rgba(0,255,136,0.08), inset 0 0 60px rgba(0,255,136,0.02);
-      transform: scale(0.88);
-      opacity: 0;
-      transition: transform 0.5s cubic-bezier(0.16,1,0.3,1), opacity 0.5s ease;
-    }
-    .oracle-overlay.open .oracle-window {
-      transform: scale(1);
-      opacity: 1;
-    }
-    /* "locked" — окно зафиксировано в размере, который у него был на момент
-       конца печати. Включается JS-ом сразу после допечатки и держится все
-       фазы завершения (стоит/фейд/краул), пока окно не закроется. Раскладка
-       через flex: подпись и кнопка — фиксированные блоки, вьюпорт текста —
-       занимает всё оставшееся место. Кнопка физически не может сдвинуться,
-       что бы ни происходило с текстом внутри вьюпорта (даже position:absolute). */
-    .oracle-window.locked {
-      display: flex;
-      flex-direction: column;
-      /* overflow НЕ hidden здесь — иначе скролл выключается слишком рано
-         (сразу при остановке), и длинный текст, не уместившийся в одно
-         окно, становится недоступен. Скролл остаётся живым на фазах
-         «стоит»/«фейд» — отключаем только на момент самого краула (JS). */
-    }
-    .oracle-window.locked .oracle-label,
-    .oracle-window.locked .oracle-close {
-      flex: 0 0 auto;
-    }
-    .oracle-window.locked .oracle-viewport {
-      flex: 1 1 auto;
-      min-height: 0;
-      overflow-y: auto;   /* можно скроллить, если текст не влез целиком */
-    }
-    .oracle-window::before {
-      content: '';
-      position: absolute; top: 0; left: 0; right: 0; height: 1px;
-      background: linear-gradient(90deg, transparent, var(--accent), transparent);
-    }
-
-    .oracle-label {
-      font-size: 0.55rem;
-      color: var(--accent);
-      letter-spacing: 0.25em;
-      text-transform: uppercase;
-      margin-bottom: 1.4rem;
-      opacity: 0.8;
-    }
-
-    /* вьюпорт текста — во время печати обычный блок (текст растёт внутри
-       окна как раньше), во время "locked" режима — точка отсчёта (relative)
-       для абсолютного краула, без влияния на размер окна */
-    .oracle-viewport {
-      position: relative;
-    }
-
-    .oracle-text {
-      font-size: 0.95rem;
-      line-height: 2;
-      color: rgba(255,255,255,0.9);
-      min-height: 3em;
-      white-space: pre-wrap;
-      font-family: 'Share Tech Mono', monospace;
-    }
-    .oracle-text.breathing {
-      animation: oracleBreathe 5.5s ease-in-out infinite;
-    }
-    @keyframes oracleBreathe {
-      0%, 100% { opacity: 0.82; }
-      50%      { opacity: 1; }
-    }
-    /* фаза 2: растворение — управляется из JS (inline transition+opacity),
-       чтобы гарантированно отрабатывал плавный переход без конфликта с animation */
-    /* фаза 4: плоский краул — текст ползёт снизу вверх сплошным потоком
-       внутри зафиксированного вьюпорта (родитель уже locked, своих
-       размеров не меняет — кнопка ниже него неподвижна). */
-    .oracle-text.crawl {
-      position: absolute;
-      left: 0; right: 0;
-      top: 0;
-      opacity: 1;
-      will-change: transform;
-      transform: translateY(60vh);        /* старт: ниже видимой области */
-      animation: oracleCrawl var(--crawl-dur, 15s) linear forwards;
-    }
-    @keyframes oracleCrawl {
-      from { transform: translateY(60vh); }              /* под экраном */
-      to   { transform: translateY(calc(-100% - 10vh)); } /* весь текст ушёл за верх */
-    }
-
-    .oracle-cursor {
-      display: inline-block;
-      width: 0.5em;
-      color: var(--accent);
-      animation: oracleCursor 1s steps(1,end) infinite;
-    }
-    @keyframes oracleCursor { 0%,50%{opacity:1;} 51%,100%{opacity:0;} }
-
-    .oracle-close {
-      margin-top: 1.8rem;
-      display: block; width: 100%;
-      padding: 0.7rem;
-      border: 1px solid rgba(0,255,136,0.25);
-      background: transparent;
-      color: var(--dim);
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.6rem;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      cursor: pointer;
-      transition: color 0.2s, border-color 0.2s;
-      opacity: 0;
-    }
-    .oracle-close.show { opacity: 1; transition: opacity 0.4s ease, color 0.2s, border-color 0.2s; }
-    .oracle-close:hover { color: var(--accent); border-color: var(--accent); }
-
-    .oracle-waiting {
-      font-size: 0.7rem; color: var(--dim);
-      letter-spacing: 0.2em; text-align: center;
-      animation: oracleBreathe 2.5s ease-in-out infinite;
-    }
-  </style>
-</head>
-<body>
-
-<header>
-  <a href="index.html" class="logo" data-i18n="implant.logo">UNITYCODE // УЗОР</a>
-  <nav>
-    <a href="petlya.html" data-i18n="nav.spiral">Спираль</a>
-    <a href="set.html" data-i18n="nav.network">Сеть</a>
-    <a href="implant.html" data-i18n="nav.pattern">Узор</a>
-    <a href="materials.html" data-i18n="nav.matter">Материя</a>
-  </nav>
-</header>
-
-<main>
-
-  <!-- Блок 1: Личный узел -->
-  <div class="section" id="personal-section">
-    <div class="section-tag" data-i18n="implant.tagYourNode">// ТВОЙ УЗЕЛ</div>
-
-    <div id="personal-content">
-      <!-- Заполняется JS -->
-    </div>
-  </div>
-
-  <!-- Блок 2: Коллективный анализ -->
-  <div class="section">
-    <div class="section-tag" data-i18n="implant.tagNetNow">// СЕТЬ СЕЙЧАС</div>
-    <div class="section-desc" data-i18n="implant.collectiveDesc">Коллективный срез — паттерны и резонансы всей Сети. ИИ анализирует шумы и связи всех участников.</div>
-
-    <div class="stats-row">
-      <div class="stat-box">
-        <span class="stat-label" data-i18n="implant.statNodes">Узлов в сети</span>
-        <span class="stat-val" id="total-nodes">—</span>
-      </div>
-      <div class="stat-box">
-        <span class="stat-label" data-i18n="implant.statConns">Связей</span>
-        <span class="stat-val" id="total-connections">—</span>
-      </div>
-      <div class="stat-box">
-        <span class="stat-label" data-i18n="implant.statUsers">Участников</span>
-        <span class="stat-val" id="total-users">—</span>
-      </div>
-    </div>
-
-    <button class="analyze-btn" id="collective-btn" onclick="runCollectiveAnalysis()" data-i18n="implant.btnCollective">[ Запустить анализ Сети ]</button>
-
-    <div class="loading-dots" id="collective-loading" data-i18n="implant.loading">// АНАЛИЗ...</div>
-
-    <div class="analysis-result" id="collective-result">
-      <div class="analysis-divider"></div>
-      <div class="analysis-block">
-        <div class="analysis-label" data-i18n="implant.labelNetPattern">// ПАТТЕРНЫ СЕТИ</div>
-        <div class="analysis-text" id="collective-text"></div>
-      </div>
-    </div>
-  </div>
-
-</main>
-
-<!-- Вылетающее окно анализа (оракул) -->
-<div class="oracle-overlay" id="oracle" onclick="if(event.target===this) closeOracle()">
-  <div class="oracle-window">
-    <div class="oracle-label" id="oracle-label" data-i18n="implant.labelNetPattern">// НАБЛЮДЕНИЕ СЕТИ</div>
-    <div class="oracle-viewport" id="oracle-viewport">
-      <div class="oracle-text" id="oracle-text"></div>
-    </div>
-    <button class="oracle-close" id="oracle-close" onclick="closeOracle()" data-i18n="implant.close">// закрыть</button>
-  </div>
-</div>
-
-<script src="nav.js"></script>
-<script src="i18n.js"></script>
-<script>
-const SUPABASE_URL = 'https://lukyyqabkxzrgdixzphs.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
-
-// Агент-Генератор (Спираль) — остаётся для совместимости, в анализе НЕ участвует
-const WORKER_URL = 'https://unitycode-petlya.sv2txxznjm.workers.dev';
-
-// Агент-Аналитик (Имплант)
-const ANALYZE_URL = 'https://unitycode-analyze.sv2txxznjm.workers.dev';
-
-// HTML-экранирование пользовательского текста (защита от XSS на выводе)
-function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-const headers = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY };
-
-// ═══════════════════════════════════════════════════════
-// ОРАКУЛ — вылетающее окно с печатью ответа по словам
-// ═══════════════════════════════════════════════════════
-let _oracleTimer = null;
-let _oracleSeq = 0; // версия сессии печати: отменяет старую, если открыли заново
-let _outroTimers = [];
-function clearOutro() { _outroTimers.forEach(clearTimeout); _outroTimers = []; }
-
-function resetOracleText(textEl) {
-  textEl.classList.remove('breathing', 'fading', 'crawl');
-  textEl.style.removeProperty('--crawl-dur');
-  textEl.style.removeProperty('position');
-  textEl.style.removeProperty('opacity');
-  textEl.style.removeProperty('transition');
-}
-
-function openOracle(label) {
-  const ov = document.getElementById('oracle');
-  const textEl = document.getElementById('oracle-text');
-  const closeBtn = document.getElementById('oracle-close');
-  const labelEl = document.getElementById('oracle-label');
-  const win = document.querySelector('.oracle-window');
-  clearOutro();
-  resetOracleText(textEl);
-  if (win) {
-    win.classList.remove('locked');
-    win.style.removeProperty('height');
-    win.style.removeProperty('max-height');
+  // ---------- Инициализация ----------
+  function initCtx() {
+    if (ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    ctx = new AC();
+    masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0, ctx.currentTime);
+    masterGain.gain.linearRampToValueAtTime(muted ? 0 : MASTER_VOL, ctx.currentTime + 1.2);
+    masterGain.connect(ctx.destination);
   }
-  const vp = document.getElementById('oracle-viewport');
-  if (vp) vp.style.removeProperty('overflow');
-  if (label) labelEl.textContent = label;
-  const waitMsg = (window.UC_I18N ? UC_I18N.t('implant.listening') : '// Сеть слушает');
-  textEl.innerHTML = '<span class="oracle-waiting">' + waitMsg + '<span class="oracle-cursor">▋</span></span>';
-  closeBtn.classList.remove('show');
-  ov.classList.add('open');
-}
 
-// Печать по словам. Скорость колеблется в диапазоне — «дыхание».
-// Это ритм-хук: позже сюда подставится темп музыки вместо breatheFactor.
-function typeOracle(text) {
-  const textEl = document.getElementById('oracle-text');
-  const closeBtn = document.getElementById('oracle-close');
-  const mySeq = ++_oracleSeq;
-  if (_oracleTimer) { clearTimeout(_oracleTimer); _oracleTimer = null; }
-  clearOutro();
-  resetOracleText(textEl);
+  function startCarrier() {
+    if (carrier) return;
+    carrier = new Audio(SILENT_WAV);
+    carrier.loop = true;
+    carrier.volume = 0.0001;
+    carrier.setAttribute('playsinline', '');
+    const p = carrier.play();
+    if (p && p.catch) p.catch(() => {});
+  }
 
-  const words = String(text || '').trim().split(/(\s+)/); // сохраняем пробелы/переносы
-  let i = 0;
-  textEl.classList.remove('breathing');
-  textEl.textContent = '';
+  // ---------- Запуск всей системы (внутри user gesture) ----------
+  function start() {
+    if (started) return;
+    started = true;
+    startCarrier();          // 1. носитель сессии для BT
+    initCtx();               // 2. web audio
+    if (ctx.state === 'suspended') ctx.resume();
+    setTimeout(startAmbient, 300);
+    updateBtn();
+  }
 
-  // базовая задержка на слово + лёгкая случайность; пауза дольше после точки/?/!
-  const BASE = 150, JITTER = 90;
-  let phase = 0;
+  // ---------- Плавный уход со страницы ----------
+  function fadeOutForNav() {
+    if (!ctx || !masterGain) return;
+    const now = ctx.currentTime;
+    masterGain.gain.cancelScheduledValues(now);
+    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+    masterGain.gain.linearRampToValueAtTime(0, now + 0.8);
+  }
+  window.addEventListener('pagehide', fadeOutForNav);
+  window.addEventListener('beforeunload', fadeOutForNav);
 
-  function step() {
-    if (mySeq !== _oracleSeq) return; // открыли заново — эта печать устарела
-    if (i >= words.length) {
-      textEl.classList.add('breathing'); // допечатали — текст «задышал»
-      closeBtn.classList.add('show');
-      _oracleTimer = null;
-      // доскроллить окно к низу, показать кнопку, и ЗАФИКСИРОВАТЬ размер —
-      // он не должен меняться во время стояния/фейда/краула (иначе кнопка
-      // и текст «прыгают»)
-      const win = document.querySelector('.oracle-window');
-      if (win) {
-        win.scrollTo({ top: win.scrollHeight, behavior: 'smooth' });
-        const h = win.getBoundingClientRect().height;
-        win.style.height = h + 'px';
-        win.style.maxHeight = 'none';
-        win.classList.add('locked');
-        // вьюпорт после смены layout стартует со своего верха — доскроллим
-        // его вниз, чтобы не было прыжка от «конца текста» к «началу»
-        const vp = document.getElementById('oracle-viewport');
-        if (vp) vp.scrollTop = vp.scrollHeight;
+  // Эффект перехода "Портал → Бездна": мягкий портал на -2 окт. затухает,
+  // дыхание бездны подхватывает на хвосте — без провала тишины.
+  function fxSubspace() {
+    if (!ctx || muted) return;
+    fxPortal();
+    setTimeout(fxAbyss, 1300);
+  }
+
+  function fxPortal() {
+    const t = ctx.currentTime;
+    const dur = 2.0;
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const g = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    osc1.type = 'sine'; osc2.type = 'triangle';
+    osc1.frequency.setValueAtTime(82.5, t);
+    osc1.frequency.linearRampToValueAtTime(55, t + dur);
+    osc2.frequency.setValueAtTime(165, t);
+    osc2.frequency.linearRampToValueAtTime(110, t + dur);
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(700, t);
+    filter.frequency.linearRampToValueAtTime(250, t + dur);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.22, t + 0.3);
+    g.gain.linearRampToValueAtTime(0.16, t + dur * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur + 0.4);
+    osc1.connect(filter); osc2.connect(filter);
+    filter.connect(g); g.connect(masterGain);
+    osc1.start(); osc2.start();
+    osc1.stop(t + dur + 0.5);
+    osc2.stop(t + dur + 0.5);
+  }
+
+  function fxAbyss() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const dur = 2.2;
+    const bufSize = ctx.sampleRate * dur;
+    const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(150, t);
+    filter.frequency.linearRampToValueAtTime(500, t + dur * 0.5);
+    filter.frequency.linearRampToValueAtTime(80, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.2, t + dur * 0.45);
+    g.gain.linearRampToValueAtTime(0.001, t + dur);
+    src.connect(filter); filter.connect(g); g.connect(masterGain);
+    src.start(t); src.stop(t + dur + 0.1);
+  }
+
+  function prepNav() {
+    fadeOutForNav();
+    sessionStorage.setItem('uc_audio_came_from_nav', '1');
+  }
+
+  // Переход на внутреннюю страницу через обычные <a href>: fade-out + эффект
+  // подпространства, затем честная навигация с задержкой под длительность эффекта.
+  // ---------- Ambient ----------
+  function startAmbient() {
+    if (!ctx) return;
+    createDrone(55, 0.06, 0);
+    setTimeout(() => createDrone(82.4, 0.04, 3.7), 80);
+    setTimeout(() => createDrone(110, 0.035, 7.1), 160);
+    createPulse(440, 0.015, 5);
+    createPulse(528, 0.012, 11);
+    createPulse(396, 0.010, 17);
+    setTimeout(() => createSpaceNoise(0.022), 240);
+  }
+
+  function createDrone(freq, vol, detune) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    osc.detune.value = detune;
+    lfo.frequency.value = 0.05 + Math.random() * 0.08;
+    lfoGain.gain.value = vol * 0.3;
+    lfo.connect(lfoGain);
+    lfoGain.connect(gain.gain);
+    // fade-in вместо мгновенного скачка — убирает щелчок старта
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + 1.2);
+    osc.connect(gain);
+    gain.connect(masterGain);
+    osc.start();
+    lfo.start();
+    ambientNodes.push(osc, lfo);
+  }
+
+  function createPulse(freq, vol, interval) {
+    const scheduleNext = () => {
+      if (!started) return;
+      if (!muted) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq + (Math.random() * 4 - 2);
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + 1.5);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 4);
+        osc.connect(gain);
+        gain.connect(masterGain);
+        osc.start();
+        osc.stop(ctx.currentTime + 5);
       }
-      startOracleOutro(mySeq, text); // запускаем ритуал завершения
-      return;
+      setTimeout(scheduleNext, (interval + Math.random() * interval) * 1000);
+    };
+    setTimeout(scheduleNext, interval * 1000);
+  }
+
+  function createSpaceNoise(vol) {
+    const bufSize = ctx.sampleRate * 2;
+    const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 300;
+    const gain = ctx.createGain();
+    gain.gain.value = vol;
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(masterGain);
+    source.start();
+    ambientNodes.push(source);
+  }
+
+  // ---------- Эффекты ----------
+  function fx(type) {
+    if (!started) { start(); }
+    if (!ctx || muted) return;
+    if (ctx.state === 'suspended') ctx.resume();
+    switch (type) {
+      case 'submit':  fxSubmit(); break;
+      case 'node':    fxNode(); break;
+      case 'connect': fxConnect(); break;
+      case 'page':    fxSubspace(); break;
+      case 'ping':    fxPing(); break;
+      case 'error':   fxError(); break;
     }
-    const chunk = words[i];
-    textEl.textContent += chunk;
-    i++;
+  }
 
-    // автоскролл окна вниз за печатью, если текст уже не влезает
-    const win = document.querySelector('.oracle-window');
-    if (win && win.scrollHeight > win.clientHeight) {
-      win.scrollTop = win.scrollHeight;
+  function fxSubmit() {
+    [220, 330, 440].forEach((f, i) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      g.gain.setValueAtTime(0, ctx.currentTime + i * 0.08);
+      g.gain.linearRampToValueAtTime(0.08, ctx.currentTime + i * 0.08 + 0.1);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.08 + 1.2);
+      osc.connect(g); g.connect(masterGain);
+      osc.start(ctx.currentTime + i * 0.08);
+      osc.stop(ctx.currentTime + i * 0.08 + 1.3);
+    });
+  }
+
+  function fxNode() {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(528, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(264, ctx.currentTime + 1.5);
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2);
+    osc.connect(g); g.connect(masterGain);
+    osc.start(); osc.stop(ctx.currentTime + 2.1);
+  }
+
+  function fxConnect() {
+    [396, 528].forEach((f, i) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      g.gain.setValueAtTime(0, ctx.currentTime);
+      g.gain.linearRampToValueAtTime(0.07, ctx.currentTime + 0.3 + i * 0.15);
+      g.gain.linearRampToValueAtTime(0.07, ctx.currentTime + 1.2);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.5);
+      osc.connect(g); g.connect(masterGain);
+      osc.start(); osc.stop(ctx.currentTime + 2.6);
+    });
+  }
+
+  function fxPage() {
+    const bufSize = ctx.sampleRate * 0.5;
+    const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(200, ctx.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(2000, ctx.currentTime + 0.4);
+    filter.Q.value = 0.5;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.15, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    src.connect(filter); filter.connect(g); g.connect(masterGain);
+    src.start(); src.stop(ctx.currentTime + 0.6);
+  }
+
+  function fxPing() {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = 880;
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0.06, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+    osc.connect(g); g.connect(masterGain);
+    osc.start(); osc.stop(ctx.currentTime + 0.9);
+  }
+
+  function fxError() {
+    [200, 180].forEach((f, i) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.value = f;
+      g.gain.setValueAtTime(0, ctx.currentTime + i * 0.12);
+      g.gain.linearRampToValueAtTime(0.06, ctx.currentTime + i * 0.12 + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.12 + 0.3);
+      osc.connect(g); g.connect(masterGain);
+      osc.start(ctx.currentTime + i * 0.12);
+      osc.stop(ctx.currentTime + i * 0.12 + 0.4);
+    });
+  }
+
+  // ---------- Mute ----------
+  function toggleMute() {
+    if (!started) start();
+    muted = !muted;
+    localStorage.setItem(LS_KEY, muted ? '1' : '0');
+    if (masterGain && ctx) {
+      masterGain.gain.linearRampToValueAtTime(muted ? 0 : MASTER_VOL, ctx.currentTime + 0.3);
     }
-
-    // «дыхание» темпа: синусоида в диапазоне 0.7..1.3 от базы
-    phase += 0.5;
-    const breatheFactor = 1 + 0.3 * Math.sin(phase);
-    let delay = (BASE + Math.random() * JITTER) * breatheFactor;
-    // дольше дышим после конца предложения
-    if (/[.!?…]$/.test(chunk.trim())) delay += 420;
-
-    // пробелы проскакиваем мгновенно (это «склейка» между словами)
-    if (/^\s+$/.test(chunk)) delay = 20;
-
-    _oracleTimer = setTimeout(step, delay);
-  }
-  step();
-}
-
-// Ритуал завершения (один проход): постоял 30с → фейд → пауза 3с →
-// текст проплывает вверх и тает → окно схлопывается в центр.
-// Любое закрытие/новый анализ (рост _oracleSeq) отменяет цепочку.
-function startOracleOutro(mySeq, fullText) {
-  const textEl = document.getElementById('oracle-text');
-  clearOutro();
-  const alive = () => mySeq === _oracleSeq && document.getElementById('oracle').classList.contains('open');
-
-  // 1) постоял 15с → фейд-аут текста (плавно, 3с) через inline-стили
-  _outroTimers.push(setTimeout(() => {
-    if (!alive()) return;
-    textEl.classList.remove('breathing');   // снять дыхание (animation)
-    textEl.style.opacity = '1';             // зафиксировать видимое состояние
-    textEl.style.transition = 'opacity 3s ease';
-    void textEl.offsetHeight;               // форс reflow — браузер запомнил opacity:1
-    textEl.style.opacity = '0';             // теперь плавно поедет к 0 за 3с
-  }, 15000));
-
-  // 2) фейд завершился (3с) + пауза 1.5с → текст ползёт снизу вверх (краул)
-  // Скорость краула по длине текста. Делитель меньше = быстрее.
-  // Минимум 14с (короткий текст), потолка НЕТ — длинный текст (например,
-  // когда у графа много связей и анализ растёт на пару абзацев) получает
-  // пропорционально больше времени, иначе текст пролетает слишком быстро
-  // и кажется, что часть «не показали», хотя технически всё прошло.
-  const crawlDur = Math.max(14, Math.round(String(fullText).length / 15));
-  _outroTimers.push(setTimeout(() => {
-    if (!alive()) return;
-    const vp = document.getElementById('oracle-viewport');
-    if (vp) { vp.scrollTop = 0; vp.style.overflow = 'hidden'; } // только теперь — для чистого краула
-    textEl.classList.remove('fading', 'breathing');
-    textEl.style.removeProperty('transition');  // убрать фейд-переход
-    textEl.style.removeProperty('opacity');     // вернуть видимость (краул сам ставит opacity)
-    textEl.textContent = fullText;
-    textEl.style.setProperty('--crawl-dur', crawlDur + 's');
-    void textEl.offsetHeight;          // форс reflow перед стартом анимации
-    textEl.classList.add('crawl');     // поехал снизу вверх сплошным потоком
-  }, 15000 + 3000 + 1500));
-
-  // 3) краул закончился → окно схлопывается в центр
-  _outroTimers.push(setTimeout(() => {
-    if (!alive()) return;
-    closeOracle();
-  }, 15000 + 3000 + 1500 + crawlDur * 1000 + 500));
-}
-
-function showOracleError(msg) {
-  const textEl = document.getElementById('oracle-text');
-  const closeBtn = document.getElementById('oracle-close');
-  if (_oracleTimer) { clearTimeout(_oracleTimer); _oracleTimer = null; }
-  _oracleSeq++;
-  textEl.classList.remove('breathing');
-  textEl.textContent = msg;
-  closeBtn.classList.add('show');
-}
-
-function closeOracle() {
-  const ov = document.getElementById('oracle');
-  const textEl = document.getElementById('oracle-text');
-  if (_oracleTimer) { clearTimeout(_oracleTimer); _oracleTimer = null; }
-  clearOutro();
-  _oracleSeq++;
-  ov.classList.remove('open');
-  const win = document.querySelector('.oracle-window');
-  if (win) {
-    win.classList.remove('locked');
-    win.style.removeProperty('height');
-    win.style.removeProperty('max-height');
-  }
-  const vp = document.getElementById('oracle-viewport');
-  if (vp) vp.style.removeProperty('overflow');
-  // сброс классов фаз после закрытия (когда окно уже скрылось)
-  setTimeout(() => resetOracleText(textEl), 600);
-}
-
-// Esc закрывает окно
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeOracle(); });
-
-
-function timeAgo(iso) {
-  const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
-  if (diff < 60)    return UC_I18N.t('set.tNow');
-  if (diff < 3600)  return Math.floor(diff / 60) + UC_I18N.t('set.tMin');
-  if (diff < 86400) return Math.floor(diff / 3600) + UC_I18N.t('set.tHour');
-  return Math.floor(diff / 86400) + UC_I18N.t('set.tDay');
-}
-
-// ═══════════════════════════════════════════════════════
-// ЛИЧНЫЙ БЛОК
-// ═══════════════════════════════════════════════════════
-async function loadPersonal() {
-  const myToken = localStorage.getItem('uc_token');
-  const container = document.getElementById('personal-content');
-
-  if (!myToken) {
-    container.innerHTML = `
-      <div class="no-token">
-        <p>${UC_I18N.t('implant.noToken')}</p>
-        <a href="petlya.html">${UC_I18N.t('implant.toSpiral')}</a>
-      </div>`;
-    return;
+    updateBtn();
   }
 
-  // Сначала — свои узлы
-  const nodesRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/nodes?user_token=eq.${myToken}&select=id,created_at,raw_noise,ai_interpretation&order=created_at.desc`,
-    { headers }
-  );
-  const myNodes = await nodesRes.json();
-
-  if (!Array.isArray(myNodes) || !myNodes.length) {
-    container.innerHTML = `
-      <div class="no-token">
-        <p>${UC_I18N.t('implant.noNodes')}</p>
-        <a href="petlya.html">${UC_I18N.t('implant.toSpiral')}</a>
-      </div>`;
-    return;
-  }
-
-  // Теперь — связи по ID этих узлов. Supabase REST хочет явный список id,
-  // а не SQL-подзапрос. Собираем список и спрашиваем связи в обе стороны.
-  // Берём концы пар (from/to) — они нужны и для счётчика, и для анализа.
-  const myIds = myNodes.map(n => n.id);
-  const idList = `(${myIds.join(',')})`;
-
-  let totalConnections = 0;
-  window._myConns = [];
-  try {
-    const [connsFromRes, connsToRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/connections?from_node_id=in.${idList}&status=eq.accepted&select=from_node_id,to_node_id`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/connections?to_node_id=in.${idList}&status=eq.accepted&select=from_node_id,to_node_id`, { headers }),
-    ]);
-    const connsFrom = await connsFromRes.json();
-    const connsTo = await connsToRes.json();
-    const a = Array.isArray(connsFrom) ? connsFrom : [];
-    const b = Array.isArray(connsTo) ? connsTo : [];
-    // Дедуп: связь могла попасть в оба запроса (оба конца мои)
-    const seen = new Set();
-    [...a, ...b].forEach(c => {
-      const key = c.from_node_id + '|' + c.to_node_id;
-      if (!seen.has(key)) { seen.add(key); window._myConns.push(c); }
+  // ---------- Кнопка ----------
+  function buildBtn() {
+    const btn = document.createElement('button');
+    btn.id = 'uc-audio-btn';
+    btn.setAttribute('aria-label', 'Звук');
+    btn.innerHTML = '&#9834;'; // ♪
+    Object.assign(btn.style, {
+      position: 'fixed', top: 'max(64px, calc(env(safe-area-inset-top) + 48px))', right: '16px',
+      width: '42px', height: '42px', borderRadius: '50%',
+      background: 'rgba(20,20,45,0.85)', border: '1px solid #333366',
+      color: '#8888cc', fontSize: '18px', cursor: 'pointer',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: '9999', transition: 'color .3s, border-color .3s',
+      webkitTapHighlightColor: 'transparent', backdropFilter: 'blur(4px)'
     });
-    totalConnections = window._myConns.length;
-  } catch (e) {
-    console.warn('Ошибка подсчёта связей:', e);
-    totalConnections = 0;
+    btn.addEventListener('touchend', e => { e.preventDefault(); toggleMute(); });
+    btn.addEventListener('click', toggleMute);
+    document.body.appendChild(btn);
+    updateBtn();
   }
 
-  container.innerHTML = `
-    <div class="stats-row">
-      <div class="stat-box">
-        <span class="stat-label">${UC_I18N.t('implant.statYourNoises')}</span>
-        <span class="stat-val">${myNodes.length}</span>
-      </div>
-      <div class="stat-box">
-        <span class="stat-label">${UC_I18N.t('implant.statConns')}</span>
-        <span class="stat-val">${totalConnections}</span>
-      </div>
-    </div>
-    <div class="noise-list" id="my-noises"></div>
-    <button class="analyze-btn" id="personal-btn" onclick="runPersonalAnalysis()">${UC_I18N.t('implant.btnPersonal')}</button>
-    <div class="loading-dots" id="personal-loading">${UC_I18N.t('implant.loading')}</div>
-    <div class="analysis-result" id="personal-result">
-      <div class="analysis-divider"></div>
-      <div class="analysis-block">
-        <div class="analysis-label">${UC_I18N.t('implant.labelYourPattern')}</div>
-        <div class="analysis-text" id="personal-text"></div>
-      </div>
-    </div>`;
-
-  const list = document.getElementById('my-noises');
-  myNodes.forEach(node => {
-    list.innerHTML += `
-      <div class="noise-item">
-        ${esc(node.raw_noise)}
-        <div class="noise-time">${timeAgo(node.created_at)}</div>
-      </div>`;
-  });
-
-  // Сохраняем шумы для анализа
-  window._myNodes = myNodes; // [{id, created_at, raw_noise, ai_interpretation}] — для анализа
-}
-
-// ═══════════════════════════════════════════════════════
-// АНАЛИЗ ЛИЧНОГО УЗЛА
-// ═══════════════════════════════════════════════════════
-async function runPersonalAnalysis() {
-  const btn = document.getElementById('personal-btn');
-
-  btn.disabled = true;
-  openOracle(UC_I18N.t('implant.labelYourPattern'));
-
-  const myNodes = window._myNodes || [];
-  if (!myNodes.length) { closeOracle(); btn.disabled = false; return; }
-
-  try {
-    // Шлём граф Агенту-Аналитику: узлы с id + пары связей,
-    // чтобы аналитик видел, ЧТО с ЧЕМ соединено.
-    const res = await fetch(ANALYZE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        scope: 'personal',
-        lang: (window.UC_I18N ? UC_I18N.lang : 'ru'),
-        nodes: myNodes.map(n => ({ id: n.id, raw_noise: n.raw_noise, ai_interpretation: n.ai_interpretation })),
-        connections: window._myConns || [],
-      }),
-    });
-    const data = await res.json();
-    typeOracle(data.interpretation || UC_I18N.t('petlya.signalUnrecognized'));
-  } catch(e) {
-    showOracleError(UC_I18N.t('implant.analyzeError'));
-  } finally {
-    btn.disabled = false;
+  function updateBtn() {
+    const btn = document.getElementById('uc-audio-btn');
+    if (!btn) return;
+    btn.style.color = muted ? '#444466' : '#8888cc';
+    btn.style.borderColor = muted ? '#222244' : '#333366';
+    btn.title = muted ? 'Включить звук' : 'Выключить звук';
   }
-}
 
-// ═══════════════════════════════════════════════════════
-// КОЛЛЕКТИВНЫЙ АНАЛИЗ
-// ═══════════════════════════════════════════════════════
-async function loadStats() {
-  try {
-    const [nodesRes, connsRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/nodes?select=id,user_token`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/connections?select=id&status=eq.accepted`, { headers }),
-    ]);
-    const [nodes, conns] = await Promise.all([nodesRes.json(), connsRes.json()]);
+  // ---------- Автозапуск при первом жесте ----------
+  function firstGesture() {
+    start();
+    document.removeEventListener('touchend', firstGesture);
+    document.removeEventListener('click', firstGesture);
+  }
 
-    const uniqueUsers = new Set(nodes.filter(n => n.user_token).map(n => n.user_token)).size;
-
-    document.getElementById('total-nodes').textContent = nodes.length;
-    document.getElementById('total-connections').textContent = conns.length;
-    document.getElementById('total-users').textContent = uniqueUsers;
-
-    // Сохраняем для анализа + полные счётчики для триггера кэша
-    window._allNodeIds = nodes.map(n => n.id);
-    window._graphCounts = { nodes: nodes.length, conns: conns.length };
-  } catch(e) { console.warn('Stats error', e); }
-}
-
-async function runCollectiveAnalysis() {
-  const btn = document.getElementById('collective-btn');
-
-  btn.disabled = true;
-  openOracle(UC_I18N.t('implant.labelNetPattern'));
-
-  try {
-    // Берём последние 30 шумов (с id) + пары связей для анализа мостов
-    const [nodesRes, connsRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/nodes?select=id,raw_noise,ai_interpretation&order=created_at.desc&limit=30`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/connections?select=from_node_id,to_node_id&status=eq.accepted`, { headers }),
-    ]);
-    const nodes = await nodesRes.json();
-    const conns = await connsRes.json();
-
-    if (!nodes.length) {
-      typeOracle(UC_I18N.t('implant.netEmpty'));
-      return;
+  function boot() {
+    // Кнопка звука отключена везде — мешала интерфейсу на всех страницах.
+    // Звук (ambient + fx) работает как прежде, просто без видимого тоггла.
+    if (sessionStorage.getItem('uc_audio_came_from_nav') === '1' && !muted) {
+      sessionStorage.removeItem('uc_audio_came_from_nav');
+      try { start(); } catch (e) { /* если браузер блокирует — ждём тап */ }
     }
-
-    // Точный ПОЛНЫЙ счётчик узлов — свежий запрос прямо сейчас, а не из
-    // window._graphCounts (он считается один раз при загрузке страницы и
-    // устаревает, если узлы добавили/удалили без перезагрузки — кэш тогда
-    // не замечает изменения графа). Prefer:count=exact + limit=1 — лёгко,
-    // не тянет все строки, только число в заголовке Content-Range.
-    let totalNodes = nodes.length;
-    try {
-      const cntRes = await fetch(`${SUPABASE_URL}/rest/v1/nodes?select=id&limit=1`, {
-        headers: { ...headers, Prefer: 'count=exact' },
-      });
-      const cr = cntRes.headers.get('content-range'); // формат "0-0/123"
-      const total = cr ? parseInt(cr.split('/')[1], 10) : NaN;
-      if (Number.isFinite(total)) totalNodes = total;
-    } catch (e) { /* не вышло — используем nodes.length как раньше */ }
-
-    // Шлём граф Агенту-Аналитику в режиме коллективного среза.
-    // graph_counts — свежие полные счётчики, по ним worker решает:
-    // отдать кэш или пересчитать.
-    const gc = { nodes: totalNodes, conns: Array.isArray(conns) ? conns.length : 0 };
-    const aiRes = await fetch(ANALYZE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        scope: 'collective',
-        lang: (window.UC_I18N ? UC_I18N.lang : 'ru'),
-        nodes: nodes,
-        connections: Array.isArray(conns) ? conns : [],
-        graph_counts: gc,
-      }),
-    });
-    const data = await aiRes.json();
-    typeOracle(data.interpretation || UC_I18N.t('petlya.signalUnrecognized'));
-    setTimeout(() => {
-      const t = document.getElementById('oracle-text');
-      if (t && data.diag) t.insertAdjacentHTML('beforeend',
-        `<div style="margin-top:1rem;font-size:0.45rem;color:#0a6;opacity:0.7;white-space:pre-wrap;">DIAG: ${esc(JSON.stringify(data.diag))}</div>`);
-    }, 400);
-
-  } catch(e) {
-    showOracleError(UC_I18N.t('implant.analyzeError'));
-  } finally {
-    btn.disabled = false;
+    document.addEventListener('touchend', firstGesture);
+    document.addEventListener('click', firstGesture);
   }
-}
 
-// Инициализация
-loadPersonal();
-loadStats();
-</script>
-</body>
-</html>
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+
+  // ---------- Публичный API ----------
+  window.UCAudio = {
+    fx: fx,
+    toggleMute: toggleMute,
+    isMuted: () => muted,
+    start: start,
+    prepNav: prepNav
+  };
+})();
