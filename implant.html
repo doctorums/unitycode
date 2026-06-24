@@ -52,9 +52,15 @@
       margin-bottom: 1.5rem;
     }
 
-    /* Шумы пользователя */
+    /* Шумы пользователя — фикс. высота, иначе при большом числе шумов
+       список растягивает всю страницу. Обычный скролл, не краул-анимация:
+       список читают и пролистывают, а не смотрят как разовый ритуал. */
     .noise-list {
       margin-bottom: 1.5rem;
+      max-height: 320px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
 
     .noise-item {
