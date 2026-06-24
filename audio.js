@@ -6,20 +6,19 @@
 (function () {
   'use strict';
 
-  // Тихий зацикленный WAV — держит медиа-сессию iOS на текущем выходе (вкл. Bluetooth)
   const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
-
   const LS_KEY = 'uc_audio_muted';
   const MASTER_VOL = 0.55;
 
   let ctx = null;
   let masterGain = null;
-  let carrier = null;        // <audio> носитель сессии
+  let carrier = null;
   let started = false;
   let muted = localStorage.getItem(LS_KEY) === '1';
   let ambientNodes = [];
+  let presetStarted = false;
+  let presetRunning = false;
 
-  // ---------- Инициализация ----------
   function initCtx() {
     if (ctx) return;
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -40,18 +39,16 @@
     if (p && p.catch) p.catch(() => {});
   }
 
-  // ---------- Запуск всей системы (внутри user gesture) ----------
   function start() {
     if (started) return;
     started = true;
-    startCarrier();          // 1. носитель сессии для BT
-    initCtx();               // 2. web audio
+    startCarrier();
+    initCtx();
     if (ctx.state === 'suspended') ctx.resume();
     setTimeout(startAmbient, 300);
     updateBtn();
   }
 
-  // ---------- Плавный уход со страницы ----------
   function fadeOutForNav() {
     if (!ctx || !masterGain) return;
     const now = ctx.currentTime;
@@ -62,8 +59,6 @@
   window.addEventListener('pagehide', fadeOutForNav);
   window.addEventListener('beforeunload', fadeOutForNav);
 
-  // Эффект перехода "Портал → Бездна": мягкий портал на -2 окт. затухает,
-  // дыхание бездны подхватывает на хвосте — без провала тишины.
   function fxSubspace() {
     if (!ctx || muted) return;
     fxPortal();
@@ -124,9 +119,6 @@
     sessionStorage.setItem('uc_audio_came_from_nav', '1');
   }
 
-  // Переход на внутреннюю страницу через обычные <a href>: fade-out + эффект
-  // подпространства, затем честная навигация с задержкой под длительность эффекта.
-  // ---------- Ambient ----------
   function startAmbient() {
     if (!ctx) return;
     createDrone(55, 0.06, 0);
@@ -150,7 +142,6 @@
     lfoGain.gain.value = vol * 0.3;
     lfo.connect(lfoGain);
     lfoGain.connect(gain.gain);
-    // fade-in вместо мгновенного скачка — убирает щелчок старта
     gain.gain.setValueAtTime(0, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + 1.2);
     osc.connect(gain);
@@ -201,7 +192,6 @@
     ambientNodes.push(source);
   }
 
-  // ---------- Эффекты ----------
   function fx(type) {
     if (!started) { start(); }
     if (!ctx || muted) return;
@@ -305,7 +295,6 @@
     });
   }
 
-  // ---------- Mute ----------
   function toggleMute() {
     if (!started) start();
     muted = !muted;
@@ -316,12 +305,11 @@
     updateBtn();
   }
 
-  // ---------- Кнопка ----------
   function buildBtn() {
     const btn = document.createElement('button');
     btn.id = 'uc-audio-btn';
     btn.setAttribute('aria-label', 'Звук');
-    btn.innerHTML = '&#9834;'; // ♪
+    btn.innerHTML = '&#9834;';
     Object.assign(btn.style, {
       position: 'fixed', top: 'max(64px, calc(env(safe-area-inset-top) + 48px))', right: '16px',
       width: '42px', height: '42px', borderRadius: '50%',
@@ -345,7 +333,101 @@
     btn.title = muted ? 'Включить звук' : 'Выключить звук';
   }
 
-  // ---------- Автозапуск при первом жесте ----------
+  function presetVoidDrone(vol) {
+    const osc = ctx.createOscillator(), osc2 = ctx.createOscillator(), g = ctx.createGain();
+    const lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
+    osc.type = 'sine'; osc.frequency.value = 41.2;
+    osc2.type = 'sine'; osc2.frequency.value = 41.2 * 1.5;
+    lfo.frequency.value = 0.04; lfoGain.gain.value = vol * 0.3;
+    lfo.connect(lfoGain); lfoGain.connect(g.gain);
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(vol, ctx.currentTime + 2);
+    osc.connect(g); osc2.connect(g); g.connect(masterGain);
+    osc.start(); osc2.start(); lfo.start();
+    ambientNodes.push(osc, osc2, lfo);
+  }
+
+  function presetAirNoise(vol) {
+    const bufSize = ctx.sampleRate * 4;
+    const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer; src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass'; filter.frequency.value = 800; filter.Q.value = 0.7;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(vol, ctx.currentTime + 2);
+    src.connect(filter); filter.connect(g); g.connect(masterGain);
+    src.start();
+    ambientNodes.push(src);
+  }
+
+  function presetSpaceEcho(minGap, maxGap, vol) {
+    if (!presetRunning) return;
+    const t = ctx.currentTime;
+    const freq = [110, 146, 165, 196][Math.floor(Math.random() * 4)];
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    const delay = ctx.createDelay(2.5), feedback = ctx.createGain(), delayFilter = ctx.createBiquadFilter();
+    osc.type = 'sine'; osc.frequency.value = freq;
+    delay.delayTime.value = 0.55; feedback.gain.value = 0.55;
+    delayFilter.type = 'lowpass'; delayFilter.frequency.value = 1200;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 1.2);
+    g.gain.linearRampToValueAtTime(0, t + 3.5);
+    osc.connect(g); g.connect(masterGain);
+    g.connect(delay); delay.connect(delayFilter); delayFilter.connect(feedback);
+    feedback.connect(delay); delay.connect(masterGain);
+    osc.start(t); osc.stop(t + 3.6);
+    const next = minGap + Math.random() * (maxGap - minGap);
+    setTimeout(() => presetSpaceEcho(minGap, maxGap, vol), next * 1000);
+  }
+
+  function presetNetworkPulse(minGap, maxGap, vol, pairChance) {
+    if (!presetRunning) return;
+    const t = ctx.currentTime;
+    const freq = 200 + Math.random() * 400;
+    const osc = ctx.createOscillator(), g = ctx.createGain(), filter = ctx.createBiquadFilter();
+    osc.type = 'triangle'; osc.frequency.value = freq;
+    filter.type = 'bandpass'; filter.frequency.value = freq; filter.Q.value = 8;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + 0.5 + Math.random() * 0.4);
+    osc.connect(filter); filter.connect(g); g.connect(masterGain);
+    osc.start(t); osc.stop(t + 1);
+    const next = minGap + Math.random() * (maxGap - minGap);
+    setTimeout(() => presetNetworkPulse(minGap, maxGap, vol, pairChance), next * 1000);
+    if (Math.random() < pairChance) {
+      setTimeout(() => presetNetworkPulse(minGap, maxGap, vol, pairChance), (next + 0.3) * 1000);
+    }
+  }
+
+  function startPreset(name) {
+    if (presetStarted) return;
+    presetStarted = true;
+    presetRunning = true;
+
+    if (!started) start();
+    initCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const launch = () => {
+      if (name === 'setBalance') {
+        presetVoidDrone(0.05);
+        presetAirNoise(0.012);
+        setTimeout(() => presetSpaceEcho(6, 14, 0.1), 800);
+        setTimeout(() => presetNetworkPulse(1.5, 5, 0.025, 0.3), 2000);
+      } else if (name === 'implantMinimal') {
+        presetVoidDrone(0.03);
+        setTimeout(() => presetSpaceEcho(14, 24, 0.07), 1500);
+        setTimeout(() => presetNetworkPulse(6, 12, 0.015, 0.05), 4000);
+      }
+    };
+
+    setTimeout(launch, 350);
+  }
+
   function firstGesture() {
     start();
     document.removeEventListener('touchend', firstGesture);
@@ -353,11 +435,9 @@
   }
 
   function boot() {
-    // Кнопка звука отключена везде — мешала интерфейсу на всех страницах.
-    // Звук (ambient + fx) работает как прежде, просто без видимого тоггла.
     if (sessionStorage.getItem('uc_audio_came_from_nav') === '1' && !muted) {
       sessionStorage.removeItem('uc_audio_came_from_nav');
-      try { start(); } catch (e) { /* если браузер блокирует — ждём тап */ }
+      try { start(); } catch (e) {}
     }
     document.addEventListener('touchend', firstGesture);
     document.addEventListener('click', firstGesture);
@@ -369,12 +449,12 @@
     boot();
   }
 
-  // ---------- Публичный API ----------
   window.UCAudio = {
     fx: fx,
     toggleMute: toggleMute,
     isMuted: () => muted,
     start: start,
-    prepNav: prepNav
+    prepNav: prepNav,
+    startPreset: startPreset
   };
 })();
