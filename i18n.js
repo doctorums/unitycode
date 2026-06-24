@@ -22,7 +22,7 @@
     // — общий каркас (навигация, разделы) —
     'nav.spiral':  { ru:`Спираль`, en:`Spiral`  },
     'nav.network': { ru:`Сеть`,    en:`Network` },
-    'nav.pattern': { ru:`Узор`,    en:`Pattern` },
+    'nav.pattern': { ru:`Патерн`,    en:`Pattern` },
     'nav.matter':  { ru:`Материя`, en:`Matter`  },
 
     // — лендинг (index.html) —
@@ -86,9 +86,9 @@
     'set.keyPhrase': { ru:`твоя фраза...`, en:`your phrase...` },
     'set.keyEnter': { ru:`[ ВОЙТИ ]`, en:`[ ENTER ]` },
     'set.keyJustLook': { ru:`[ просто смотреть ]`, en:`[ just look ]` },
-    // — Узор (implant.html) —
-    'implant.title': { ru:`UNITYCODE — Узор`, en:`UNITYCODE — Pattern` },
-    'implant.logo':  { ru:`UNITYCODE // УЗОР`, en:`UNITYCODE // PATTERN` },
+    // — Патерн (implant.html) —
+    'implant.title': { ru:`UNITYCODE — Патерн`, en:`UNITYCODE — Pattern` },
+    'implant.logo':  { ru:`UNITYCODE // Патерн`, en:`UNITYCODE // PATTERN` },
     'implant.tagYourNode': { ru:`// ТВОЙ УЗЕЛ`, en:`// YOUR NODE` },
     'implant.tagNetNow':   { ru:`// СЕТЬ СЕЙЧАС`, en:`// NETWORK NOW` },
     'implant.collectiveDesc': { ru:`Коллективный срез — паттерны и резонансы всей Сети. ИИ анализирует шумы и связи всех участников.`, en:`A collective cross-section — patterns and resonances of the whole Network. The AI analyzes the noise and connections of all participants.` },
