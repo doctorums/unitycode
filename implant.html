@@ -433,6 +433,7 @@ const headers = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_
 // ═══════════════════════════════════════════════════════
 let _oracleTimer = null;
 let _oracleSeq = 0; // версия сессии печати: отменяет старую, если открыли заново
+let _oracleFullText = ''; // полный текст текущего ответа — нужен для тапа-прерывания
 let _outroTimers = [];
 function clearOutro() { _outroTimers.forEach(clearTimeout); _outroTimers = []; }
 
@@ -475,6 +476,7 @@ function typeOracle(text) {
   if (_oracleTimer) { clearTimeout(_oracleTimer); _oracleTimer = null; }
   clearOutro();
   resetOracleText(textEl);
+  _oracleFullText = String(text || '').trim(); // для тапа-прерывания краула/фейда
 
   const words = String(text || '').trim().split(/(\s+)/); // сохраняем пробелы/переносы
   let i = 0;
@@ -577,6 +579,20 @@ function startOracleOutro(mySeq, fullText) {
     if (!alive()) return;
     closeOracle();
   }, 15000 + 3000 + 1500 + crawlDur * 1000 + 500));
+}
+
+// Тап в зону текста после допечатки: если уже запущен ритуал исчезновения
+// (фейд/краул к закрытию) — останавливаем его, возвращаем полный текст
+// на место и отдаём скролл в руки человеку. Во время самой печати или
+// если ритуал ещё не запущен — ничего не делает.
+function interruptOracleOutro() {
+  if (!_outroTimers.length) return; // нечего прерывать
+  clearOutro();
+  const textEl = document.getElementById('oracle-text');
+  const vp = document.getElementById('oracle-viewport');
+  resetOracleText(textEl);              // снимает classes breathing/fading/crawl + inline opacity/transition
+  textEl.textContent = _oracleFullText; // на случай, если застали середину фейда/краула
+  if (vp) vp.style.removeProperty('overflow'); // краул выставлял hidden — возвращаем ручной скролл
 }
 
 function showOracleError(msg) {
@@ -841,6 +857,8 @@ async function runCollectiveAnalysis() {
 // Инициализация
 loadPersonal();
 loadStats();
+const oracleViewportEl = document.getElementById('oracle-viewport');
+if (oracleViewportEl) oracleViewportEl.addEventListener('click', interruptOracleOutro);
 </script>
 </body>
 </html>
