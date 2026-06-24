@@ -22,7 +22,7 @@
     // — общий каркас (навигация, разделы) —
     'nav.spiral':  { ru:`Спираль`, en:`Spiral`  },
     'nav.network': { ru:`Сеть`,    en:`Network` },
-    'nav.pattern': { ru:`Патерн`,    en:`Pattern` },
+    'nav.pattern': { ru:`Паттерн`,    en:`Pattern` },
     'nav.matter':  { ru:`Материя`, en:`Matter`  },
 
     // — лендинг (index.html) —
