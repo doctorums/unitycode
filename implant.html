@@ -252,6 +252,8 @@
       flex: 1 1 auto;
       min-height: 0;
       overflow-y: auto;   /* можно скроллить, если текст не влез целиком */
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain; /* не даёт жесту "утечь" на внешнее окно (iOS-баг вложенного скролла) */
     }
     .oracle-window::before {
       content: '';
@@ -592,7 +594,11 @@ function interruptOracleOutro() {
   const vp = document.getElementById('oracle-viewport');
   resetOracleText(textEl);              // снимает classes breathing/fading/crawl + inline opacity/transition
   textEl.textContent = _oracleFullText; // на случай, если застали середину фейда/краула
-  if (vp) vp.style.removeProperty('overflow'); // краул выставлял hidden — возвращаем ручной скролл
+  if (vp) {
+    vp.style.removeProperty('overflow');
+    vp.style.overflowY = 'auto'; // явно, не надеясь на снятие инлайна — гарантирует скролл
+    vp.scrollTop = 0;            // читаем текст сначала, а не с произвольной точки краула
+  }
 }
 
 function showOracleError(msg) {
