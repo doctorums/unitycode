@@ -428,8 +428,22 @@
     setTimeout(launch, 350);
   }
 
+  // ---------- Автозапуск при первом жесте ----------
+  function pageAmbientName() {
+    const file = location.pathname.split('/').pop() || '';
+    if (file === 'set.html') return 'setBalance';
+    if (file === 'implant.html') return 'implantMinimal';
+    return null; // index/petlya — обычный общий ambient
+  }
+
+  function launchForPage() {
+    const preset = pageAmbientName();
+    if (preset) startPreset(preset);
+    else start();
+  }
+
   function firstGesture() {
-    start();
+    launchForPage();
     document.removeEventListener('touchend', firstGesture);
     document.removeEventListener('click', firstGesture);
   }
@@ -437,7 +451,7 @@
   function boot() {
     if (sessionStorage.getItem('uc_audio_came_from_nav') === '1' && !muted) {
       sessionStorage.removeItem('uc_audio_came_from_nav');
-      try { start(); } catch (e) {}
+      try { launchForPage(); } catch (e) {}
     }
     document.addEventListener('touchend', firstGesture);
     document.addEventListener('click', firstGesture);
