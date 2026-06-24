@@ -86,9 +86,9 @@
     'set.keyPhrase': { ru:`твоя фраза...`, en:`your phrase...` },
     'set.keyEnter': { ru:`[ ВОЙТИ ]`, en:`[ ENTER ]` },
     'set.keyJustLook': { ru:`[ просто смотреть ]`, en:`[ just look ]` },
-    // — Патерн (implant.html) —
-    'implant.title': { ru:`UNITYCODE — Патерн`, en:`UNITYCODE — Pattern` },
-    'implant.logo':  { ru:`UNITYCODE // Патерн`, en:`UNITYCODE // PATTERN` },
+    // — Паттерн (implant.html) —
+    'implant.title': { ru:`UNITYCODE — Паттерн`, en:`UNITYCODE — Pattern` },
+    'implant.logo':  { ru:`UNITYCODE // Паттерн`, en:`UNITYCODE // PATTERN` },
     'implant.tagYourNode': { ru:`// ТВОЙ УЗЕЛ`, en:`// YOUR NODE` },
     'implant.tagNetNow':   { ru:`// СЕТЬ СЕЙЧАС`, en:`// NETWORK NOW` },
     'implant.collectiveDesc': { ru:`Коллективный срез — паттерны и резонансы всей Сети. ИИ анализирует шумы и связи всех участников.`, en:`A collective cross-section — patterns and resonances of the whole Network. The AI analyzes the noise and connections of all participants.` },
