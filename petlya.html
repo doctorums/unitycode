@@ -817,6 +817,18 @@ if (lng !== null) payload.lng = lng;
 // в минутах: верно учитывает переход на летнее/зимнее время.
 try { payload.tz = Intl.DateTimeFormat().resolvedOptions().timeZone || undefined; } catch(e) { /* не критично */ }
 
+// Запоминаем попытку вплетения локально ДО сети — переживёт обрыв связи
+// и закрытие вкладки. client_id — ключ идемпотентности, повтор безопасен.
+ucQueueUpsert({
+  client_id: btn.dataset.idem,
+  raw_noise: payload.raw_noise,
+  ai_interpretation: payload.ai_interpretation,
+  user_token: userToken,
+  lat: payload.lat,
+  lng: payload.lng,
+  tz: payload.tz,
+});
+
 const ts = await getTurnstileToken();
 const res = await fetch(WRITE_WORKER_URL, {
 method: 'POST',
@@ -847,6 +859,7 @@ const note = document.createElement('div');
 note.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,51,102,0.55);margin-top:0.5rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
 note.textContent = '// ' + (data.reason || UC_I18N.t('petlya.signalIndistinct'));
 if (btn.parentNode) btn.parentNode.appendChild(note);
+ucQueueRemove(btn.dataset.idem);
 return;
 }
 
@@ -876,6 +889,7 @@ if (!isNaN(idx) && messages[idx]) {
 }
 try { localStorage.setItem('uc_woven_idx_' + btn.dataset.msgIndex, '1'); } catch(e){}
 try { localStorage.removeItem('uc_noise_' + btn.dataset.msgIndex); } catch(e){}
+ucQueueRemove(btn.dataset.idem);
 // Успех — кнопка остаётся disabled навсегда
 } catch(e) {
 console.warn('Supabase error', e);
@@ -897,6 +911,81 @@ btn.dataset.weaveInProgress = '0';
 }, 1000);
 }
 }
+
+// ═══════════════════════════════════════════════════════
+// ОЧЕРЕДЬ ВПЛЕТЕНИЙ (офлайн-устойчивость)
+// Аддитивный слой: не меняет UI и не трогает существующую логику рендера.
+// Каждая попытка вплетения сохраняется локально ДО сетевого запроса
+// (см. ucQueueUpsert в weaveIntoNet). Если канал слабый/обрывается —
+// шум не теряется: фон довплетает его сам, когда связь появится.
+// client_id = ключ идемпотентности — повторная отправка безопасна
+// (Supabase игнорирует дубликат по уже существующему контракту).
+// ═══════════════════════════════════════════════════════
+const UC_QUEUE_KEY = 'uc_weave_queue';
+const ucInFlight = new Set();
+
+function ucQueueRead() {
+  try { return JSON.parse(localStorage.getItem(UC_QUEUE_KEY) || '[]'); } catch(e) { return []; }
+}
+function ucQueueWrite(items) {
+  try { localStorage.setItem(UC_QUEUE_KEY, JSON.stringify(items)); } catch(e) {}
+}
+function ucQueueUpsert(item) {
+  const items = ucQueueRead();
+  const i = items.findIndex(x => x.client_id === item.client_id);
+  if (i >= 0) items[i] = Object.assign({}, items[i], item);
+  else items.push(item);
+  ucQueueWrite(items);
+}
+function ucQueueRemove(clientId) {
+  if (!clientId) return;
+  ucQueueWrite(ucQueueRead().filter(x => x.client_id !== clientId));
+}
+
+async function ucTrySyncQueue() {
+  const items = ucQueueRead();
+  if (!items.length) return;
+  for (const item of items) {
+    if (!item.client_id || ucInFlight.has(item.client_id)) continue;
+    ucInFlight.add(item.client_id);
+    try {
+      const ts = await getTurnstileToken();
+      const res = await fetch(WRITE_WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'node',
+          token: item.user_token,
+          turnstile: ts,
+          client_id: item.client_id,
+          raw_noise: item.raw_noise,
+          ai_interpretation: item.ai_interpretation,
+          lat: item.lat,
+          lng: item.lng,
+          tz: item.tz,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // успех ИЛИ окончательный отказ привратника — больше не повторяем.
+        // gate_unavailable и прочее — транзитно, оставляем в очереди.
+        if (data && (data.ok === true || data.error === 'gate')) {
+          ucQueueRemove(item.client_id);
+        }
+      }
+    } catch(e) {
+      // сеть всё ещё недоступна — оставляем в очереди до следующей попытки
+    } finally {
+      ucInFlight.delete(item.client_id);
+    }
+  }
+}
+
+// Триггеры фоновой синхронизации — независимы от UI, не блокируют его
+window.addEventListener('online', ucTrySyncQueue);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') ucTrySyncQueue(); });
+setTimeout(ucTrySyncQueue, 4000);    // попытка сразу после загрузки страницы
+setInterval(ucTrySyncQueue, 45000);  // подстраховка: на слабом LTE событие 'online' часто не срабатывает
 
 // ═══════════════════════════════════════════════════════
 // АНИМАЦИЯ СИСТЕМНОГО СООБЩЕНИЯ
