@@ -821,6 +821,7 @@ try { payload.tz = Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
 // и закрытие вкладки. client_id — ключ идемпотентности, повтор безопасен.
 ucQueueUpsert({
   client_id: btn.dataset.idem,
+  msg_index: btn.dataset.msgIndex,
   raw_noise: payload.raw_noise,
   ai_interpretation: payload.ai_interpretation,
   user_token: userToken,
@@ -967,11 +968,22 @@ async function ucTrySyncQueue() {
       });
       if (res.ok) {
         const data = await res.json();
-        // успех ИЛИ окончательный отказ привратника — больше не повторяем.
-        // gate_unavailable и прочее — транзитно, оставляем в очереди.
-        if (data && (data.ok === true || data.error === 'gate')) {
+        // успех — снимаем с очереди И помечаем "вплетено" в данных,
+        // чтобы при релоаде кнопка не появилась снова (рендер не трогаем,
+        // только то, что уже читает существующая restoreDialog).
+        if (data && data.ok === true) {
+          ucQueueRemove(item.client_id);
+          try { localStorage.setItem('uc_woven_idx_' + item.msg_index, '1'); } catch(e){}
+          const midx = parseInt(item.msg_index);
+          if (!isNaN(midx) && messages[midx]) {
+            messages[midx].woven = true;
+            try { sessionStorage.setItem('uc_petlya_dialog', JSON.stringify(messages)); } catch(e){}
+          }
+        } else if (data && data.error === 'gate') {
+          // окончательный отказ привратника — повторять нет смысла
           ucQueueRemove(item.client_id);
         }
+        // gate_unavailable / прочее — транзитно, оставляем в очереди
       }
     } catch(e) {
       // сеть всё ещё недоступна — оставляем в очереди до следующей попытки
