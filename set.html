@@ -199,7 +199,7 @@ function getTurnstileToken(){
 // полный refresh и убираем удалённые узлы с карты.
 // ═══════════════════════════════════════════════════════
 const CACHE_NODES = 'uc_cache_nodes_v3';
-const CACHE_CONNS = 'uc_cache_conns_v3';
+const CACHE_CONNS = 'uc_cache_conns_v4'; // v3→v4: старый формат без created_by, нужна сразу свежая загрузка
 const CACHE_TTL_MS = 10 * 60 * 1000;   // 10 минут — после этого кэш игнорируется
 const FULL_REFRESH_INTERVAL = 60 * 1000; // 60 сек — фоновый полный пересчёт
 
