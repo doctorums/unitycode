@@ -770,6 +770,7 @@ async function runPersonalAnalysis() {
       body: JSON.stringify({
         scope: 'personal',
         lang: (window.UC_I18N ? UC_I18N.lang : 'ru'),
+        user_token: localStorage.getItem('uc_token') || '',
         nodes: myNodes.map(n => ({ id: n.id, raw_noise: n.raw_noise, ai_interpretation: n.ai_interpretation })),
         connections: window._myConns || [],
       }),
