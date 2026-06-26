@@ -384,8 +384,12 @@
         <span class="stat-val" id="total-nodes">—</span>
       </div>
       <div class="stat-box">
-        <span class="stat-label" data-i18n="implant.statConns">Связей</span>
-        <span class="stat-val" id="total-connections">—</span>
+        <span class="stat-label" data-i18n="implant.statConnsHuman">Связей (люди)</span>
+        <span class="stat-val" id="total-connections-human">—</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label" data-i18n="implant.statConnsLinker">Связей (Связующий)</span>
+        <span class="stat-val" id="total-connections-linker">—</span>
       </div>
       <div class="stat-box">
         <span class="stat-label" data-i18n="implant.statUsers">Участников</span>
@@ -786,19 +790,23 @@ async function loadStats() {
   try {
     const [nodesRes, connsRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/nodes?select=id,user_token`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/connections?select=id&status=eq.accepted`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/connections?select=id,created_by&status=eq.accepted`, { headers }),
     ]);
     const [nodes, conns] = await Promise.all([nodesRes.json(), connsRes.json()]);
 
     const uniqueUsers = new Set(nodes.filter(n => n.user_token).map(n => n.user_token)).size;
+    const connsArr = Array.isArray(conns) ? conns : [];
+    const linkerConns = connsArr.filter(c => c.created_by === 'linker').length;
+    const humanConns = connsArr.length - linkerConns; // 'human' и любое старое/пустое значение — туда же
 
     document.getElementById('total-nodes').textContent = nodes.length;
-    document.getElementById('total-connections').textContent = conns.length;
+    document.getElementById('total-connections-human').textContent = humanConns;
+    document.getElementById('total-connections-linker').textContent = linkerConns;
     document.getElementById('total-users').textContent = uniqueUsers;
 
     // Сохраняем для анализа + полные счётчики для триггера кэша
     window._allNodeIds = nodes.map(n => n.id);
-    window._graphCounts = { nodes: nodes.length, conns: conns.length };
+    window._graphCounts = { nodes: nodes.length, conns: connsArr.length };
   } catch(e) { console.warn('Stats error', e); }
 }
 
