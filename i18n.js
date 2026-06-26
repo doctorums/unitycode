@@ -94,6 +94,8 @@
     'implant.collectiveDesc': { ru:`Коллективный срез — паттерны и резонансы всей Сети. ИИ анализирует шумы и связи всех участников.`, en:`A collective cross-section — patterns and resonances of the whole Network. The AI analyzes the noise and connections of all participants.` },
     'implant.statNodes': { ru:`Узлов в сети`, en:`Nodes in the network` },
     'implant.statConns': { ru:`Связей`, en:`Connections` },
+    'implant.statConnsHuman': { ru:`Связей (люди)`, en:`Connections (human)` },
+    'implant.statConnsLinker': { ru:`Связей (Связующий)`, en:`Connections (Linker)` },
     'implant.statUsers': { ru:`Участников`, en:`Participants` },
     'implant.statYourNoises': { ru:`Твоих шумов`, en:`Your noise` },
     'implant.btnCollective': { ru:`[ Запустить анализ Сети ]`, en:`[ Run Network analysis ]` },
