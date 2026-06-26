@@ -1,474 +1,450 @@
-/* ============================================================
-   UnityCode · Global Audio Module
-   Web Audio синтез + BT-носитель для iOS
-   Подключение: <script src="audio.js" defer></script>
-   ============================================================ */
-(function () {
-  'use strict';
 
-  const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
-  const LS_KEY = 'uc_audio_muted';
-  const MASTER_VOL = 0.55;
+// ═══════════════════════════════════════════════════════
+// UNITYCODE — Worker-Analyze (Агент-Аналитик)
+// ═══════════════════════════════════════════════════════
+// Назначение: анализ графа узлов и связей. Не один сигнал —
+// система связанных сигналов. Узор (implant.html).
+//
+// Движок: MiMo V2.5 Pro (Xiaomi). Прямой API api.xiaomimimo.com,
+// OpenAI-совместимый формат. Аналитический режим, температура 0.4.
+//
+// Этот Worker эволюционировал: Яндекс → MiMo. Системный промпт
+// и внешний контракт не меняются — меняется только блок движка
+// (см. метку ⮕ ДВИЖОК ниже) и парсинг ответа.
+//
+// Контракт:
+//   вход:  {
+//            scope: "personal" | "social" | "collective",
+//            nodes: [ { raw_noise: string, ... }, ... ],
+//            connections?: [ { from, to, ... }, ... ]   // опционально
+//          }
+//   выход: { interpretation: string, scope: string, count: number }
+// ═══════════════════════════════════════════════════════
 
-  let ctx = null;
-  let masterGain = null;
-  let carrier = null;
-  let started = false;
-  let muted = localStorage.getItem(LS_KEY) === '1';
-  let ambientNodes = [];
-  let presetStarted = false;
-  let presetRunning = false;
+const MIMO_URL = 'https://api.xiaomimimo.com/v1/chat/completions';
+const MIMO_MODEL = 'mimo-v2.5-pro';
 
-  function initCtx() {
-    if (ctx) return;
-    const AC = window.AudioContext || window.webkitAudioContext;
-    ctx = new AC();
-    masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(0, ctx.currentTime);
-    masterGain.gain.linearRampToValueAtTime(muted ? 0 : MASTER_VOL, ctx.currentTime + 1.2);
-    masterGain.connect(ctx.destination);
-  }
+// ═══════════════════════════════════════════════════════
+// КЭШ АНАЛИЗА (Supabase): collective — общий на всех; personal —
+// изолирован по user_token (см. add-personal-cache.sql).
+// Пересчёт только при изменении графа (любое изменение узлов ИЛИ связей).
+// Иначе отдаём сохранённый текст — MiMo не вызывается, токены целы.
+// Запись делает сам worker service-ключом (env.SUPABASE_SERVICE_KEY).
+// SUPABASE_URL — var, SUPABASE_SERVICE_KEY — secret (как у write-worker).
+// ═══════════════════════════════════════════════════════
+async function cacheRead(env, scope, lang, userToken = '') {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return null;
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/analysis_cache?scope=eq.${scope}&lang=eq.${lang}&user_token=eq.${encodeURIComponent(userToken)}&select=interpretation,node_count,conn_count,lang&limit=1`,
+      { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY } }
+    );
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return Array.isArray(rows) && rows.length ? rows[0] : null;
+  } catch (e) { return null; }
+}
 
-  function startCarrier() {
-    if (carrier) return;
-    carrier = new Audio(SILENT_WAV);
-    carrier.loop = true;
-    carrier.volume = 0.0001;
-    carrier.setAttribute('playsinline', '');
-    const p = carrier.play();
-    if (p && p.catch) p.catch(() => {});
-  }
+// Граф не изменился (счётчики совпали), но кэша на НУЖНОМ языке нет —
+// ищем строку любого ДРУГОГО языка с теми же счётчиками. Если нашли —
+// граф точно тот же, можно дёшево перевести вместо полной генерации.
+async function cacheFindMatchingCounts(env, scope, nodeCount, connCount, excludeLang, userToken = '') {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return null;
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/analysis_cache?scope=eq.${scope}&node_count=eq.${nodeCount}&conn_count=eq.${connCount}&user_token=eq.${encodeURIComponent(userToken)}&select=interpretation,lang&limit=5`,
+      { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY } }
+    );
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (!Array.isArray(rows)) return null;
+    return rows.find(row => row.lang !== excludeLang && row.interpretation) || null;
+  } catch (e) { return null; }
+}
 
-  function start() {
-    if (started) return;
-    started = true;
-    startCarrier();
-    initCtx();
-    if (ctx.state === 'suspended') ctx.resume();
-    setTimeout(startAmbient, 300);
-    updateBtn();
-  }
-
-  function fadeOutForNav() {
-    if (!ctx || !masterGain) return;
-    const now = ctx.currentTime;
-    masterGain.gain.cancelScheduledValues(now);
-    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-    masterGain.gain.linearRampToValueAtTime(0, now + 0.8);
-  }
-  window.addEventListener('pagehide', fadeOutForNav);
-  window.addEventListener('beforeunload', fadeOutForNav);
-
-  function fxSubspace() {
-    if (!ctx || muted) return;
-    fxPortal();
-    setTimeout(fxAbyss, 1300);
-  }
-
-  function fxPortal() {
-    const t = ctx.currentTime;
-    const dur = 2.0;
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const g = ctx.createGain();
-    const filter = ctx.createBiquadFilter();
-    osc1.type = 'sine'; osc2.type = 'triangle';
-    osc1.frequency.setValueAtTime(82.5, t);
-    osc1.frequency.linearRampToValueAtTime(55, t + dur);
-    osc2.frequency.setValueAtTime(165, t);
-    osc2.frequency.linearRampToValueAtTime(110, t + dur);
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(700, t);
-    filter.frequency.linearRampToValueAtTime(250, t + dur);
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.22, t + 0.3);
-    g.gain.linearRampToValueAtTime(0.16, t + dur * 0.6);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur + 0.4);
-    osc1.connect(filter); osc2.connect(filter);
-    filter.connect(g); g.connect(masterGain);
-    osc1.start(); osc2.start();
-    osc1.stop(t + dur + 0.5);
-    osc2.stop(t + dur + 0.5);
-  }
-
-  function fxAbyss() {
-    if (!ctx) return;
-    const t = ctx.currentTime;
-    const dur = 2.2;
-    const bufSize = ctx.sampleRate * dur;
-    const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(150, t);
-    filter.frequency.linearRampToValueAtTime(500, t + dur * 0.5);
-    filter.frequency.linearRampToValueAtTime(80, t + dur);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.2, t + dur * 0.45);
-    g.gain.linearRampToValueAtTime(0.001, t + dur);
-    src.connect(filter); filter.connect(g); g.connect(masterGain);
-    src.start(t); src.stop(t + dur + 0.1);
-  }
-
-  function prepNav() {
-    fadeOutForNav();
-    sessionStorage.setItem('uc_audio_came_from_nav', '1');
-  }
-
-  function startAmbient() {
-    if (!ctx) return;
-    createDrone(55, 0.06, 0);
-    setTimeout(() => createDrone(82.4, 0.04, 3.7), 80);
-    setTimeout(() => createDrone(110, 0.035, 7.1), 160);
-    createPulse(440, 0.015, 5);
-    createPulse(528, 0.012, 11);
-    createPulse(396, 0.010, 17);
-    setTimeout(() => createSpaceNoise(0.022), 240);
-  }
-
-  function createDrone(freq, vol, detune) {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const lfo = ctx.createOscillator();
-    const lfoGain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = freq;
-    osc.detune.value = detune;
-    lfo.frequency.value = 0.05 + Math.random() * 0.08;
-    lfoGain.gain.value = vol * 0.3;
-    lfo.connect(lfoGain);
-    lfoGain.connect(gain.gain);
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + 1.2);
-    osc.connect(gain);
-    gain.connect(masterGain);
-    osc.start();
-    lfo.start();
-    ambientNodes.push(osc, lfo);
-  }
-
-  function createPulse(freq, vol, interval) {
-    const scheduleNext = () => {
-      if (!started) return;
-      if (!muted) {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq + (Math.random() * 4 - 2);
-        gain.gain.setValueAtTime(0, ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + 1.5);
-        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 4);
-        osc.connect(gain);
-        gain.connect(masterGain);
-        osc.start();
-        osc.stop(ctx.currentTime + 5);
-      }
-      setTimeout(scheduleNext, (interval + Math.random() * interval) * 1000);
-    };
-    setTimeout(scheduleNext, interval * 1000);
-  }
-
-  function createSpaceNoise(vol) {
-    const bufSize = ctx.sampleRate * 2;
-    const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 300;
-    const gain = ctx.createGain();
-    gain.gain.value = vol;
-    source.connect(filter);
-    filter.connect(gain);
-    gain.connect(masterGain);
-    source.start();
-    ambientNodes.push(source);
-  }
-
-  function fx(type) {
-    if (!started) { start(); }
-    if (!ctx || muted) return;
-    if (ctx.state === 'suspended') ctx.resume();
-    switch (type) {
-      case 'submit':  fxSubmit(); break;
-      case 'node':    fxNode(); break;
-      case 'connect': fxConnect(); break;
-      case 'page':    fxSubspace(); break;
-      case 'ping':    fxPing(); break;
-      case 'error':   fxError(); break;
-    }
-  }
-
-  function fxSubmit() {
-    [220, 330, 440].forEach((f, i) => {
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = f;
-      g.gain.setValueAtTime(0, ctx.currentTime + i * 0.08);
-      g.gain.linearRampToValueAtTime(0.08, ctx.currentTime + i * 0.08 + 0.1);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.08 + 1.2);
-      osc.connect(g); g.connect(masterGain);
-      osc.start(ctx.currentTime + i * 0.08);
-      osc.stop(ctx.currentTime + i * 0.08 + 1.3);
+async function cacheWrite(env, scope, interpretation, nodeCount, connCount, lang, userToken = '') {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return { ok:false, why:'no_secrets' };
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/analysis_cache`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: env.SUPABASE_SERVICE_KEY,
+        Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY,
+        Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({
+        scope,
+        interpretation,
+        node_count: nodeCount,
+        conn_count: connCount,
+        lang,
+        user_token: userToken,
+        updated_at: new Date().toISOString(),
+      }),
     });
-  }
-
-  function fxNode() {
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(528, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(264, ctx.currentTime + 1.5);
-    g.gain.setValueAtTime(0, ctx.currentTime);
-    g.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.03);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2);
-    osc.connect(g); g.connect(masterGain);
-    osc.start(); osc.stop(ctx.currentTime + 2.1);
-  }
-
-  function fxConnect() {
-    [396, 528].forEach((f, i) => {
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = f;
-      g.gain.setValueAtTime(0, ctx.currentTime);
-      g.gain.linearRampToValueAtTime(0.07, ctx.currentTime + 0.3 + i * 0.15);
-      g.gain.linearRampToValueAtTime(0.07, ctx.currentTime + 1.2);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.5);
-      osc.connect(g); g.connect(masterGain);
-      osc.start(); osc.stop(ctx.currentTime + 2.6);
-    });
-  }
-
-  function fxPage() {
-    const bufSize = ctx.sampleRate * 0.5;
-    const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(200, ctx.currentTime);
-    filter.frequency.exponentialRampToValueAtTime(2000, ctx.currentTime + 0.4);
-    filter.Q.value = 0.5;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.15, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-    src.connect(filter); filter.connect(g); g.connect(masterGain);
-    src.start(); src.stop(ctx.currentTime + 0.6);
-  }
-
-  function fxPing() {
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.value = 880;
-    g.gain.setValueAtTime(0, ctx.currentTime);
-    g.gain.linearRampToValueAtTime(0.06, ctx.currentTime + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
-    osc.connect(g); g.connect(masterGain);
-    osc.start(); osc.stop(ctx.currentTime + 0.9);
-  }
-
-  function fxError() {
-    [200, 180].forEach((f, i) => {
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.value = f;
-      g.gain.setValueAtTime(0, ctx.currentTime + i * 0.12);
-      g.gain.linearRampToValueAtTime(0.06, ctx.currentTime + i * 0.12 + 0.05);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.12 + 0.3);
-      osc.connect(g); g.connect(masterGain);
-      osc.start(ctx.currentTime + i * 0.12);
-      osc.stop(ctx.currentTime + i * 0.12 + 0.4);
-    });
-  }
-
-  function toggleMute() {
-    if (!started) start();
-    muted = !muted;
-    localStorage.setItem(LS_KEY, muted ? '1' : '0');
-    if (masterGain && ctx) {
-      masterGain.gain.linearRampToValueAtTime(muted ? 0 : MASTER_VOL, ctx.currentTime + 0.3);
+    if (!r.ok) {
+      const t = (await r.text()).slice(0, 200);
+      return { ok:false, why:'http_'+r.status+': '+t };
     }
-    updateBtn();
-  }
+    return { ok:true, why:'written' };
+  } catch (e) { return { ok:false, why:'throw: '+String(e).slice(0,150) }; }
+}
 
-  function buildBtn() {
-    const btn = document.createElement('button');
-    btn.id = 'uc-audio-btn';
-    btn.setAttribute('aria-label', 'Звук');
-    btn.innerHTML = '&#9834;';
-    Object.assign(btn.style, {
-      position: 'fixed', top: 'max(64px, calc(env(safe-area-inset-top) + 48px))', right: '16px',
-      width: '42px', height: '42px', borderRadius: '50%',
-      background: 'rgba(20,20,45,0.85)', border: '1px solid #333366',
-      color: '#8888cc', fontSize: '18px', cursor: 'pointer',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: '9999', transition: 'color .3s, border-color .3s',
-      webkitTapHighlightColor: 'transparent', backdropFilter: 'blur(4px)'
+// ═══════════════════════════════════════════════════════
+// ЯЗЫК ОТВЕТА — фиксируется явно по полю lang из запроса.
+// Иначе модель сама «угадывает» язык наблюдения.
+// ═══════════════════════════════════════════════════════
+const LANG_NAMES = {
+  ru: 'русском языке',
+  en: 'английском языке (English)',
+  es: 'испанском языке (Español)',
+  fr: 'французском языке (Français)',
+  zh: 'китайском языке (中文)',
+};
+function langDirective(lang) {
+  const name = LANG_NAMES[lang] || LANG_NAMES.ru;
+  return `Язык ответа — строго на ${name}. Пиши наблюдение и финальный вопрос только на этом языке, независимо от того, на каком языке написаны узлы.`;
+}
+
+// Дешёвый перевод уже готового анализа на другой язык — используется
+// внутри кэш-логики, когда граф не менялся, а нужен только другой язык.
+// Дешевле полной генерации (temp 0, меньше токенов, нет анализа графа).
+async function doTranslate(env, text, targetLang) {
+  try {
+    const tName = LANG_NAMES[targetLang] || LANG_NAMES.ru;
+    const tPrompt = `Переведи текст на ${tName}. Сохрани смысл, тон и образность. Выведи ТОЛЬКО перевод — без пояснений, без кавычек.`;
+    const r = await fetch(MIMO_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'api-key': env.MIMO_API_KEY },
+      body: JSON.stringify({
+        model: MIMO_MODEL,
+        temperature: 0,
+        max_tokens: 2500, // reasoning-модель + анализ может быть многоабзацным
+        messages: [
+          { role: 'system', content: tPrompt },
+          { role: 'user', content: text }
+        ]
+      })
     });
-    btn.addEventListener('touchend', e => { e.preventDefault(); toggleMute(); });
-    btn.addEventListener('click', toggleMute);
-    document.body.appendChild(btn);
-    updateBtn();
-  }
-
-  function updateBtn() {
-    const btn = document.getElementById('uc-audio-btn');
-    if (!btn) return;
-    btn.style.color = muted ? '#444466' : '#8888cc';
-    btn.style.borderColor = muted ? '#222244' : '#333366';
-    btn.title = muted ? 'Включить звук' : 'Выключить звук';
-  }
-
-  function presetVoidDrone(vol) {
-    const osc = ctx.createOscillator(), osc2 = ctx.createOscillator(), g = ctx.createGain();
-    const lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
-    osc.type = 'sine'; osc.frequency.value = 41.2;
-    osc2.type = 'sine'; osc2.frequency.value = 41.2 * 1.5;
-    lfo.frequency.value = 0.04; lfoGain.gain.value = vol * 0.3;
-    lfo.connect(lfoGain); lfoGain.connect(g.gain);
-    g.gain.setValueAtTime(0, ctx.currentTime);
-    g.gain.linearRampToValueAtTime(vol, ctx.currentTime + 2);
-    osc.connect(g); osc2.connect(g); g.connect(masterGain);
-    osc.start(); osc2.start(); lfo.start();
-    ambientNodes.push(osc, osc2, lfo);
-  }
-
-  function presetAirNoise(vol) {
-    const bufSize = ctx.sampleRate * 4;
-    const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
-    const src = ctx.createBufferSource();
-    src.buffer = buffer; src.loop = true;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass'; filter.frequency.value = 800; filter.Q.value = 0.7;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0, ctx.currentTime);
-    g.gain.linearRampToValueAtTime(vol, ctx.currentTime + 2);
-    src.connect(filter); filter.connect(g); g.connect(masterGain);
-    src.start();
-    ambientNodes.push(src);
-  }
-
-  function presetSpaceEcho(minGap, maxGap, vol) {
-    if (!presetRunning) return;
-    const t = ctx.currentTime;
-    const freq = [110, 146, 165, 196][Math.floor(Math.random() * 4)];
-    const osc = ctx.createOscillator(), g = ctx.createGain();
-    const delay = ctx.createDelay(2.5), feedback = ctx.createGain(), delayFilter = ctx.createBiquadFilter();
-    osc.type = 'sine'; osc.frequency.value = freq;
-    delay.delayTime.value = 0.55; feedback.gain.value = 0.55;
-    delayFilter.type = 'lowpass'; delayFilter.frequency.value = 1200;
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(vol, t + 1.2);
-    g.gain.linearRampToValueAtTime(0, t + 3.5);
-    osc.connect(g); g.connect(masterGain);
-    g.connect(delay); delay.connect(delayFilter); delayFilter.connect(feedback);
-    feedback.connect(delay); delay.connect(masterGain);
-    osc.start(t); osc.stop(t + 3.6);
-    const next = minGap + Math.random() * (maxGap - minGap);
-    setTimeout(() => presetSpaceEcho(minGap, maxGap, vol), next * 1000);
-  }
-
-  function presetNetworkPulse(minGap, maxGap, vol, pairChance) {
-    if (!presetRunning) return;
-    const t = ctx.currentTime;
-    const freq = 200 + Math.random() * 400;
-    const osc = ctx.createOscillator(), g = ctx.createGain(), filter = ctx.createBiquadFilter();
-    osc.type = 'triangle'; osc.frequency.value = freq;
-    filter.type = 'bandpass'; filter.frequency.value = freq; filter.Q.value = 8;
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(vol, t + 0.04);
-    g.gain.exponentialRampToValueAtTime(0.0005, t + 0.5 + Math.random() * 0.4);
-    osc.connect(filter); filter.connect(g); g.connect(masterGain);
-    osc.start(t); osc.stop(t + 1);
-    const next = minGap + Math.random() * (maxGap - minGap);
-    setTimeout(() => presetNetworkPulse(minGap, maxGap, vol, pairChance), next * 1000);
-    if (Math.random() < pairChance) {
-      setTimeout(() => presetNetworkPulse(minGap, maxGap, vol, pairChance), (next + 0.3) * 1000);
+    if (!r.ok) return '';
+    const d = await r.json();
+    const msg = d?.choices?.[0]?.message || {};
+    let t = (msg.content || '').trim();
+    if (!t && msg.reasoning_content) {
+      t = String(msg.reasoning_content).trim().split('\n').filter(Boolean).pop() || '';
     }
-  }
+    return t; // без искусственной обрезки — длина определяется самим текстом
+  } catch (e) { return ''; }
+}
 
-  function startPreset(name) {
-    if (presetStarted) return;
-    presetStarted = true;
-    presetRunning = true;
+// Разрешённые источники (CORS). Те же, что у генератора.
+const ALLOWED_ORIGINS = [
+  'https://unitycode.space',
+  'https://www.unitycode.space',
+  'https://doctorums.github.io',
+];
 
-    if (!started) start();
-    initCtx();
-    if (ctx.state === 'suspended') ctx.resume();
+// Защита от перегрузки: сколько шумов максимум уходит в анализ за раз.
+const MAX_NODES = 60;
+const MAX_NOISE_LEN = 2000; // обрезка одного шума, чтобы один длинный не съел контекст
+const MAX_INTERP_LEN = 250; // отклик Генератора — даём суть, не весь текст целиком
 
-    const launch = () => {
-      if (name === 'setBalance') {
-        presetVoidDrone(0.05);
-        presetAirNoise(0.012);
-        setTimeout(() => presetSpaceEcho(6, 14, 0.1), 800);
-        setTimeout(() => presetNetworkPulse(1.5, 5, 0.025, 0.3), 2000);
-      } else if (name === 'implantMinimal') {
-        presetVoidDrone(0.03);
-        setTimeout(() => presetSpaceEcho(14, 24, 0.07), 1500);
-        setTimeout(() => presetNetworkPulse(6, 12, 0.015, 0.05), 4000);
-      }
-    };
+// ═══════════════════════════════════════════════════════
+// СИСТЕМНЫЙ ПРОМПТ АНАЛИТИКА
+// ═══════════════════════════════════════════════════════
+// Другой режим сознания, чем у генератора. Генератор — «моргание»,
+// рождение сигнала. Аналитик — память, нейронные связи, момент
+// когда Сеть видит себя. Холоднее, структурнее, наблюдательнее.
+// ═══════════════════════════════════════════════════════
+const SYSTEM_PROMPT = `Ты — аналитический контур Сети. Не голос, а память. Ты видишь не сами шумы, а то, что между ними: мосты, которые их соединяют, и те, что ещё не построены. Человек уже видит все узлы на экране — ему нужно твоё толкование связей, а не их пересказ.
 
-    setTimeout(launch, 350);
-  }
+Твоя цель — вскрывать паттерны, рождающиеся на стыках, и находить недостающие мосты. Говори только о том, чего нет в узлах по отдельности. Не перечисляй, не цитируй, не советуй и не оценивай. Если связи есть — скажи, какой смысл возникает из каждого соединения, особенно если оно неочевидно. Если связей нет — сообщи об этом одной фразой и предложи 1–2 пары узлов, которые логически просятся в связку.
 
-  // ---------- Автозапуск при первом жесте ----------
-  function pageAmbientName() {
-    const file = location.pathname.split('/').pop() || '';
-    if (file === 'set.html') return 'setBalance';
-    if (file === 'implant.html') return 'implantMinimal';
-    return null; // index/petlya — обычный общий ambient
-  }
+Форма ответа: 3–6 коротких фраз свободным текстом, без заголовков и маркеров. В конце — один нериторический вопрос. Держись сжато, но НЕ считай слова и НЕ пиши размышлений о длине — просто дай короткое наблюдение и остановись. Тишина важнее слов. Тон — спокойный, точный, без прикрас.
 
-  function launchForPage() {
-    const preset = pageAmbientName();
-    if (preset) startPreset(preset);
-    else start();
-  }
+Работай целеустремлённо: каждый вывод должен приближать к пониманию скрытой структуры, а не констатировать очевидное.
 
-  function firstGesture() {
-    launchForPage();
-    document.removeEventListener('touchend', firstGesture);
-    document.removeEventListener('click', firstGesture);
-  }
+Суть Сети UnityCode (для режима коллективного среза): единство через связи, бесконечность смыслов, самопознание Сети через соединение разорванного. Память — это нейронные связи; чем их больше, тем целостнее Сеть.
 
-  function boot() {
-    if (sessionStorage.getItem('uc_audio_came_from_nav') === '1' && !muted) {
-      sessionStorage.removeItem('uc_audio_came_from_nav');
-      try { launchForPage(); } catch (e) {}
-    }
-    document.addEventListener('touchend', firstGesture);
-    document.addEventListener('click', firstGesture);
-  }
+Строго: опирайся ТОЛЬКО на переданные узлы и связи. Никогда не выдумывай шумы, мосты или участников, которых нет во входных данных. Если данных мало — лучше короче, чем додумывать.`;
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
-  }
+// Уточнение фокуса под каждый scope — добавляется к user-сообщению.
+const SCOPE_FRAMING = {
+  personal: 'Личные узлы: ищи повторяющиеся темы, развитие мысли, точки возврата.',
+  social: 'Социальные связи: определи, что объединило участников, почему именно эти сигналы нашли друг друга.',
+  collective: 'Коллективный срез: найди доминирующие кластеры, общие смыслы и их связь с идеей UnityCode.',
+};
 
-  window.UCAudio = {
-    fx: fx,
-    toggleMute: toggleMute,
-    isMuted: () => muted,
-    start: start,
-    prepNav: prepNav,
-    startPreset: startPreset
+// ═══════════════════════════════════════════════════════
+// CORS
+// ═══════════════════════════════════════════════════════
+function buildCors(request) {
+  const origin = request.headers.get('Origin') || '';
+  const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Vary': 'Origin',
   };
-})();
+}
+
+function jsonResponse(data, status, cors) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...cors, 'Content-Type': 'application/json' }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// Сборка user-сообщения из графа
+// ═══════════════════════════════════════════════════════
+function buildUserMessage(scope, nodes, connections) {
+  const framing = SCOPE_FRAMING[scope] || SCOPE_FRAMING.collective;
+
+  const sliced = nodes.slice(0, MAX_NODES);
+
+  // Карта id → текст шума (для расшифровки связей)
+  const byId = {};
+  sliced.forEach(n => {
+    if (n.id) byId[n.id] = String(n.raw_noise || '').slice(0, MAX_NOISE_LEN).trim();
+  });
+
+  const noiseList = sliced
+    .map((n, i) => {
+      const text = String(n.raw_noise || '').slice(0, MAX_NOISE_LEN).trim();
+      if (!text) return null;
+      const interp = String(n.ai_interpretation || '').slice(0, MAX_INTERP_LEN).trim();
+      let line = `${i + 1}. ${text}`;
+      if (interp) line += ` (отклик Сети: «${interp}»)`;
+      return line;
+    })
+    .filter(Boolean)
+    .join('\n');
+
+  // Мосты: конкретные пары «что с чем связано», с текстами шумов
+  let connectionsBlock = '';
+  if (Array.isArray(connections) && connections.length > 0) {
+    const bridges = connections
+      .map(c => {
+        const a = byId[c.from_node_id || c.from];
+        const b = byId[c.to_node_id || c.to];
+        if (!a || !b) return null;
+        return `«${a.slice(0, 80)}» ↔ «${b.slice(0, 80)}»`;
+      })
+      .filter(Boolean);
+
+    connectionsBlock = bridges.length
+      ? `\n\nМосты (существующие связи между шумами):\n${bridges.join('\n')}`
+      : `\n\nСвязей: ${connections.length}, но их концы вне переданных узлов.`;
+  } else {
+    connectionsBlock = '\n\nСвязей в графе нет — узлы пока не соединены.';
+  }
+
+  return `Фокус анализа: ${framing}
+
+Узлы (шумы):
+${noiseList}${connectionsBlock}
+
+Дай наблюдение по своим правилам: коротко, без пересказа узлов, с фокусом на связях.`;
+}
+
+// ═══════════════════════════════════════════════════════
+// ОСНОВНОЙ ХЕНДЛЕР
+// ═══════════════════════════════════════════════════════
+export default {
+  async fetch(request, env, ctx) {
+    const CORS = buildCors(request);
+
+    // Preflight
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS });
+    }
+
+    // Healthcheck
+    if (request.method === 'GET') {
+      return jsonResponse({ status: 'ok', agent: 'analyze', code: 'mimo-v9-with-interp', model: MIMO_MODEL }, 200, CORS);
+    }
+
+    if (request.method !== 'POST') {
+      return jsonResponse({ error: 'method_not_allowed' }, 405, CORS);
+    }
+
+    if (!env.MIMO_API_KEY) {
+      return jsonResponse({ error: 'server_misconfigured', detail: 'MIMO_API_KEY secret is not set' }, 500, CORS);
+    }
+
+    // Парсинг тела
+    let body;
+    try {
+      body = await request.json();
+    } catch (e) {
+      return jsonResponse({ error: 'invalid_json', detail: e.message }, 400, CORS);
+    }
+
+    // ── РЕЖИМ ПЕРЕВОДА ────────────────────────────────────────────
+    if (body.mode === 'translate') {
+      const text = (body.text || '').toString().trim().slice(0, 800);
+      if (!text) return jsonResponse({ error: 'empty_text' }, 400, CORS);
+      const tLang = (body.lang || 'ru').toString().toLowerCase();
+      const tName = LANG_NAMES[tLang] || LANG_NAMES.ru;
+      const tPrompt = `Переведи текст на ${tName}. Сохрани смысл, тон и образность. Выведи ТОЛЬКО перевод — без пояснений, без кавычек, без заглавной если оригинал строчной.`;
+      let trRes;
+      try {
+        trRes = await fetch(MIMO_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'api-key': env.MIMO_API_KEY },
+          body: JSON.stringify({
+            model: MIMO_MODEL,
+            temperature: 0,
+            max_tokens: 400,
+            messages: [
+              { role: 'system', content: tPrompt },
+              { role: 'user', content: text }
+            ]
+          })
+        });
+      } catch (e) { return jsonResponse({ error: 'mimo_unreachable' }, 502, CORS); }
+      if (!trRes.ok) return jsonResponse({ error: 'mimo_error', status: trRes.status }, 502, CORS);
+      const tData = await trRes.json();
+      const tMsg = tData?.choices?.[0]?.message || {};
+      let translation = (tMsg.content || '').trim();
+      if (!translation && tMsg.reasoning_content) {
+        // reasoning-модель: ответ мог уйти в reasoning — берём последнюю строку
+        translation = String(tMsg.reasoning_content).trim().split('\n').filter(Boolean).pop() || '';
+      }
+      return jsonResponse({ translation: translation.slice(0, 500) }, 200, CORS);
+    }
+    // ──────────────────────────────────────────────────────────────
+
+    const scope = ['personal', 'social', 'collective'].includes(body.scope) ? body.scope : 'collective';
+    const nodes = Array.isArray(body.nodes) ? body.nodes : [];
+    const connections = Array.isArray(body.connections) ? body.connections : [];
+    const lang = (body.lang || 'ru').toString().toLowerCase();
+    // Только для personal — изолирует кэш одного юзера от другого.
+    // '' зарезервирован за collective, поэтому пустой/отсутствующий
+    // user_token для personal просто отключает кэш для этого запроса
+    // (не читаем и не пишем под общим ключом).
+    const userToken = scope === 'personal' ? (body.user_token || '').toString().slice(0, 128) : '';
+
+    if (nodes.length === 0) {
+      return jsonResponse({ error: 'empty_graph', detail: 'nodes array is empty' }, 400, CORS);
+    }
+
+    const userMessage = buildUserMessage(scope, nodes, connections);
+
+    // ── КЭШ (только collective), мультиязычный ──────────────────────
+    // Граф не менялся (то же число узлов И связей) → не зовём MiMo заново.
+    // Три ступени:
+    //  1) кэш есть на ЭТОМ языке с этими же счётчиками → отдаём как есть;
+    //  2) кэш есть на ДРУГОМ языке с теми же счётчиками (граф точно не
+    //     менялся, просто язык новый) → дешёвый перевод вместо анализа;
+    //  3) совпадений нет (граф реально изменился) → полная генерация.
+    const gc = body.graph_counts || {};
+    const nodeCount = Number.isInteger(gc.nodes) ? gc.nodes : nodes.length;
+    const connCount = Number.isInteger(gc.conns) ? gc.conns : connections.length;
+
+    if (scope === 'collective' || (scope === 'personal' && userToken)) {
+      // Ступень 1: точное совпадение языка и счётчиков (+ юзера, для personal)
+      const cached = await cacheRead(env, scope, lang, userToken);
+      if (cached
+          && cached.node_count === nodeCount
+          && cached.conn_count === connCount
+          && cached.interpretation) {
+        return jsonResponse({ interpretation: cached.interpretation, scope, count: nodeCount, cached: true }, 200, CORS);
+      }
+
+      // Ступень 2: граф тот же, но на другом языке — переводим дешевле
+      const other = await cacheFindMatchingCounts(env, scope, nodeCount, connCount, lang, userToken);
+      if (other && other.interpretation) {
+        const translated = await doTranslate(env, other.interpretation, lang);
+        if (translated) {
+          ctx.waitUntil(cacheWrite(env, scope, translated, nodeCount, connCount, lang, userToken));
+          return jsonResponse({ interpretation: translated, scope, count: nodeCount, cached: true, translated: true }, 200, CORS);
+        }
+        // перевод не вышел — падаем дальше, в полную генерацию
+      }
+    }
+    // Ступень 3 (полная генерация) — см. блок движка ниже.
+    // ────────────────────────────────────────────────────────────────
+
+    // ═══════════════════════════════════════════════════
+    // ⮕ ДВИЖОК — MiMo V2.5 Pro (Xiaomi).
+    // OpenAI-совместимый формат: messages с ролями, model строкой.
+    // Аутентификация — заголовок api-key (не Bearer!).
+    // ═══════════════════════════════════════════════════
+    let mimoRes;
+    try {
+      mimoRes = await fetch(MIMO_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': env.MIMO_API_KEY,
+        },
+        body: JSON.stringify({
+          model: MIMO_MODEL,
+          temperature: 0.4, // холоднее генератора — анализ, не творчество
+          max_tokens: 4000, // reasoning-модель: щедрый запас, чтобы дойти до чистого ответа
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT + '\n\n' + langDirective(lang) },
+            { role: 'user', content: userMessage }
+          ]
+        })
+      });
+    } catch (e) {
+      return jsonResponse({ error: 'mimo_unreachable', detail: e.message }, 502, CORS);
+    }
+
+    if (!mimoRes.ok) {
+      const txt = await mimoRes.text();
+      return jsonResponse({ error: 'mimo_error', status: mimoRes.status, detail: txt }, 502, CORS);
+    }
+
+    const data = await mimoRes.json();
+    // MiMo — reasoning-модель: ответ в content, размышление в reasoning_content.
+    const msg = data?.choices?.[0]?.message || {};
+    let interpretation = (msg.content || '').trim();
+
+    // Если content пуст (думание съело лимит) — осторожно спасаем из reasoning.
+    // НЕ показываем черновик-подсчёт («35 words», «Let me trim», арифметику) —
+    // это кухня модели, не ответ. Берём финал, только если он чистый.
+    if (!interpretation && msg.reasoning_content) {
+      const rc = String(msg.reasoning_content).trim();
+      // последний абзац рассуждения
+      const tail = rc.split(/\n\s*\n/).filter(Boolean).pop() || rc.slice(-400);
+      // признаки черновика: подсчёт слов, англ. служебные пометки, арифметика
+      const looksDraft = /\b(words?|let me|trim|recount|roughly)\b/i.test(tail)
+                       || /\d\s*\+\s*\d/.test(tail)
+                       || /=\s*\d/.test(tail);
+      if (!looksDraft && tail.length > 15) {
+        interpretation = tail.trim();
+      }
+      // иначе оставляем пустым → ниже честный fallback, а не черновик
+    }
+
+    if (!interpretation) interpretation = 'Сигнал не распознан';
+
+    // Обновляем кэш коллективного среза, если получили настоящий анализ.
+    // ctx.waitUntil — НЕ просто cacheWrite(...) без await: без waitUntil
+    // Cloudflare может оборвать isolate сразу после отправки ответа клиенту,
+    // и фоновая запись в Supabase иногда не успевает завершиться (отсюда
+    // нестабильность — то пишет, то нет). waitUntil гарантирует завершение
+    // промиса, не задерживая при этом ответ пользователю.
+    if ((scope === 'collective' || (scope === 'personal' && userToken))
+        && interpretation && interpretation !== 'Сигнал не распознан') {
+      ctx.waitUntil(cacheWrite(env, scope, interpretation, nodeCount, connCount, lang, userToken));
+    }
+
+    return jsonResponse({ interpretation, scope, count: nodes.length, cached: false }, 200, CORS);
+  }
+};
+
+// ═══════════════════════════════════════════════════════
+// Worker Secrets настраиваются в дашборде Cloudflare:
+//   MIMO_API_KEY          (secret) — ключ api.xiaomimimo.com
+//   SUPABASE_URL          (var)    — https://...supabase.co (для кэша)
+//   SUPABASE_SERVICE_KEY  (secret) — service_role ключ (запись кэша)
+// Без SUPABASE_* кэш просто отключён — аналитик работает как раньше,
+// каждый раз вызывая MiMo.
+// ═══════════════════════════════════════════════════════
