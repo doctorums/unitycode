@@ -54,7 +54,7 @@
     const now = ctx.currentTime;
     masterGain.gain.cancelScheduledValues(now);
     masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-    masterGain.gain.linearRampToValueAtTime(0, now + 0.8);
+    masterGain.gain.linearRampToValueAtTime(0, now + 0.2);
   }
   window.addEventListener('pagehide', fadeOutForNav);
   window.addEventListener('beforeunload', fadeOutForNav);
@@ -132,8 +132,10 @@
       const href = a.getAttribute('href') || '';
       if (!href || href.startsWith('#') || href.startsWith('http') || a.target === '_blank') return;
       if (a.id === 'btn') return;
+      e.preventDefault();
       fadeOutForNav();
       sessionStorage.setItem('uc_audio_came_from_nav', '1');
+      setTimeout(() => { window.location.href = href; }, 220);
     } catch (err) { /* никогда не мешаем остальной странице */ }
   });
 
