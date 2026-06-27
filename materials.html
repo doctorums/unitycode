@@ -72,6 +72,7 @@
 </main>
 
 <script src="i18n.js"></script>
+<script src="audio.js" defer></script>
 <script>
 /* ╔══════════════════════════════════════════════════════════════════════╗
    ║  CONFIG — ПРИБОРНАЯ ПАНЕЛЬ СТРАНИЦЫ. Меняй значения здесь.            ║
@@ -579,16 +580,24 @@ function renderMarkdown(md){
         if(lastObj.sz>0){
           const d=Math.hypot(lastObj.px-tx, lastObj.py-ty);
           if(d < textR + lastObj.sz){
+            if(!n._sndPlanet){
+              n._sndPlanet=true;
+              if(window.UCAudio) UCAudio.fx(lastObj.sz < sz*0.6 ? 'sparks' : 'explode');
+            }
             if(lastObj.sz < sz*0.6) sparks(tx,ty,C);   // объект сильно мельче → прошив
             else explodeNoise(n,tx,ty,sz);              // соизмерим/крупнее → разрыв
-          }
+          } else { n._sndPlanet=false; }
         }
         if(lastObj.cOn){
           const d=Math.hypot(lastObj.cx-tx, lastObj.cy-ty);
           if(d < textR + 18){
+            if(!n._sndComet){
+              n._sndComet=true;
+              if(window.UCAudio) UCAudio.fx(sz > 55 ? 'sparks' : 'explode');
+            }
             if(sz > 55) sparks(tx,ty,C);
             else explodeNoise(n,tx,ty,sz);
-          }
+          } else { n._sndComet=false; }
         }
       }
     }
@@ -666,6 +675,7 @@ function renderMarkdown(md){
         ship.x+=mx/ml*spd*2*slow; ship.y+=my/ml*spd*2*slow;
         if(d < grab){ // в зоне захвата — включаем луч
           ship.state='swallow'; ship.captured=ship.target; ship.target.captured=true; ship.swp=0;
+          if(window.UCAudio) UCAudio.fx('shipCapture');
         }
       }
     } else if(ship.state==='swallow'){
