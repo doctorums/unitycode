@@ -49,15 +49,16 @@
     updateBtn();
   }
 
-  function fadeOutForNav() {
+  function fadeOutForNav(duration) {
     if (!ctx || !masterGain) return;
+    const d = typeof duration === 'number' ? duration : 0.2;
     const now = ctx.currentTime;
     masterGain.gain.cancelScheduledValues(now);
     masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-    masterGain.gain.linearRampToValueAtTime(0, now + 0.2);
+    masterGain.gain.linearRampToValueAtTime(0, now + d);
   }
-  window.addEventListener('pagehide', fadeOutForNav);
-  window.addEventListener('beforeunload', fadeOutForNav);
+  window.addEventListener('pagehide', () => fadeOutForNav(0.2));
+  window.addEventListener('beforeunload', () => fadeOutForNav(0.2));
 
   function fxSubspace() {
     if (!ctx || muted) return;
@@ -115,7 +116,7 @@
   }
 
   function prepNav() {
-    fadeOutForNav();
+    fadeOutForNav(0.8); // долгий — под длительность fxSubspace (Портал→Бездна) на кнопке index
     sessionStorage.setItem('uc_audio_came_from_nav', '1');
   }
 
