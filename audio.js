@@ -213,7 +213,7 @@
     ambientNodes.push(source);
   }
 
-  function fx(type) {
+  function fx(type, extra) {
     if (!started) { start(); }
     if (!ctx || muted) return;
     if (ctx.state === 'suspended') ctx.resume();
@@ -224,6 +224,9 @@
       case 'page':    fxSubspace(); break;
       case 'ping':    fxPing(); break;
       case 'error':   fxError(); break;
+      case 'sparks':  fxSparks(extra); break;
+      case 'explode': fxExplode(); break;
+      case 'shipCapture': fxShipCapture(); break;
     }
   }
 
@@ -424,6 +427,196 @@
     }
   }
 
+  // --- Materials A+D: низкий дрон-фундамент ---
+  function presetDroneBase(vol) {
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = 'sine'; osc.frequency.value = 48;
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(vol, ctx.currentTime + 1.5);
+    osc.connect(g); g.connect(masterGain);
+    osc.start();
+    ambientNodes.push(osc);
+  }
+
+  // --- Materials A+D: медленно плывущие ноты пентатоники, легато ---
+  function presetMelodicLayer() {
+    if (!presetRunning) return;
+    const t = ctx.currentTime;
+    const scale = [110, 130.8, 146.8, 164.8, 196]; // A C D E G от A2
+    const freq = scale[Math.floor(Math.random() * scale.length)];
+    const octaveUp = Math.random() < 0.4 ? 2 : 1;
+    const osc = ctx.createOscillator(), g = ctx.createGain(), filter = ctx.createBiquadFilter();
+    osc.type = 'sine';
+    osc.frequency.value = freq * octaveUp;
+    filter.type = 'lowpass'; filter.frequency.value = 1200;
+    const dur = 3 + Math.random() * 2.5;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.07, t + dur * 0.3);
+    g.gain.linearRampToValueAtTime(0.05, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    osc.connect(filter); filter.connect(g); g.connect(masterGain);
+    osc.start(t); osc.stop(t + dur + 0.2);
+    const next = 1.5 + Math.random() * 2;
+    setTimeout(presetMelodicLayer, next * 1000);
+  }
+
+  // --- Materials A+D: регулярный мягкий низкочастотный пульс (heartbeat) ---
+  function presetHeartbeat(bpm, vol, freq, shape) {
+    if (!presetRunning) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = shape || 'sine';
+    osc.frequency.setValueAtTime(freq, t);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.6, t + 0.25);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    osc.connect(g); g.connect(masterGain);
+    osc.start(t); osc.stop(t + 0.4);
+    const interval = 60 / bpm;
+    setTimeout(() => presetHeartbeat(bpm, vol, freq, shape), interval * 1000);
+  }
+
+  // --- Materials: общий "разлёт частиц" — используется и прошивом, и разрывом ---
+  function materialsSparkles(t, count, baseFreq, vol, spread) {
+    for (let i = 0; i < count; i++) {
+      const delay = Math.random() * spread;
+      const osc = ctx.createOscillator(), g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = baseFreq + Math.random() * baseFreq * 1.5;
+      g.gain.setValueAtTime(0, t + delay);
+      g.gain.linearRampToValueAtTime(vol * (0.5 + Math.random() * 0.5), t + delay + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.15 + Math.random() * 0.2);
+      osc.connect(g); g.connect(masterGain);
+      osc.start(t + delay); osc.stop(t + delay + 0.4);
+    }
+  }
+
+  // --- Materials: ПРОШИВ — острый укол + свист на длительность прохода ---
+  function fxSparks(passDuration) {
+    if (!ctx) initCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const t = ctx.currentTime;
+    const dur = typeof passDuration === 'number' ? passDuration : 0.12;
+
+    const click = ctx.createOscillator(), clickG = ctx.createGain(), clickF = ctx.createBiquadFilter();
+    click.type = 'square';
+    click.frequency.setValueAtTime(2200, t);
+    clickF.type = 'highpass'; clickF.frequency.value = 1500;
+    clickG.gain.setValueAtTime(0.14, t);
+    clickG.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
+    click.connect(clickF); clickF.connect(clickG); clickG.connect(masterGain);
+    click.start(t); click.stop(t + 0.04);
+
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1400, t);
+    osc.frequency.exponentialRampToValueAtTime(700, t + dur);
+    g.gain.setValueAtTime(0.05, t);
+    if (dur > 0.8) {
+      g.gain.linearRampToValueAtTime(0.035, t + dur * 0.5);
+      g.gain.linearRampToValueAtTime(0.045, t + dur * 0.8);
+    }
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    osc.connect(g); g.connect(masterGain);
+    osc.start(t); osc.stop(t + dur + 0.05);
+
+    if (dur > 0.8) {
+      const lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
+      lfo.frequency.value = 5 + Math.random() * 2;
+      lfoGain.gain.value = 15;
+      lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
+      lfo.start(t); lfo.stop(t + dur + 0.05);
+    }
+
+    materialsSparkles(t + 0.01, 6, 800, 0.03, Math.min(dur * 0.5, 0.2));
+
+    if (dur > 0.8) {
+      const stitchCount = Math.floor(dur * 1.5);
+      for (let i = 0; i < stitchCount; i++) {
+        const delay = (Math.random() * 0.6 + 0.2) * (dur / stitchCount) * (i + 1);
+        const stitch = ctx.createOscillator(), stitchG = ctx.createGain();
+        stitch.type = 'square';
+        stitch.frequency.value = 1800 + Math.random() * 600;
+        stitchG.gain.setValueAtTime(0.03, t + delay);
+        stitchG.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.02);
+        stitch.connect(stitchG); stitchG.connect(masterGain);
+        stitch.start(t + delay); stitch.stop(t + delay + 0.03);
+      }
+    }
+  }
+
+  // --- Materials: РАЗРЫВ — тяжёлый удар + разрезание + широкий разлёт искр ---
+  function fxExplode() {
+    if (!ctx) initCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(90, t);
+    osc.frequency.exponentialRampToValueAtTime(35, t + 0.4);
+    g.gain.setValueAtTime(0.3, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    osc.connect(g); g.connect(masterGain);
+    osc.start(t); osc.stop(t + 0.55);
+
+    const cut = ctx.createOscillator(), cutG = ctx.createGain(), cutF = ctx.createBiquadFilter();
+    cut.type = 'sawtooth';
+    cut.frequency.setValueAtTime(800, t);
+    cut.frequency.exponentialRampToValueAtTime(100, t + 0.2);
+    cutF.type = 'highpass'; cutF.frequency.value = 600;
+    cutG.gain.setValueAtTime(0.08, t);
+    cutG.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    cut.connect(cutF); cutF.connect(cutG); cutG.connect(masterGain);
+    cut.start(t); cut.stop(t + 0.25);
+
+    materialsSparkles(t + 0.1, 16, 200, 0.06, 0.5);
+  }
+
+  // --- Materials: ЗАХВАТ кораблём — всасывающий sweep + частицы сходятся ---
+  function fxShipCapture() {
+    if (!ctx) initCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const t = ctx.currentTime;
+    const dur = 1.4; // под реальную длительность swallow (~1.39с при swp+=0.012/кадр)
+
+    const osc = ctx.createOscillator(), g = ctx.createGain(), filter = ctx.createBiquadFilter();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(40, t);
+    osc.frequency.exponentialRampToValueAtTime(900, t + dur);
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(150, t);
+    filter.frequency.exponentialRampToValueAtTime(3000, t + dur);
+    g.gain.setValueAtTime(0.001, t);
+    g.gain.linearRampToValueAtTime(0.16, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur + 0.08);
+    osc.connect(filter); filter.connect(g); g.connect(masterGain);
+    osc.start(t); osc.stop(t + dur + 0.1);
+
+    const click = ctx.createOscillator(), clickG = ctx.createGain();
+    click.type = 'sine'; click.frequency.value = 1800;
+    clickG.gain.setValueAtTime(0.05, t + dur);
+    clickG.gain.exponentialRampToValueAtTime(0.001, t + dur + 0.06);
+    click.connect(clickG); clickG.connect(masterGain);
+    click.start(t + dur); click.stop(t + dur + 0.08);
+
+    // частицы сходятся к точке поглощения — обратный разлёту
+    for (let i = 0; i < 12; i++) {
+      const delay = Math.random() * dur * 0.6;
+      const startFreq = 200 + Math.random() * 600;
+      const sOsc = ctx.createOscillator(), sG = ctx.createGain();
+      sOsc.type = 'sine';
+      sOsc.frequency.setValueAtTime(startFreq, t + delay);
+      sOsc.frequency.exponentialRampToValueAtTime(60, t + dur);
+      sG.gain.setValueAtTime(0, t + delay);
+      sG.gain.linearRampToValueAtTime(0.04 * (0.4 + Math.random() * 0.4), t + delay + 0.05);
+      sG.gain.linearRampToValueAtTime(0.04 * 0.6, t + dur - 0.05);
+      sG.gain.exponentialRampToValueAtTime(0.001, t + dur + 0.05);
+      sOsc.connect(sG); sG.connect(masterGain);
+      sOsc.start(t + delay); sOsc.stop(t + dur + 0.1);
+    }
+  }
+
   function startPreset(name) {
     if (presetStarted) return;
     presetStarted = true;
@@ -443,6 +636,10 @@
         presetVoidDrone(0.03);
         setTimeout(() => presetSpaceEcho(14, 24, 0.07), 1500);
         setTimeout(() => presetNetworkPulse(6, 12, 0.015, 0.05), 4000);
+      } else if (name === 'materialsAD') {
+        presetDroneBase(0.035);
+        presetMelodicLayer();
+        presetHeartbeat(48, 0.07, 60, 'sine');
       }
     };
 
@@ -453,6 +650,7 @@
     const file = location.pathname.split('/').pop() || '';
     if (file === 'set.html') return 'setBalance';
     if (file === 'implant.html') return 'implantMinimal';
+    if (file === 'materials.html') return 'materialsAD';
     return null;
   }
 
