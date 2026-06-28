@@ -45,7 +45,7 @@
     startCarrier();
     initCtx();
     if (ctx.state === 'suspended') ctx.resume();
-    setTimeout(startAmbient, 300);
+    startAmbient();
     updateBtn();
   }
 
@@ -643,7 +643,7 @@
       }
     };
 
-    setTimeout(launch, 350);
+    launch();
   }
 
   function pageAmbientName() {
