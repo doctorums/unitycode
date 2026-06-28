@@ -9,6 +9,10 @@
   const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
   const LS_KEY = 'uc_audio_muted';
   const MASTER_VOL = 0.55;
+  // Носитель нужен только iOS (держит медиа-сессию на Bluetooth-выходе).
+  // На Android он, наоборот, иногда душит реальный звук системным ducking —
+  // подтверждено диагностикой на устройстве Артёма (28.06).
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
   let ctx = null;
   let masterGain = null;
@@ -42,7 +46,7 @@
   function start() {
     if (started) return;
     started = true;
-    startCarrier();
+    if (isIOS) startCarrier();
     initCtx();
     if (ctx.state === 'suspended') ctx.resume();
     startAmbient();
