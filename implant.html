@@ -128,6 +128,21 @@
       transition: opacity 0.2s;
     }
     .char-toggle.char-toggle-active { opacity: 1; }
+    .char-hint {
+      position: absolute;
+      left: 2.6rem;
+      top: 0.1rem;
+      font-size: 0.55rem;
+      color: var(--accent);
+      background: rgba(0,0,0,0.8);
+      border: 1px solid var(--accent);
+      padding: 0.35rem 0.6rem;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s;
+    }
+    .char-hint.show { opacity: 1; }
     .char-menu {
       display: none;
       flex-direction: column;
@@ -415,7 +430,8 @@
      Свёрнут по умолчанию: тап по значку разворачивает вертикальный список,
      тап вне списка/повторный тап по тому же пункту — закрывает/снимает. -->
 <div class="char-select" id="char-select">
-  <button class="char-toggle" id="char-toggle" onclick="toggleCharMenu()" aria-label="Характер агента">◈</button>
+  <button class="char-toggle" id="char-toggle" onclick="toggleCharMenu()" aria-label="Характер агента">⚙</button>
+  <div class="char-hint" id="char-hint" data-i18n="implant.charHint">Выбор тона анализа</div>
   <div class="char-menu" id="char-menu">
     <div class="char-item" data-char="practical" data-i18n="implant.anglePractical" onclick="selectCharacter('practical')">Практический</div>
     <div class="char-item" data-char="philosophical" data-i18n="implant.anglePhilosophical" onclick="selectCharacter('philosophical')">Философский</div>
@@ -959,8 +975,25 @@ function renderCharMenu() {
 }
 
 function toggleCharMenu() {
+  dismissCharHint();
   const menu = document.getElementById('char-menu');
   if (menu) menu.classList.toggle('open');
+}
+
+function maybeShowCharHint() {
+  let seen = false;
+  try { seen = localStorage.getItem('uc_char_hint_seen') === '1'; } catch(e) {}
+  if (seen) return;
+  const hint = document.getElementById('char-hint');
+  if (!hint) return;
+  hint.classList.add('show');
+  setTimeout(() => hint.classList.remove('show'), 6000);
+}
+
+function dismissCharHint() {
+  try { localStorage.setItem('uc_char_hint_seen', '1'); } catch(e) {}
+  const hint = document.getElementById('char-hint');
+  if (hint) hint.classList.remove('show');
 }
 
 function selectCharacter(key) {
@@ -981,6 +1014,7 @@ document.addEventListener('click', (e) => {
 loadPersonal();
 loadStats();
 renderCharMenu();
+maybeShowCharHint();
 const oracleViewportEl = document.getElementById('oracle-viewport');
 if (oracleViewportEl) oracleViewportEl.addEventListener('click', interruptOracleOutro);
 </script>
