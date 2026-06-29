@@ -19,6 +19,11 @@
   let carrier = null;
   let started = false;
   let muted = localStorage.getItem(LS_KEY) === '1';
+  // Кнопка мьюта убрана из интерфейса — у человека больше нет способа снять
+  // старое заглушение. Не доверяем сохранённому true при загрузке, иначе
+  // тот, кто когда-то приглушил звук (например, до удаления кнопки),
+  // навсегда остаётся в тишине без какой-либо возможности это исправить.
+  if (muted) { muted = false; localStorage.removeItem(LS_KEY); }
   let ambientNodes = [];
   let presetStarted = false;
   let presetRunning = false;
@@ -673,7 +678,20 @@
   function boot() {
     if (sessionStorage.getItem('uc_audio_came_from_nav') === '1' && !muted) {
       sessionStorage.removeItem('uc_audio_came_from_nav');
-      try { launchForPage(); } catch (e) {}
+      try {
+        launchForPage();
+        // Автозапуск без настоящего тапа (переход между страницами) может на
+        // Android тихо не получить 'running' (resume() без жеста не срабатывает).
+        // Если контекст не реально запущен — снимаем флаги, чтобы следующий
+        // настоящий тап не упёрся в "уже запущено" и по-настоящему стартовал звук.
+        setTimeout(() => {
+          if (ctx && ctx.state !== 'running') {
+            started = false;
+            presetStarted = false;
+            presetRunning = false;
+          }
+        }, 300);
+      } catch (e) {}
     }
     document.addEventListener('touchend', firstGesture);
     document.addEventListener('click', firstGesture);
