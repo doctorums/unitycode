@@ -104,6 +104,19 @@
     .analyze-btn:hover { background: var(--accent); color: var(--black); }
     .analyze-btn:disabled { opacity: 0.4; cursor: default; }
 
+    .angle-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-bottom: 0.8rem;
+    }
+    .angle-btn {
+      width: auto;
+      flex: 1 1 calc(50% - 0.3rem);
+      padding: 0.6rem 0.5rem;
+      font-size: 0.6rem;
+    }
+
     /* Результат анализа */
     .analysis-result {
       margin-top: 1.5rem;
@@ -726,7 +739,12 @@ async function loadPersonal() {
       </div>
     </div>
     <div class="noise-list" id="my-noises"></div>
-    <button class="analyze-btn" id="personal-btn" onclick="runPersonalAnalysis()">${UC_I18N.t('implant.btnPersonal')}</button>
+    <div class="angle-row" id="angle-row">
+      <button class="analyze-btn angle-btn" id="angle-btn-practical" onclick="runPersonalAnalysis('practical')">${UC_I18N.t('implant.anglePractical')}</button>
+      <button class="analyze-btn angle-btn" id="angle-btn-philosophical" onclick="runPersonalAnalysis('philosophical')">${UC_I18N.t('implant.anglePhilosophical')}</button>
+      <button class="analyze-btn angle-btn" id="angle-btn-emotional" onclick="runPersonalAnalysis('emotional')">${UC_I18N.t('implant.angleEmotional')}</button>
+      <button class="analyze-btn angle-btn" id="angle-btn-connections" onclick="runPersonalAnalysis('connections')">${UC_I18N.t('implant.angleConnections')}</button>
+    </div>
     <div class="loading-dots" id="personal-loading">${UC_I18N.t('implant.loading')}</div>
     <div class="analysis-result" id="personal-result">
       <div class="analysis-divider"></div>
@@ -752,14 +770,15 @@ async function loadPersonal() {
 // ═══════════════════════════════════════════════════════
 // АНАЛИЗ ЛИЧНОГО УЗЛА
 // ═══════════════════════════════════════════════════════
-async function runPersonalAnalysis() {
-  const btn = document.getElementById('personal-btn');
+async function runPersonalAnalysis(angle) {
+  const row = document.getElementById('angle-row');
+  const buttons = row ? row.querySelectorAll('button') : [];
 
-  btn.disabled = true;
+  buttons.forEach(b => b.disabled = true);
   openOracle(UC_I18N.t('implant.labelYourPattern'));
 
   const myNodes = window._myNodes || [];
-  if (!myNodes.length) { closeOracle(); btn.disabled = false; return; }
+  if (!myNodes.length) { closeOracle(); buttons.forEach(b => b.disabled = false); return; }
 
   try {
     // Шлём граф Агенту-Аналитику: узлы с id + пары связей,
@@ -771,6 +790,7 @@ async function runPersonalAnalysis() {
         scope: 'personal',
         lang: (window.UC_I18N ? UC_I18N.lang : 'ru'),
         user_token: localStorage.getItem('uc_token') || '',
+        angle: angle || '',
         nodes: myNodes.map(n => ({ id: n.id, raw_noise: n.raw_noise, ai_interpretation: n.ai_interpretation })),
         connections: window._myConns || [],
       }),
@@ -780,7 +800,7 @@ async function runPersonalAnalysis() {
   } catch(e) {
     showOracleError(UC_I18N.t('implant.analyzeError'));
   } finally {
-    btn.disabled = false;
+    buttons.forEach(b => b.disabled = false);
   }
 }
 
