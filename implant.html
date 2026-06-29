@@ -52,6 +52,21 @@
       margin-bottom: 1.5rem;
     }
 
+    .section-desc.marquee-wrap {
+      overflow: hidden;
+      white-space: nowrap;
+      width: 100%;
+    }
+    .section-desc.marquee-wrap .marquee-text {
+      display: inline-block;
+      animation: implant-desc-marquee 24s linear infinite;
+      padding-right: 4rem;
+    }
+    @keyframes implant-desc-marquee {
+      0% { transform: translateX(var(--desc-text-start, 100%)); }
+      100% { transform: translateX(-100%); }
+    }
+
     /* Шумы пользователя — фикс. высота, иначе при большом числе шумов
        список растягивает всю страницу. Обычный скролл, не краул-анимация:
        список читают и пролистывают, а не смотрят как разовый ритуал. */
@@ -461,7 +476,7 @@
   <!-- Блок 2: Коллективный анализ -->
   <div class="section">
     <div class="section-tag" data-i18n="implant.tagNetNow">// СЕТЬ СЕЙЧАС</div>
-    <div class="section-desc" data-i18n="implant.collectiveDesc">Коллективный срез — паттерны и резонансы всей Сети. ИИ анализирует шумы и связи всех участников.</div>
+    <div class="section-desc marquee-wrap" id="collective-desc-wrap"><span class="marquee-text" data-i18n="implant.collectiveDesc">Коллективный срез — паттерны и резонансы всей Сети. ИИ анализирует шумы и связи всех участников.</span></div>
 
     <div class="stats-row">
       <div class="stat-box">
@@ -1055,11 +1070,26 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// Бегущая строка описания коллективного блока — старт по ширине обёртки,
+// тот же приём, что в petlya.html (--text-start), без привязки к звезде/кнопке.
+function positionDescMarquee() {
+  const wrap = document.getElementById('collective-desc-wrap');
+  if (!wrap) return;
+  wrap.style.setProperty('--desc-text-start', wrap.getBoundingClientRect().width + 'px');
+}
+let descMarqueeResizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(descMarqueeResizeTimer);
+  descMarqueeResizeTimer = setTimeout(positionDescMarquee, 250);
+});
+window.addEventListener('orientationchange', () => setTimeout(positionDescMarquee, 400));
+
 // Инициализация
 loadPersonal();
 loadStats();
 renderCharMenu();
 maybeIntroduceCharSelect();
+positionDescMarquee();
 const oracleViewportEl = document.getElementById('oracle-viewport');
 if (oracleViewportEl) oracleViewportEl.addEventListener('click', interruptOracleOutro);
 </script>
