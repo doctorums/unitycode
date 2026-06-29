@@ -104,6 +104,7 @@
     'implant.anglePhilosophical': { ru:`Философский`, en:`Philosophical` },
     'implant.angleEmotional': { ru:`Эмоциональный`, en:`Emotional` },
     'implant.angleConnections': { ru:`Акцент на связях`, en:`Focus on connections` },
+    'implant.charHint': { ru:`Выбор тона анализа`, en:`Choose analysis tone` },
     'implant.loading': { ru:`// АНАЛИЗ...`, en:`// ANALYZING...` },
     'implant.labelNetPattern': { ru:`// ПАТТЕРНЫ СЕТИ`, en:`// NETWORK PATTERNS` },
     'implant.labelYourPattern': { ru:`// ПАТТЕРН ТВОЕГО УЗЛА`, en:`// PATTERN OF YOUR NODE` },
