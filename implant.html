@@ -104,18 +104,54 @@
     .analyze-btn:hover { background: var(--accent); color: var(--black); }
     .analyze-btn:disabled { opacity: 0.4; cursor: default; }
 
-    .angle-row {
+    .char-select {
+      position: fixed;
+      left: 0.6rem;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 500;
+      font-family: 'Share Tech Mono', monospace;
+    }
+    .char-toggle {
+      width: 2rem;
+      height: 2rem;
+      border: 1px solid var(--accent);
+      background: rgba(0,0,0,0.5);
+      color: var(--accent);
+      font-size: 1rem;
+      line-height: 1;
+      cursor: pointer;
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.6rem;
-      margin-bottom: 0.8rem;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.55;
+      transition: opacity 0.2s;
     }
-    .angle-btn {
-      width: auto;
-      flex: 1 1 calc(50% - 0.3rem);
-      padding: 0.6rem 0.5rem;
+    .char-toggle.char-toggle-active { opacity: 1; }
+    .char-menu {
+      display: none;
+      flex-direction: column;
+      position: absolute;
+      left: 0;
+      top: 2.4rem;
+      border: 1px solid var(--accent);
+      background: rgba(0,0,0,0.85);
+      padding: 0.3rem 0;
+      min-width: 8.5rem;
+    }
+    .char-menu.open { display: flex; }
+    .char-item {
+      padding: 0.5rem 0.8rem;
       font-size: 0.6rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.55);
+      cursor: pointer;
+      white-space: nowrap;
     }
+    .char-item:hover { color: var(--accent); }
+    .char-item.active { color: var(--accent); }
+    .char-item.active::before { content: '> '; }
 
     /* Результат анализа */
     .analysis-result {
@@ -374,6 +410,19 @@
     <a href="materials.html" data-i18n="nav.matter">Материя</a>
   </nav>
 </header>
+
+<!-- Выбор характера агента — общий для личного и коллективного анализа.
+     Свёрнут по умолчанию: тап по значку разворачивает вертикальный список,
+     тап вне списка/повторный тап по тому же пункту — закрывает/снимает. -->
+<div class="char-select" id="char-select">
+  <button class="char-toggle" id="char-toggle" onclick="toggleCharMenu()" aria-label="Характер агента">◈</button>
+  <div class="char-menu" id="char-menu">
+    <div class="char-item" data-char="practical" data-i18n="implant.anglePractical" onclick="selectCharacter('practical')">Практический</div>
+    <div class="char-item" data-char="philosophical" data-i18n="implant.anglePhilosophical" onclick="selectCharacter('philosophical')">Философский</div>
+    <div class="char-item" data-char="emotional" data-i18n="implant.angleEmotional" onclick="selectCharacter('emotional')">Эмоциональный</div>
+    <div class="char-item" data-char="connections" data-i18n="implant.angleConnections" onclick="selectCharacter('connections')">Акцент на связях</div>
+  </div>
+</div>
 
 <main>
 
@@ -739,12 +788,7 @@ async function loadPersonal() {
       </div>
     </div>
     <div class="noise-list" id="my-noises"></div>
-    <div class="angle-row" id="angle-row">
-      <button class="analyze-btn angle-btn" id="angle-btn-practical" onclick="runPersonalAnalysis('practical')">${UC_I18N.t('implant.anglePractical')}</button>
-      <button class="analyze-btn angle-btn" id="angle-btn-philosophical" onclick="runPersonalAnalysis('philosophical')">${UC_I18N.t('implant.anglePhilosophical')}</button>
-      <button class="analyze-btn angle-btn" id="angle-btn-emotional" onclick="runPersonalAnalysis('emotional')">${UC_I18N.t('implant.angleEmotional')}</button>
-      <button class="analyze-btn angle-btn" id="angle-btn-connections" onclick="runPersonalAnalysis('connections')">${UC_I18N.t('implant.angleConnections')}</button>
-    </div>
+    <button class="analyze-btn" id="personal-btn" onclick="runPersonalAnalysis()">${UC_I18N.t('implant.btnPersonal')}</button>
     <div class="loading-dots" id="personal-loading">${UC_I18N.t('implant.loading')}</div>
     <div class="analysis-result" id="personal-result">
       <div class="analysis-divider"></div>
@@ -770,15 +814,14 @@ async function loadPersonal() {
 // ═══════════════════════════════════════════════════════
 // АНАЛИЗ ЛИЧНОГО УЗЛА
 // ═══════════════════════════════════════════════════════
-async function runPersonalAnalysis(angle) {
-  const row = document.getElementById('angle-row');
-  const buttons = row ? row.querySelectorAll('button') : [];
+async function runPersonalAnalysis() {
+  const btn = document.getElementById('personal-btn');
 
-  buttons.forEach(b => b.disabled = true);
+  btn.disabled = true;
   openOracle(UC_I18N.t('implant.labelYourPattern'));
 
   const myNodes = window._myNodes || [];
-  if (!myNodes.length) { closeOracle(); buttons.forEach(b => b.disabled = false); return; }
+  if (!myNodes.length) { closeOracle(); btn.disabled = false; return; }
 
   try {
     // Шлём граф Агенту-Аналитику: узлы с id + пары связей,
@@ -790,7 +833,7 @@ async function runPersonalAnalysis(angle) {
         scope: 'personal',
         lang: (window.UC_I18N ? UC_I18N.lang : 'ru'),
         user_token: localStorage.getItem('uc_token') || '',
-        angle: angle || '',
+        angle: getCharacter(),
         nodes: myNodes.map(n => ({ id: n.id, raw_noise: n.raw_noise, ai_interpretation: n.ai_interpretation })),
         connections: window._myConns || [],
       }),
@@ -800,7 +843,7 @@ async function runPersonalAnalysis(angle) {
   } catch(e) {
     showOracleError(UC_I18N.t('implant.analyzeError'));
   } finally {
-    buttons.forEach(b => b.disabled = false);
+    btn.disabled = false;
   }
 }
 
@@ -876,6 +919,7 @@ async function runCollectiveAnalysis() {
       body: JSON.stringify({
         scope: 'collective',
         lang: (window.UC_I18N ? UC_I18N.lang : 'ru'),
+        angle: getCharacter(),
         nodes: nodes,
         connections: Array.isArray(conns) ? conns : [],
         graph_counts: gc,
@@ -896,9 +940,47 @@ async function runCollectiveAnalysis() {
   }
 }
 
+// ═══════════════════════════════════════════════════════
+// ВЫБОР ХАРАКТЕРА АГЕНТА (общий для personal + collective)
+// ═══════════════════════════════════════════════════════
+const CHAR_KEY = 'uc_agent_character';
+
+function getCharacter() {
+  try { return localStorage.getItem(CHAR_KEY) || ''; } catch(e) { return ''; }
+}
+
+function renderCharMenu() {
+  const current = getCharacter();
+  document.querySelectorAll('.char-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.char === current);
+  });
+  const toggle = document.getElementById('char-toggle');
+  if (toggle) toggle.classList.toggle('char-toggle-active', !!current);
+}
+
+function toggleCharMenu() {
+  const menu = document.getElementById('char-menu');
+  if (menu) menu.classList.toggle('open');
+}
+
+function selectCharacter(key) {
+  const next = getCharacter() === key ? '' : key; // повторный тап — снять выбор
+  try { localStorage.setItem(CHAR_KEY, next); } catch(e) {}
+  renderCharMenu();
+  const menu = document.getElementById('char-menu');
+  if (menu) menu.classList.remove('open');
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('char-select');
+  const menu = document.getElementById('char-menu');
+  if (wrap && menu && !wrap.contains(e.target)) menu.classList.remove('open');
+});
+
 // Инициализация
 loadPersonal();
 loadStats();
+renderCharMenu();
 const oracleViewportEl = document.getElementById('oracle-viewport');
 if (oracleViewportEl) oracleViewportEl.addEventListener('click', interruptOracleOutro);
 </script>
