@@ -239,6 +239,12 @@
       color: var(--accent);
     }
 
+    .stat-box .stat-hour {
+      font-size: 0.55rem;
+      color: var(--dim);
+      margin-left: 0.3rem;
+    }
+
     /* Нет токена */
     .no-token {
       text-align: center;
@@ -871,7 +877,7 @@ async function loadStats() {
   try {
     const [nodesRes, connsRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/nodes?select=id,user_token`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/connections?select=id,created_by&status=eq.accepted`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/connections?select=id,created_by,created_at&status=eq.accepted`, { headers }),
     ]);
     const [nodes, conns] = await Promise.all([nodesRes.json(), connsRes.json()]);
 
@@ -880,9 +886,18 @@ async function loadStats() {
     const linkerConns = connsArr.filter(c => c.created_by === 'linker').length;
     const humanConns = connsArr.length - linkerConns; // 'human' и любое старое/пустое значение — туда же
 
+    // За последний час — для начала просто грубый срез по уже полученным
+    // данным, без отдельного запроса.
+    const oneHourAgo = Date.now() - 3600 * 1000;
+    const isRecent = c => c.created_at && new Date(c.created_at).getTime() >= oneHourAgo;
+    const linkerConnsHour = connsArr.filter(c => c.created_by === 'linker' && isRecent(c)).length;
+    const humanConnsHour = connsArr.filter(c => c.created_by !== 'linker' && isRecent(c)).length;
+
     document.getElementById('total-nodes').textContent = nodes.length;
-    document.getElementById('total-connections-human').textContent = humanConns;
-    document.getElementById('total-connections-linker').textContent = linkerConns;
+    document.getElementById('total-connections-human').innerHTML =
+      `${humanConns} <span class="stat-hour">+${humanConnsHour}/ч</span>`;
+    document.getElementById('total-connections-linker').innerHTML =
+      `${linkerConns} <span class="stat-hour">+${linkerConnsHour}/ч</span>`;
     document.getElementById('total-users').textContent = uniqueUsers;
 
     // Сохраняем для анализа + полные счётчики для триггера кэша
