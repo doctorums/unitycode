@@ -155,6 +155,7 @@
       min-width: 8.5rem;
     }
     .char-menu.open { display: flex; }
+    .char-menu.fading { opacity: 0; transition: opacity 0.5s; }
     .char-item {
       padding: 0.5rem 0.8rem;
       font-size: 0.6rem;
@@ -974,20 +975,43 @@ function renderCharMenu() {
   if (toggle) toggle.classList.toggle('char-toggle-active', !!current);
 }
 
-function toggleCharMenu() {
-  dismissCharHint();
-  const menu = document.getElementById('char-menu');
-  if (menu) menu.classList.toggle('open');
+let charIntroTimers = [];
+function clearCharIntroTimers() {
+  charIntroTimers.forEach(id => clearTimeout(id));
+  charIntroTimers = [];
 }
 
-function maybeShowCharHint() {
+function toggleCharMenu() {
+  clearCharIntroTimers();
+  dismissCharHint();
+  const menu = document.getElementById('char-menu');
+  if (!menu) return;
+  menu.classList.remove('fading');
+  menu.classList.toggle('open');
+}
+
+// Первый визит: меню открыто + подсказка видна сразу, без тапа.
+// Через 3с подсказка гаснет, ещё через 5с меню само сворачивается
+// фейдом. После этого — обычное поведение (тап по шестерёнке).
+function maybeIntroduceCharSelect() {
   let seen = false;
   try { seen = localStorage.getItem('uc_char_hint_seen') === '1'; } catch(e) {}
   if (seen) return;
+
+  const menu = document.getElementById('char-menu');
   const hint = document.getElementById('char-hint');
-  if (!hint) return;
-  hint.classList.add('show');
-  setTimeout(() => hint.classList.remove('show'), 6000);
+  if (menu) menu.classList.add('open');
+  if (hint) hint.classList.add('show');
+
+  charIntroTimers.push(setTimeout(() => { if (hint) hint.classList.remove('show'); }, 3000));
+
+  charIntroTimers.push(setTimeout(() => {
+    if (menu) {
+      menu.classList.add('fading');
+      setTimeout(() => menu.classList.remove('open', 'fading'), 500);
+    }
+    dismissCharHint(); // ставит флаг uc_char_hint_seen — больше не повторится
+  }, 8000));
 }
 
 function dismissCharHint() {
@@ -997,24 +1021,30 @@ function dismissCharHint() {
 }
 
 function selectCharacter(key) {
+  clearCharIntroTimers();
+  dismissCharHint();
   const next = getCharacter() === key ? '' : key; // повторный тап — снять выбор
   try { localStorage.setItem(CHAR_KEY, next); } catch(e) {}
   renderCharMenu();
   const menu = document.getElementById('char-menu');
-  if (menu) menu.classList.remove('open');
+  if (menu) menu.classList.remove('open', 'fading');
 }
 
 document.addEventListener('click', (e) => {
   const wrap = document.getElementById('char-select');
   const menu = document.getElementById('char-menu');
-  if (wrap && menu && !wrap.contains(e.target)) menu.classList.remove('open');
+  if (wrap && menu && !wrap.contains(e.target)) {
+    clearCharIntroTimers();
+    dismissCharHint();
+    menu.classList.remove('open', 'fading');
+  }
 });
 
 // Инициализация
 loadPersonal();
 loadStats();
 renderCharMenu();
-maybeShowCharHint();
+maybeIntroduceCharSelect();
 const oracleViewportEl = document.getElementById('oracle-viewport');
 if (oracleViewportEl) oracleViewportEl.addEventListener('click', interruptOracleOutro);
 </script>
