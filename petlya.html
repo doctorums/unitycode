@@ -11,6 +11,9 @@
 <link rel="stylesheet" href="shared.css">
 <style>
 body { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; overscroll-behavior: none; animation: fadeIn 3s ease forwards; }
+/* Блокирует только pinch-zoom (масштабирование), не трогает обычный скролл/тач.
+   Применяется только на Android через JS-детекцию ниже — iOS не затрагивается. */
+body.android-no-zoom { touch-action: pan-x pan-y; }
 #sky { position:fixed; inset:0; z-index:0; display:block; pointer-events:none; touch-action:none; }
 @keyframes fadeIn {
 0% { opacity: 0; filter: brightness(3) saturate(0); }
@@ -235,6 +238,13 @@ padding: 0.6rem 0.8rem;
 </style>
 </head>
 <body>
+<script>
+// Блокируем pinch-zoom только на Android (баг с "залипанием" уменьшенного
+// масштаба) — iOS/iPad не затрагиваем вообще.
+if (/Android/i.test(navigator.userAgent)) {
+  document.body.classList.add('android-no-zoom');
+}
+</script>
 
 <canvas id="sky"></canvas>
 
