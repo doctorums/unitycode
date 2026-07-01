@@ -904,20 +904,39 @@ ucQueueRemove(btn.dataset.idem);
 // Успех — кнопка остаётся disabled навсегда
 } catch(e) {
 console.warn('Supabase error', e);
-btn.textContent = `[ ✗ ${UC_I18N.t('petlya.waitWord')}... ]`;
+const _lang = (window.UC_I18N && UC_I18N.lang) || 'ru';
+const _queuedMsg = _lang === 'en'
+  ? 'saved locally — will weave itself in once the connection is back'
+  : 'сохранено локально — довплетётся само, когда появится связь';
+const _retryHintMsg = _lang === 'en'
+  ? 'you can tap again, but it is not required — a retry is already saved'
+  : 'можно нажать ещё раз, но не обязательно — попытка уже сохранена';
+btn.textContent = `[ ⏳ ${UC_I18N.t('petlya.waitWord')}... ]`;
 btn.style.color = 'var(--accent2)';
+// Поясняем прямо в интерфейсе: шум НЕ потерян, он уже в локальной очереди
+// (ucQueueUpsert отработал до сетевого запроса) и довплетётся сам через
+// фоновый ucTrySyncQueue — без участия человека.
+let noteEl = btn.parentNode ? btn.parentNode.querySelector(`[data-auto-note="${btn.dataset.idem}"]`) : null;
+if (!noteEl) {
+  noteEl = document.createElement('div');
+  noteEl.dataset.autoNote = btn.dataset.idem;
+  noteEl.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,255,255,0.45);margin-top:0.5rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
+  if (btn.parentNode) btn.parentNode.appendChild(noteEl);
+}
+noteEl.textContent = '// ' + _queuedMsg;
 // КУЛДАУН 5 секунд: даже после ошибки нельзя сразу нажать снова —
 // первый запрос мог дойти до Supabase, но ответ потерялся
 let countdown = 5;
 const tick = setInterval(() => {
 countdown--;
 if (countdown > 0) {
-btn.textContent = `[ ✗ ${UC_I18N.t('petlya.waitWord')} ${countdown}... ]`;
+btn.textContent = `[ ⏳ ${UC_I18N.t('petlya.waitWord')} ${countdown}... ]`;
 } else {
 clearInterval(tick);
 btn.textContent = UC_I18N.t('petlya.retryX');
 btn.disabled = false;
 btn.dataset.weaveInProgress = '0';
+noteEl.textContent = '// ' + _retryHintMsg;
 }
 }, 1000);
 }
@@ -989,9 +1008,35 @@ async function ucTrySyncQueue() {
             messages[midx].woven = true;
             try { sessionStorage.setItem('uc_petlya_dialog', JSON.stringify(messages)); } catch(e){}
           }
+          // Аддитивно: если кнопка ещё на экране (та же вкладка, без
+          // перезагрузки) — красим её сразу в "вплетено" тем же стилем,
+          // что и ручной успех, не дожидаясь ручного рефреша.
+          try {
+            const liveBtn = document.querySelector(`[data-idem="${item.client_id}"]`);
+            if (liveBtn) {
+              liveBtn.textContent = UC_I18N.t('petlya.weaved');
+              liveBtn.style.color = 'var(--accent)';
+              liveBtn.style.borderColor = 'rgba(0,255,136,0.3)';
+              liveBtn.disabled = true;
+              liveBtn.dataset.weaveInProgress = '0';
+              const autoNote = liveBtn.parentNode ? liveBtn.parentNode.querySelector(`[data-auto-note="${item.client_id}"]`) : null;
+              if (autoNote && autoNote.parentNode) autoNote.parentNode.removeChild(autoNote);
+            }
+          } catch(e){}
         } else if (data && data.error === 'gate') {
           // окончательный отказ привратника — повторять нет смысла
           ucQueueRemove(item.client_id);
+          try {
+            const liveBtn = document.querySelector(`[data-idem="${item.client_id}"]`);
+            if (liveBtn) {
+              liveBtn.textContent = UC_I18N.t('petlya.weaveRejected');
+              liveBtn.style.color = 'var(--accent2)';
+              liveBtn.style.borderColor = 'rgba(255,51,102,0.3)';
+              liveBtn.disabled = true;
+              const autoNote = liveBtn.parentNode ? liveBtn.parentNode.querySelector(`[data-auto-note="${item.client_id}"]`) : null;
+              if (autoNote) autoNote.textContent = '// ' + (data.reason || UC_I18N.t('petlya.signalIndistinct'));
+            }
+          } catch(e){}
         }
         // gate_unavailable / прочее — транзитно, оставляем в очереди
       }
