@@ -754,6 +754,26 @@ function timeAgo(iso) {
 }
 
 // ═══════════════════════════════════════════════════════
+// АДДИТИВНО: ретрай с бэкоффом для чтения из Supabase.
+// Не меняет рендер и не трогает UI — только даёт GET-запросу
+// ещё пару попыток на плохом канале, прежде чем сдаться.
+// ═══════════════════════════════════════════════════════
+async function ucFetchRetry(url, options, attempts = 3, delaysMs = [800, 2000, 5000]) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.ok) return res;
+      lastErr = new Error('HTTP ' + res.status);
+    } catch (e) {
+      lastErr = e;
+    }
+    if (i < attempts - 1) await new Promise(r => setTimeout(r, delaysMs[i] || 5000));
+  }
+  throw lastErr;
+}
+
+// ═══════════════════════════════════════════════════════
 // ЛИЧНЫЙ БЛОК
 // ═══════════════════════════════════════════════════════
 async function loadPersonal() {
@@ -770,11 +790,19 @@ async function loadPersonal() {
   }
 
   // Сначала — свои узлы
-  const nodesRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/nodes?user_token=eq.${myToken}&select=id,created_at,raw_noise,ai_interpretation&order=created_at.desc`,
-    { headers }
-  );
-  const myNodes = await nodesRes.json();
+  let myNodes;
+  try {
+    const nodesRes = await ucFetchRetry(
+      `${SUPABASE_URL}/rest/v1/nodes?user_token=eq.${myToken}&select=id,created_at,raw_noise,ai_interpretation&order=created_at.desc`,
+      { headers }
+    );
+    myNodes = await nodesRes.json();
+  } catch (e) {
+    // Все попытки провалились — канал недоступен. Не перезаписываем блок
+    // ложным "нет шумов", просто оставляем как есть, тихо логируем.
+    console.warn('Личные узлы: канал недоступен после ретраев', e);
+    return;
+  }
 
   if (!Array.isArray(myNodes) || !myNodes.length) {
     container.innerHTML = `
@@ -795,8 +823,8 @@ async function loadPersonal() {
   window._myConns = [];
   try {
     const [connsFromRes, connsToRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/connections?from_node_id=in.${idList}&status=eq.accepted&select=from_node_id,to_node_id`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/connections?to_node_id=in.${idList}&status=eq.accepted&select=from_node_id,to_node_id`, { headers }),
+      ucFetchRetry(`${SUPABASE_URL}/rest/v1/connections?from_node_id=in.${idList}&status=eq.accepted&select=from_node_id,to_node_id`, { headers }),
+      ucFetchRetry(`${SUPABASE_URL}/rest/v1/connections?to_node_id=in.${idList}&status=eq.accepted&select=from_node_id,to_node_id`, { headers }),
     ]);
     const connsFrom = await connsFromRes.json();
     const connsTo = await connsToRes.json();
@@ -891,8 +919,8 @@ async function runPersonalAnalysis() {
 async function loadStats() {
   try {
     const [nodesRes, connsRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/nodes?select=id,user_token`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/connections?select=id,created_by,created_at&status=eq.accepted`, { headers }),
+      ucFetchRetry(`${SUPABASE_URL}/rest/v1/nodes?select=id,user_token`, { headers }),
+      ucFetchRetry(`${SUPABASE_URL}/rest/v1/connections?select=id,created_by,created_at&status=eq.accepted`, { headers }),
     ]);
     const [nodes, conns] = await Promise.all([nodesRes.json(), connsRes.json()]);
 
