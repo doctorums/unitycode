@@ -95,7 +95,7 @@ button.refresh:active { border-color: var(--accent); color: var(--accent); }
 
 <div class="card" id="card-lookup">
   <h2>Поиск вручную</h2>
-  <input id="lookup-input" placeholder="вставьте токен или client_id" style="width:100%;background:transparent;border:1px solid var(--line);border-radius:8px;color:var(--fg);font-family:inherit;font-size:0.8rem;padding:0.6rem;margin-bottom:0.6rem;">
+  <input id="lookup-input" placeholder="токен, client_id или ключевая фраза" style="width:100%;background:transparent;border:1px solid var(--line);border-radius:8px;color:var(--fg);font-family:inherit;font-size:0.8rem;padding:0.6rem;margin-bottom:0.6rem;">
   <button class="refresh" style="margin-bottom:0.4rem" onclick="lookup()">[ найти ]</button>
   <div id="lookup-body"></div>
   <div class="hint">Для отладки: можно проверить шумы любого устройства, зная его токен (64 символа) или конкретный client_id вплетения. Токен виден в блоке «Обстановка» на том устройстве.</div>
@@ -125,7 +125,7 @@ async function checkEnv(){
   else if (/^[0-9a-f]{64}$/i.test(token)) tokenNote = '<span class="ok">есть (из ключевой фразы)</span>';
   else tokenNote = '<span class="warn">есть, но случайный (фраза не вводилась на этом устройстве)</span>';
   rows.push(['Токен', tokenNote]);
-  if (token) rows.push(['Начало токена', esc(token.slice(0,10)) + '…']);
+  if (token) rows.push(['Токен (тап — копировать)', '<span style="cursor:pointer;text-decoration:underline dotted" data-copy-token>' + esc(token.slice(0,10)) + '…' + esc(token.slice(-6)) + '</span>']);
 
   // сеть по мнению браузера
   rows.push(['Браузер считает', navigator.onLine ? '<span class="ok">сеть есть</span>' : '<span class="bad">сети нет</span>']);
@@ -144,6 +144,12 @@ async function checkEnv(){
   rows.push(['Время устройства', esc(new Date().toLocaleString())]);
 
   el.innerHTML = rows.map(r => '<div class="row"><span class="k">'+r[0]+'</span><span class="v">'+r[1]+'</span></div>').join('');
+
+  const copyEl = el.querySelector('[data-copy-token]');
+  if (copyEl) copyEl.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(token); copyEl.textContent = 'скопирован ✓'; }
+    catch(e){ copyEl.textContent = token; } // fallback: показать целиком для ручного копирования
+  });
 
   // пинг базы
   (async () => {
@@ -319,7 +325,20 @@ async function lookup(){
       rows = r.ok ? await r.json() : [];
       mode = 'токен';
     }
-    if (!rows.length) { el.innerHTML = '<span class="warn">ничего не найдено ни как client_id, ни как токен</span>'; return; }
+    if (!rows.length && !/^[0-9a-f]{64}$/i.test(q)) {
+      // похоже, введена ключевая ФРАЗА, а не токен — в базе лежит её
+      // SHA-256. Хэшируем так же, как Спираль (trim + lowercase), ищем ещё раз.
+      try {
+        const enc = new TextEncoder().encode(q.trim().toLowerCase());
+        const hash = await crypto.subtle.digest('SHA-256', enc);
+        const hashed = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
+        r = await fetch(SUPABASE_URL + '/rest/v1/nodes?user_token=eq.' + hashed
+          + '&select=id,client_id,created_at,raw_noise,lat,lng,tz&order=created_at.desc&limit=25', { headers });
+        rows = r.ok ? await r.json() : [];
+        mode = 'ключевая фраза';
+      } catch(e){ /* crypto.subtle недоступен — пропускаем */ }
+    }
+    if (!rows.length) { el.innerHTML = '<span class="warn">ничего не найдено — ни как client_id, ни как токен, ни как фраза</span>'; return; }
     el.innerHTML = '<div class="hint" style="margin:0 0 0.4rem">найдено как ' + mode + ': ' + rows.length + '</div>'
       + rows.map(n => {
         const place = (n.lat != null && n.lng != null) ? '<span class="ok">записано</span>' : '<span class="warn">без места</span>';
