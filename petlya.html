@@ -794,6 +794,120 @@ function ensureIdem(idx){
   if (!messages[idx].idem){ messages[idx].idem = genIdem(); try { sessionStorage.setItem('uc_petlya_dialog', JSON.stringify(messages)); } catch(e){} }
   return messages[idx].idem;
 }
+
+// ═══════════════════════════════════════════════════════
+// ПРОВЕРКА "А НЕ ДОЛЕТЕЛО ЛИ УЖЕ" (для плохой/блокируемой сети)
+// ─────────────────────────────────────────────────────────
+// В нестабильной сети запись в Supabase иногда УСПЕВАЕТ пройти, а ответ
+// воркера — нет (обрыв/блокировка после отправки). Клиент в этом случае
+// показывает ошибку, хотя шум уже вплетён — это и есть баг "красная кнопка
+// навсегда, хотя в «Сети» шум уже виден".
+// Чиним не трогая воркер: читаем Supabase напрямую (тот же публичный ключ
+// на чтение, что использует страница «Сеть») и смотрим — не появился ли
+// уже узел с этим текстом и токеном за последние минуты.
+// ВАЖНО: предполагает колонку client_id (UNIQUE, точечный матч — надёжнее,
+// чем текст+время: не путает два разных шума с одинаковым текстом) и,
+// как запасной вариант, raw_noise/user_token в таблице nodes, с разрешённым
+// им чтением (RLS "read nodes" = true).
+async function checkAlreadyWoven(clientId, rawNoise, token) {
+  try {
+    // Основной путь: точное совпадение по client_id — тот же способ,
+    // которым log.html уже проверяет очередь. Никакой путаницы между
+    // двумя разными шумами с одинаковым текстом.
+    if (clientId) {
+      const urlById = SUPABASE_URL + '/rest/v1/nodes'
+        + '?select=id'
+        + '&client_id=eq.' + encodeURIComponent(clientId)
+        + '&limit=1';
+      const rById = await fetch(urlById, { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
+      if (rById.ok) {
+        const rowsById = await rById.json();
+        if (Array.isArray(rowsById) && rowsById[0]) return rowsById[0].id;
+      }
+    }
+    // Запасной путь (client_id почему-то не пришёл) — старое поведение.
+    if (!rawNoise || !token) return null;
+    const since = new Date(Date.now() - 15 * 60000).toISOString();
+    const url = SUPABASE_URL + '/rest/v1/nodes'
+      + '?select=id'
+      + '&user_token=eq.' + encodeURIComponent(token)
+      + '&raw_noise=eq.' + encodeURIComponent(rawNoise)
+      + '&created_at=gte.' + encodeURIComponent(since)
+      + '&order=created_at.desc&limit=1';
+    const r = await fetch(url, { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return (Array.isArray(rows) && rows[0]) ? rows[0].id : null;
+  } catch(e) { return null; }
+}
+
+// Данные (не UI): фиксируем "вплетено" в messages/localStorage и снимаем с очереди.
+// Общая часть для успешного ответа воркера И для найденной напрямую записи.
+function persistWoven(msgIndex, clientId) {
+  const idx = parseInt(msgIndex);
+  if (!isNaN(idx) && messages[idx]) {
+    messages[idx].woven = true;
+    try { sessionStorage.setItem('uc_petlya_dialog', JSON.stringify(messages)); } catch(e){}
+  }
+  try { localStorage.setItem('uc_woven_idx_' + msgIndex, '1'); } catch(e){}
+  try { localStorage.removeItem('uc_noise_' + msgIndex); } catch(e){}
+  ucQueueRemove(clientId);
+}
+
+// UI: красим конкретную кнопку в "вплетено" и убираем всё, что рядом с ней
+// накопилось (пояснения об ожидании, ссылку "проверить в Сети").
+function styleWovenButton(btn) {
+  if (!btn) return;
+  if (btn.dataset.advanceDone === '1') return; // уже показываем «Дальше» — не перекрываем
+  btn.textContent = UC_I18N.t('petlya.weaved');
+  btn.style.color = 'var(--accent)';
+  btn.style.borderColor = 'rgba(0,255,136,0.3)';
+  btn.disabled = true;
+  btn.dataset.weaveInProgress = '0';
+  const clientId = btn.dataset.idem;
+  const parent = btn.parentNode;
+  if (!parent) return;
+  const autoNote = parent.querySelector(`[data-auto-note="${clientId}"]`);
+  if (autoNote && autoNote.parentNode) autoNote.parentNode.removeChild(autoNote);
+  const netLink = parent.querySelector(`[data-net-link="${clientId}"]`);
+  if (netLink && netLink.parentNode) netLink.parentNode.removeChild(netLink);
+}
+
+// Спустя 5 сек после ЛЮБОГО исхода (успех / отказ привратника / привратник
+// недоступен / ответ потерялся) — кнопка вплетения уже не несёт полезного
+// действия: итог известен, а нужный при потере ответа повтор идёт в фоне
+// (ucTrySyncQueue) сам по себе, независимо от кнопки. Дальше человеку
+// логичнее увидеть Сеть, чем смотреть на неподвижную надпись.
+function transformToAdvance(btn) {
+  if (!btn || !btn.parentNode || btn.dataset.advanceDone === '1') return;
+  btn.dataset.advanceDone = '1';
+  const lang = (window.UC_I18N && UC_I18N.lang) || 'ru';
+  btn.textContent = lang === 'en' ? '→ Next' : '→ Дальше';
+  btn.disabled = false;
+  btn.style.color = 'rgba(120,200,255,0.9)';
+  btn.style.borderColor = 'rgba(120,200,255,0.35)';
+  btn.onclick = function() { window.location.href = 'set.html'; };
+  const parent = btn.parentNode;
+  const autoNote = parent.querySelector(`[data-auto-note="${btn.dataset.idem}"]`);
+  if (autoNote && autoNote.parentNode) autoNote.parentNode.removeChild(autoNote);
+  const netLink = parent.querySelector(`[data-net-link="${btn.dataset.idem}"]`);
+  if (netLink && netLink.parentNode) netLink.parentNode.removeChild(netLink);
+}
+
+// Подсказка сразу, а не только текстом "сохранено локально": явная ссылка
+// на «Сеть» — если шум там уже виден, не нужно ждать автоматической проверки.
+function addNetworkCheckLink(btn, clientId) {
+  if (!btn || !btn.parentNode || !clientId) return;
+  if (btn.parentNode.querySelector(`[data-net-link="${clientId}"]`)) return;
+  const lang = (window.UC_I18N && UC_I18N.lang) || 'ru';
+  const link = document.createElement('a');
+  link.href = 'set.html';
+  link.dataset.netLink = clientId;
+  link.textContent = lang === 'en' ? '→ check in the Network' : '→ проверить в «Сети»';
+  link.style.cssText = 'display:inline-block;margin-top:0.5rem;font-size:0.6rem;letter-spacing:0.05em;color:rgba(120,200,255,0.8);text-decoration:underline;font-family:\'Share Tech Mono\',monospace;';
+  btn.parentNode.appendChild(link);
+}
+
 async function weaveIntoNet(btn) {
 // Защита от двойного тапа: если уже идёт отправка с этой кнопки — игнорим
 if (btn.dataset.weaveInProgress === '1') return;
@@ -801,10 +915,6 @@ btn.dataset.weaveInProgress = '1';
 
 btn.textContent = UC_I18N.t('petlya.weaving');
 btn.disabled = true;
-
-try {
-const { lat, lng } = await getCoords();
-const userToken = await getUserToken();
 
 // Если шум пользователя утерян — вплетение бессмысленно, блокируем
 const rawNoise = btn.dataset.noise || '';
@@ -815,6 +925,13 @@ if (!rawNoise) {
   btn.dataset.weaveInProgress = '0';
   return;
 }
+// Объявляем здесь (а не через const внутри try), чтобы catch-блок при сбое
+// тоже мог использовать userToken для прямой проверки в Supabase.
+let userToken = '';
+try {
+const { lat, lng } = await getCoords();
+userToken = await getUserToken();
+
 const payload = {
 raw_noise: rawNoise,
 ai_interpretation: btn.dataset.text,
@@ -871,6 +988,7 @@ note.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,51,102,0.5
 note.textContent = '// ' + (data.reason || UC_I18N.t('petlya.signalIndistinct'));
 if (btn.parentNode) btn.parentNode.appendChild(note);
 ucQueueRemove(btn.dataset.idem);
+setTimeout(() => transformToAdvance(btn), 5000);
 return;
 }
 
@@ -884,33 +1002,23 @@ const note = document.createElement('div');
 note.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,51,102,0.45);margin-top:0.5rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
 note.textContent = '// ' + (data.reason || UC_I18N.t('petlya.netDidntHear'));
 if (btn.parentNode) btn.parentNode.appendChild(note);
+setTimeout(() => transformToAdvance(btn), 5000);
 return;
 }
 
 if (!data || data.ok !== true) throw new Error('write_failed');
 
-btn.textContent = UC_I18N.t('petlya.weaved');
-btn.style.color = 'var(--accent)';
-btn.style.borderColor = 'rgba(0,255,136,0.3)';
-// помечаем в сессии и в localStorage — кнопка не появится даже после перезагрузки
-const idx = parseInt(btn.dataset.msgIndex);
-if (!isNaN(idx) && messages[idx]) {
-  messages[idx].woven = true;
-  try { sessionStorage.setItem('uc_petlya_dialog', JSON.stringify(messages)); } catch(e){}
-}
-try { localStorage.setItem('uc_woven_idx_' + btn.dataset.msgIndex, '1'); } catch(e){}
-try { localStorage.removeItem('uc_noise_' + btn.dataset.msgIndex); } catch(e){}
-ucQueueRemove(btn.dataset.idem);
-// Успех — кнопка остаётся disabled навсегда
+persistWoven(btn.dataset.msgIndex, btn.dataset.idem);
+styleWovenButton(btn);
+// Успех — кнопка остаётся disabled навсегда, но через 5 сек тоже
+// становится переходом в «Сеть» (единое поведение для любого исхода)
+setTimeout(() => transformToAdvance(btn), 5000);
 } catch(e) {
 console.warn('Supabase error', e);
 const _lang = (window.UC_I18N && UC_I18N.lang) || 'ru';
 const _queuedMsg = _lang === 'en'
-  ? 'saved locally — will weave itself in once the connection is back'
-  : 'сохранено локально — довплетётся само, когда появится связь';
-const _retryHintMsg = _lang === 'en'
-  ? 'you can tap again, but it is not required — a retry is already saved'
-  : 'можно нажать ещё раз, но не обязательно — попытка уже сохранена';
+  ? 'it likely already got through — only the confirmation was lost. No need to wait: keep writing, or check the Network'
+  : 'скорее всего уже долетело — потерялось только подтверждение. Ждать не нужно: можно писать дальше или свериться в «Сети»';
 btn.textContent = `[ ⏳ ${UC_I18N.t('petlya.waitWord')}... ]`;
 btn.style.color = 'var(--accent2)';
 // Поясняем прямо в интерфейсе: шум НЕ потерян, он уже в локальной очереди
@@ -924,8 +1032,14 @@ if (!noteEl) {
   if (btn.parentNode) btn.parentNode.appendChild(noteEl);
 }
 noteEl.textContent = '// ' + _queuedMsg;
-// КУЛДАУН 5 секунд: даже после ошибки нельзя сразу нажать снова —
-// первый запрос мог дойти до Supabase, но ответ потерялся
+// Явная ссылка на «Сеть» сразу — не нужно ждать ни кулдаун, ни автопроверку,
+// чтобы убедиться самому, дошёл ли шум.
+addNetworkCheckLink(btn, btn.dataset.idem);
+
+// ОБРАТНЫЙ ОТСЧЁТ 5 секунд — чисто визуальный, дальше повтор (если нужен)
+// идёт в фоне сам по себе. По истечении кнопка не предлагает нажимать
+// ещё раз — она превращается в переход в «Сеть» (единое поведение с
+// остальными исходами: там ждать уже нечего).
 let countdown = 5;
 const tick = setInterval(() => {
 countdown--;
@@ -933,12 +1047,26 @@ if (countdown > 0) {
 btn.textContent = `[ ⏳ ${UC_I18N.t('petlya.waitWord')} ${countdown}... ]`;
 } else {
 clearInterval(tick);
-btn.textContent = UC_I18N.t('petlya.retryX');
-btn.disabled = false;
-btn.dataset.weaveInProgress = '0';
-noteEl.textContent = '// ' + _retryHintMsg;
+transformToAdvance(btn);
 }
 }, 1000);
+
+// Фоновая самопроверка: вдруг запись всё-таки дошла, а потерялся только
+// ответ. Если найдём — красим кнопку в успех сами, не дожидаясь тапа,
+// и всё равно через 5 сек она превратится в переход в «Сеть».
+const _tokenForCheck = userToken || (function(){ try { return localStorage.getItem('uc_token') || ''; } catch(_e){ return ''; } })();
+if (_tokenForCheck) {
+  (async () => {
+    await new Promise(r => setTimeout(r, 3000));
+    const foundId = await checkAlreadyWoven(btn.dataset.idem, rawNoise, _tokenForCheck);
+    if (foundId) {
+      clearInterval(tick);
+      persistWoven(btn.dataset.msgIndex, btn.dataset.idem);
+      styleWovenButton(btn);
+      setTimeout(() => transformToAdvance(btn), 5000);
+    }
+  })();
+}
 }
 }
 
@@ -979,6 +1107,15 @@ async function ucTrySyncQueue() {
     if (!item.client_id || ucInFlight.has(item.client_id)) continue;
     ucInFlight.add(item.client_id);
     try {
+      // Сначала смотрим — может, эта попытка уже долетела раньше (ответ
+      // потерялся в плохой сети, а запись состоялась). Тогда не шлём дубль.
+      const already = await checkAlreadyWoven(item.client_id, item.raw_noise, item.user_token);
+      if (already) {
+        persistWoven(item.msg_index, item.client_id);
+        const preBtn = document.querySelector(`[data-idem="${item.client_id}"]`);
+        if (preBtn) styleWovenButton(preBtn);
+        continue;
+      }
       const ts = await getTurnstileToken();
       const res = await fetch(WRITE_WORKER_URL, {
         method: 'POST',
@@ -1001,27 +1138,13 @@ async function ucTrySyncQueue() {
         // чтобы при релоаде кнопка не появилась снова (рендер не трогаем,
         // только то, что уже читает существующая restoreDialog).
         if (data && data.ok === true) {
-          ucQueueRemove(item.client_id);
-          try { localStorage.setItem('uc_woven_idx_' + item.msg_index, '1'); } catch(e){}
-          const midx = parseInt(item.msg_index);
-          if (!isNaN(midx) && messages[midx]) {
-            messages[midx].woven = true;
-            try { sessionStorage.setItem('uc_petlya_dialog', JSON.stringify(messages)); } catch(e){}
-          }
+          persistWoven(item.msg_index, item.client_id);
           // Аддитивно: если кнопка ещё на экране (та же вкладка, без
           // перезагрузки) — красим её сразу в "вплетено" тем же стилем,
           // что и ручной успех, не дожидаясь ручного рефреша.
           try {
             const liveBtn = document.querySelector(`[data-idem="${item.client_id}"]`);
-            if (liveBtn) {
-              liveBtn.textContent = UC_I18N.t('petlya.weaved');
-              liveBtn.style.color = 'var(--accent)';
-              liveBtn.style.borderColor = 'rgba(0,255,136,0.3)';
-              liveBtn.disabled = true;
-              liveBtn.dataset.weaveInProgress = '0';
-              const autoNote = liveBtn.parentNode ? liveBtn.parentNode.querySelector(`[data-auto-note="${item.client_id}"]`) : null;
-              if (autoNote && autoNote.parentNode) autoNote.parentNode.removeChild(autoNote);
-            }
+            if (liveBtn) styleWovenButton(liveBtn);
           } catch(e){}
         } else if (data && data.error === 'gate') {
           // окончательный отказ привратника — повторять нет смысла
