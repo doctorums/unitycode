@@ -51,7 +51,7 @@ animation: blink 0.7s step-end infinite;
 }
 @keyframes blink { 50% { opacity: 0; } }
 .weave-btn {
-display: inline-block; margin-top: 0.4rem;
+display: inline-block; margin-top: 0.4rem; margin-left: 1.4rem;
 padding: 0.2rem 0.5rem;
 border: 1px solid rgba(255,51,102,0.3);
 color: rgba(255,51,102,0.7);
@@ -96,6 +96,36 @@ border-left: 6px solid currentColor;
 }
 .weave-btn:hover:not(:disabled) { border-color: var(--accent2); color: var(--accent2); background: rgba(255,51,102,0.05); }
 .weave-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* Всплывающее окошко (тост) при слабом соединении: не встраивается в поток
+   сообщения (не рвёт вёрстку в строку), а висит отдельно снизу по центру,
+   соразмерно экрану. Убирается автоматически, когда шум подтверждён. */
+.uc-toast {
+position: fixed;
+left: 50%; bottom: 1.4rem;
+transform: translateX(-50%);
+max-width: min(90vw, 30rem);
+box-sizing: border-box;
+padding: 0.7rem 1rem;
+background: rgba(10,14,20,0.94);
+border: 1px solid rgba(120,200,255,0.25);
+border-radius: 8px;
+-webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+z-index: 200;
+font-family: 'Share Tech Mono', monospace;
+font-size: 0.62rem; line-height: 1.6; letter-spacing: 0.04em;
+color: rgba(255,255,255,0.72); text-align: left;
+animation: uc-toast-in 0.35s ease;
+}
+@keyframes uc-toast-in {
+from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.uc-toast a {
+display: inline-block; margin-top: 0.4rem;
+color: rgba(120,200,255,0.9); text-decoration: underline;
+}
 
 /* ═══════════════════════════════
 ВВОД
@@ -890,6 +920,7 @@ function styleWovenButton(btn) {
   btn.disabled = true;
   btn.dataset.weaveInProgress = '0';
   const clientId = btn.dataset.idem;
+  ucHideQueueToast(clientId);
   const parent = btn.parentNode;
   if (!parent) return;
   const autoNote = parent.querySelector(`[data-auto-note="${clientId}"]`);
@@ -914,11 +945,44 @@ function transformToAdvance(btn) {
   btn.disabled = false;
   btn.style.color = 'rgba(120,200,255,0.9)';
   btn.onclick = function() { window.location.href = 'set.html'; };
+  ucHideQueueToast(btn.dataset.idem);
   const parent = btn.parentNode;
   const autoNote = parent.querySelector(`[data-auto-note="${btn.dataset.idem}"]`);
   if (autoNote && autoNote.parentNode) autoNote.parentNode.removeChild(autoNote);
   const netLink = parent.querySelector(`[data-net-link="${btn.dataset.idem}"]`);
   if (netLink && netLink.parentNode) netLink.parentNode.removeChild(netLink);
+}
+
+// Всплывающее окошко при слабом соединении. Живёт на document.body
+// (position:fixed), поэтому НЕ встраивается в флекс-поток сообщения и не
+// рвёт вёрстку. Помечено data-auto-note = clientId, чтобы его можно было
+// найти и убрать, когда шум подтверждён.
+function ucShowQueueToast(clientId, message, linkLabel) {
+  if (!clientId) return;
+  let toast = document.querySelector(`.uc-toast[data-auto-note="${clientId}"]`);
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.className = 'uc-toast';
+    toast.dataset.autoNote = clientId;
+    const msg = document.createElement('div');
+    msg.dataset.toastMsg = '1';
+    toast.appendChild(msg);
+    document.body.appendChild(toast);
+  }
+  const msgEl = toast.querySelector('[data-toast-msg]');
+  if (msgEl) msgEl.textContent = '// ' + message;
+  if (linkLabel && !toast.querySelector('a')) {
+    const a = document.createElement('a');
+    a.href = 'set.html';
+    a.dataset.netLink = clientId;
+    a.textContent = linkLabel;
+    toast.appendChild(a);
+  }
+}
+function ucHideQueueToast(clientId) {
+  if (!clientId) return;
+  const toast = document.querySelector(`.uc-toast[data-auto-note="${clientId}"]`);
+  if (toast && toast.parentNode) toast.parentNode.removeChild(toast);
 }
 
 // Подсказка сразу, а не только текстом "сохранено локально": явная ссылка
@@ -1048,20 +1112,14 @@ const _queuedMsg = _lang === 'en'
   : 'скорее всего уже долетело — потерялось только подтверждение. Ждать не нужно: можно писать дальше или свериться в «Сети»';
 btn.textContent = `[ ⏳ ${UC_I18N.t('petlya.waitWord')}... ]`;
 btn.style.color = 'var(--accent2)';
-// Поясняем прямо в интерфейсе: шум НЕ потерян, он уже в локальной очереди
-// (ucQueueUpsert отработал до сетевого запроса) и довплетётся сам через
-// фоновый ucTrySyncQueue — без участия человека.
-let noteEl = btn.parentNode ? btn.parentNode.querySelector(`[data-auto-note="${btn.dataset.idem}"]`) : null;
-if (!noteEl) {
-  noteEl = document.createElement('div');
-  noteEl.dataset.autoNote = btn.dataset.idem;
-  noteEl.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,255,255,0.45);margin-top:0.5rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
-  if (btn.parentNode) btn.parentNode.appendChild(noteEl);
-}
-noteEl.textContent = '// ' + _queuedMsg;
-// Явная ссылка на «Сеть» сразу — не нужно ждать ни кулдаун, ни автопроверку,
-// чтобы убедиться самому, дошёл ли шум.
-addNetworkCheckLink(btn, btn.dataset.idem);
+// Пояснение показываем отдельным всплывающим окошком (не встраиваем в
+// сообщение — иначе длинный текст рвёт вёрстку в одну строку). Шум НЕ
+// потерян: он в локальной очереди и довплетётся сам через ucTrySyncQueue.
+ucShowQueueToast(
+  btn.dataset.idem,
+  _queuedMsg,
+  _lang === 'en' ? '→ check in the Network' : '→ проверить в «Сети»'
+);
 
 // ОБРАТНЫЙ ОТСЧЁТ 5 секунд — чисто визуальный, дальше повтор (если нужен)
 // идёт в фоне сам по себе. По истечении кнопка не предлагает нажимать
