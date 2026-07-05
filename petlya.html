@@ -69,6 +69,14 @@ width: auto; max-width: fit-content;
 30% { transform: translateX(6px) rotate(0.6deg); }
 70% { transform: translateX(-4px) rotate(-0.4deg); }
 }
+/* Стрелка "Дальше" (переход Спираль → Сеть): направленное покачивание
+   вправо, отдельно от текста — усиливает жест "туда", а не общая
+   дрожь кнопки (которая на этом этапе выключается в JS). */
+.advance-arrow { display: inline-block; animation: advance-nudge 1.3s ease-in-out infinite; }
+@keyframes advance-nudge {
+0%,100% { transform: translateX(0); }
+50% { transform: translateX(7px); }
+}
 .weave-btn:hover:not(:disabled) { border-color: var(--accent2); color: var(--accent2); background: rgba(255,51,102,0.05); }
 .weave-btn:disabled { opacity: 0.5; cursor: default; }
 
@@ -882,7 +890,12 @@ function transformToAdvance(btn) {
   if (!btn || !btn.parentNode || btn.dataset.advanceDone === '1') return;
   btn.dataset.advanceDone = '1';
   const lang = (window.UC_I18N && UC_I18N.lang) || 'ru';
-  btn.textContent = lang === 'en' ? '→ Next' : '→ Дальше';
+  const label = lang === 'en' ? 'Next' : 'Дальше';
+  // Стрелка покачивается вправо отдельно от слова — направленный жест
+  // к переходу, а не общая дрожь кнопки (btn-sway), которую здесь гасим,
+  // чтобы жест читался однозначно.
+  btn.innerHTML = '<span class="advance-arrow">→</span> ' + label;
+  btn.style.animation = 'none';
   btn.disabled = false;
   btn.style.color = 'rgba(120,200,255,0.9)';
   btn.style.borderColor = 'rgba(120,200,255,0.35)';
