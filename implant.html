@@ -454,6 +454,23 @@
       font-family: 'Share Tech Mono', monospace;
     }
     .freshness-line .fresh-accent { color: var(--accent); }
+
+    /* АДДИТИВНО: дыхание палитры по местному времени суток (пилот Паттерна).
+       Без атрибута (день или сбой скрипта) — ровно текущий вид.
+       Сдвиги тонкие, внутри зелёной семьи. */
+    html[data-uc-tod="dawn"] {
+      --accent: #33ff77;
+      --glow: rgba(51, 255, 119, 0.14);
+    }
+    html[data-uc-tod="dusk"] {
+      --accent: #00e89a;
+      --glow: rgba(0, 232, 154, 0.10);
+    }
+    html[data-uc-tod="night"] {
+      --accent: #00cfa0;
+      --dim: #4a5f55;
+      --glow: rgba(0, 207, 160, 0.07);
+    }
   </style>
 </head>
 <body>
@@ -1290,11 +1307,32 @@ async function loadFreshness() {
   } catch (e) { /* тихо */ }
 }
 
+// ═══════════════════════════════════════════════════════
+// АДДИТИВНО: дыхание палитры по местному времени суток.
+// Ставит data-uc-tod на <html>; день — атрибут снимается,
+// страница выглядит ровно как раньше. Сбой → атрибута нет.
+// ═══════════════════════════════════════════════════════
+function ucApplyTimeOfDay() {
+  try {
+    const h = new Date().getHours();
+    let tod = '';
+    if (h >= 5 && h <= 9)        tod = 'dawn';
+    else if (h >= 18 && h <= 22) tod = 'dusk';
+    else if (h >= 23 || h <= 4)  tod = 'night';
+    if (tod) document.documentElement.setAttribute('data-uc-tod', tod);
+    else document.documentElement.removeAttribute('data-uc-tod');
+  } catch (e) { /* тихо: остаётся дневной вид */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) ucApplyTimeOfDay();
+});
+
 // Инициализация
 loadPersonal();
 loadStats();
 loadDelta();
 loadFreshness();
+ucApplyTimeOfDay();
 renderCharMenu();
 maybeIntroduceCharSelect();
 positionDescMarquee();
