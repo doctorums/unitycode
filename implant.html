@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
@@ -452,10 +452,15 @@
       letter-spacing: 0.15em;
       margin-bottom: 0.8rem;
       font-family: 'Share Tech Mono', monospace;
-      text-align: justify;
-      text-align-last: justify; /* разрядка одиночной строки на всю ширину кнопки */
     }
     .freshness-line .fresh-accent { color: var(--accent); }
+
+    /* АДДИТИВНО: коллективный ряд счётчиков — на всю ширину кнопки.
+       Личный блок (stats-row без модификатора) не затронут. */
+    .stats-row-wide {
+      justify-content: space-between;
+      width: 100%;
+    }
 
     /* АДДИТИВНО: дыхание палитры по местному времени суток (пилот Паттерна).
        Без атрибута (день или сбой скрипта) — ровно текущий вид.
@@ -579,7 +584,7 @@
     <div class="section-tag" data-i18n="implant.tagNetNow">// СЕТЬ СЕЙЧАС</div>
     <div class="section-desc marquee-wrap" id="collective-desc-wrap"><span class="marquee-text" data-i18n="implant.collectiveDesc">Коллективный срез — паттерны и резонансы всей Сети. ИИ анализирует шумы и связи всех участников.</span></div>
 
-    <div class="stats-row">
+    <div class="stats-row stats-row-wide">
       <div class="stat-box">
         <span class="stat-label" data-i18n="implant.statNodes">Узлов в сети</span>
         <span class="stat-val" id="total-nodes">—</span>
