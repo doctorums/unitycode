@@ -471,6 +471,52 @@
       --dim: #4a5f55;
       --glow: rgba(0, 207, 160, 0.07);
     }
+
+    /* АДДИТИВНО: узор рядом со списком шумов.
+       Разметка не меняется — грид только через CSS на контейнере:
+       заголовок на всю ширину, контент и узор — колонки.
+       На узких экранах — обычный поток (столбиком). */
+    @media (min-width: 720px) {
+      #personal-section {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.6rem;
+        align-items: start;
+      }
+      #personal-section > .section-tag { grid-column: 1 / -1; }
+    }
+    .uzor-frame {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1;
+      border: 1px solid rgba(0,255,136,0.2);
+      box-shadow: inset 0 0 50px rgba(0,255,136,0.02);
+    }
+    .uzor-frame::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.6;
+    }
+    #uzor-canvas { width:100%; height:100%; display:block; }
+    #uzor-essence {
+      position: absolute; pointer-events: none;
+      font-size: 0.6rem; color: var(--accent);
+      letter-spacing: 0.1em; text-shadow: 0 0 8px rgba(0,255,136,0.6);
+      transform: translate(-50%, -160%);
+      opacity: 0; transition: opacity 0.3s;
+      white-space: nowrap;
+      font-family: 'Share Tech Mono', monospace;
+    }
+    .uzor-legend {
+      display: flex; gap: 1.2rem; flex-wrap: wrap;
+      margin-top: 0.7rem;
+      font-size: 0.5rem; letter-spacing: 0.12em; color: var(--dim);
+      font-family: 'Share Tech Mono', monospace;
+    }
+    .uzor-legend span::before { content:'—'; margin-right: 0.4em; font-weight: bold; }
+    .uzor-legend .lg-fabric::before { color: rgba(0,255,136,0.4); }
+    .uzor-legend .lg-thread::before { color: var(--accent); }
+    .uzor-legend .lg-human::before  { color: #00c8ff; }
   </style>
 </head>
 <body>
@@ -513,6 +559,16 @@
 
     <div id="personal-content">
       <!-- Заполняется JS -->
+    </div>
+
+    <!-- АДДИТИВНО: узор — полотно Сети + твоя нить. Скрыт до успешной
+         загрузки данных; при сбое страница выглядит как раньше. -->
+    <div id="uzor-block" style="display:none;">
+      <div class="uzor-frame">
+        <canvas id="uzor-canvas"></canvas>
+        <div id="uzor-essence"></div>
+      </div>
+      <div class="uzor-legend" id="uzor-legend"></div>
     </div>
   </div>
 
@@ -1327,12 +1383,174 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden) ucApplyTimeOfDay();
 });
 
+// ═══════════════════════════════════════════════════════
+// АДДИТИВНО: УЗОР — полотно Сети + твоя нить.
+// Геометрия детерминирована данными: время (позиция на спирали),
+// хеш текста (характер точки), связи (точки вплетения).
+// Статичный рендер (анимация — позже). При сбое блок не показывается.
+// ═══════════════════════════════════════════════════════
+let _uzor = null; // { all, conns, mine } — для перерисовки на resize
+
+function ucHash(str) { // FNV-1a, детерминированный
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0);
+}
+
+function uzorDraw() {
+  if (!_uzor) return;
+  const cv = document.getElementById('uzor-canvas');
+  const box = cv.getBoundingClientRect();
+  if (!box.width) return;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = box.width * dpr; cv.height = box.height * dpr;
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = box.width, H = box.height, CX = W / 2, CY = H / 2;
+  ctx.clearRect(0, 0, W, H);
+
+  const { all, conns, mine } = _uzor;
+  const total = all.length;
+  if (!total) return;
+
+  // Спираль по хронологии; джиттер — из хеша id (u детерминирован)
+  const turns = 3.2;
+  const pos = {};
+  all.forEach((n, i) => {
+    const h = ucHash(n.id);
+    const t = i / total;
+    const ang = t * turns * Math.PI * 2 + ((h % 1000) / 1000 - 0.5) * 0.6;
+    const rad = 0.08 + t * 0.86 + (((h >> 10) % 1000) / 1000 - 0.5) * 0.06;
+    pos[n.id] = { x: CX + Math.cos(ang) * rad * CX * 0.92,
+                  y: CY + Math.sin(ang) * rad * CY * 0.92 };
+  });
+
+  // Слой 1: нити полотна
+  conns.forEach(c => {
+    const p1 = pos[c.from_node_id], p2 = pos[c.to_node_id];
+    if (!p1 || !p2) return;
+    ctx.strokeStyle = c.created_by === 'linker'
+      ? 'rgba(0,255,136,0.10)' : 'rgba(0,200,255,0.13)';
+    ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(p1.x, p1.y);
+    ctx.quadraticCurveTo(
+      (p1.x + p2.x) / 2 + (p1.y - p2.y) * 0.12,
+      (p1.y + p2.y) / 2 + (p2.x - p1.x) * 0.12,
+      p2.x, p2.y);
+    ctx.stroke();
+  });
+
+  // Слой 1: точки полотна (кроме моих — они поверх)
+  const mineIds = new Set(mine.map(n => n.id));
+  all.forEach(n => {
+    if (mineIds.has(n.id)) return;
+    const p = pos[n.id];
+    const sz = 1.2 + (ucHash(n.id) % 100) / 45;
+    ctx.fillStyle = 'rgba(0,255,136,0.28)';
+    ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, 7); ctx.fill();
+  });
+
+  // Слой 2: моя нить (хронологически) + узлы
+  if (mine.length) {
+    const acc = getComputedStyle(document.documentElement)
+      .getPropertyValue('--accent').trim() || '#00ff88';
+    ctx.strokeStyle = acc; ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 1.4;
+    ctx.shadowColor = acc; ctx.shadowBlur = 8;
+    ctx.beginPath();
+    mine.forEach((n, k) => {
+      const p = pos[n.id]; if (!p) return;
+      k === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+    });
+    if (mine.length > 1) ctx.stroke();
+    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+    mine.forEach(n => {
+      const p = pos[n.id]; if (!p) return;
+      // характер точки — из хеша собственного текста
+      const h = ucHash((n.raw_noise || '') + (n.ai_interpretation || ''));
+      const sz = 2.6 + (h % 100) / 60;
+      ctx.fillStyle = acc;
+      ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,255,136,0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, sz + 4, 0, 7); ctx.stroke();
+    });
+  }
+  _uzor.pos = pos; // для тапа по эссенции
+}
+
+async function loadUzor() {
+  try {
+    const [allRes, connsRes] = await Promise.all([
+      ucFetchRetry(`${SUPABASE_URL}/rest/v1/nodes?select=id,user_token,created_at&order=created_at.asc&limit=500`, { headers }),
+      ucFetchRetry(`${SUPABASE_URL}/rest/v1/connections?select=from_node_id,to_node_id,created_by&status=eq.accepted`, { headers }),
+    ]);
+    const all = await allRes.json();
+    const conns = await connsRes.json();
+    if (!Array.isArray(all) || !all.length) return;
+
+    // Мои узлы — с текстами (для хеша) и эссенциями, хронологически
+    let mine = [];
+    const myToken = localStorage.getItem('uc_token');
+    if (myToken) {
+      try {
+        const r = await ucFetchRetry(
+          `${SUPABASE_URL}/rest/v1/nodes?user_token=eq.${encodeURIComponent(myToken)}&select=id,raw_noise,ai_interpretation,essence,created_at&order=created_at.asc`,
+          { headers });
+        const m = await r.json();
+        if (Array.isArray(m)) mine = m;
+      } catch (e) { /* нить недоступна — рисуем только полотно */ }
+    }
+
+    _uzor = { all, conns: Array.isArray(conns) ? conns : [], mine };
+
+    const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
+    const lg = document.getElementById('uzor-legend');
+    if (lg) lg.innerHTML = en
+      ? '<span class="lg-fabric">the Network fabric</span><span class="lg-thread">your thread</span><span class="lg-human">human connections</span>'
+      : '<span class="lg-fabric">полотно Сети</span><span class="lg-thread">твоя нить</span><span class="lg-human">связи людей</span>';
+
+    document.getElementById('uzor-block').style.display = 'block';
+    uzorDraw();
+  } catch (e) { /* тихо: блок остаётся скрытым */ }
+}
+
+// Тап по своему узлу — эссенция
+document.getElementById('uzor-canvas').addEventListener('click', e => {
+  if (!_uzor || !_uzor.pos || !_uzor.mine.length) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  const el = document.getElementById('uzor-essence');
+  let hitNode = null;
+  _uzor.mine.forEach(n => {
+    const p = _uzor.pos[n.id];
+    if (p && Math.hypot(p.x - x, p.y - y) < 14) hitNode = n;
+  });
+  if (hitNode && el) {
+    const p = _uzor.pos[hitNode.id];
+    const label = hitNode.essence || (hitNode.raw_noise || '').slice(0, 40);
+    if (!label) return;
+    el.textContent = '\u00AB ' + label + ' \u00BB';
+    el.style.left = p.x + 'px'; el.style.top = p.y + 'px';
+    el.style.opacity = 1;
+    setTimeout(() => { el.style.opacity = 0; }, 2200);
+  }
+});
+
+let uzorResizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(uzorResizeTimer);
+  uzorResizeTimer = setTimeout(uzorDraw, 250);
+});
+window.addEventListener('orientationchange', () => setTimeout(uzorDraw, 400));
+
 // Инициализация
 loadPersonal();
 loadStats();
 loadDelta();
 loadFreshness();
 ucApplyTimeOfDay();
+loadUzor();
 renderCharMenu();
 maybeIntroduceCharSelect();
 positionDescMarquee();
