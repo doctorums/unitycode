@@ -452,6 +452,8 @@
       letter-spacing: 0.15em;
       margin-bottom: 0.8rem;
       font-family: 'Share Tech Mono', monospace;
+      text-align: justify;
+      text-align-last: justify; /* разрядка одиночной строки на всю ширину кнопки */
     }
     .freshness-line .fresh-accent { color: var(--accent); }
 
@@ -1338,14 +1340,11 @@ async function loadFreshness() {
         : '// узор этой Сети <span class="fresh-accent">ещё не собирался</span>';
     } else {
       const same = (peekRes.cache_node_count === liveNodes && peekRes.cache_conn_count === liveConns);
-      const ago = timeAgo(peekRes.cached_at);
-      const justNow = (window.UC_I18N && ago === UC_I18N.t('set.tNow'));
+      const ago = timeAgo(peekRes.cached_at); // уже содержит «назад» / «ago»
       if (same) {
-        html = justNow
-          ? (en ? '// pattern is current &middot; woven just now'
-                : '// срез актуален &middot; собран только что')
-          : (en ? `// pattern is current &middot; woven ${ago} ago`
-                : `// срез актуален &middot; собран ${ago} назад`);
+        html = en
+          ? `// pattern is current &middot; woven ${ago}`
+          : `// срез актуален &middot; собран ${ago}`;
       } else {
         const dN = liveNodes - peekRes.cache_node_count;
         const dC = liveConns - peekRes.cache_conn_count;
