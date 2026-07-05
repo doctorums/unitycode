@@ -58,25 +58,37 @@ color: rgba(255,51,102,0.7);
 font-family: 'Share Tech Mono', monospace;
 font-size: 0.6rem; letter-spacing: 0.15em;
 cursor: pointer; background: transparent;
-transition: border-color 0.2s, color 0.2s, background 0.2s, clip-path 0.6s ease, padding 0.6s ease;
+transition: border-color 0.2s, color 0.2s, background 0.2s;
 text-transform: uppercase;
 animation: btn-sway 4s ease-in-out infinite;
 transform-origin: left center;
 width: auto; max-width: fit-content;
-clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%);
 }
 @keyframes btn-sway {
 0%,100% { transform: translateX(0) rotate(0deg); }
 30% { transform: translateX(6px) rotate(0.6deg); }
 70% { transform: translateX(-4px) rotate(-0.4deg); }
 }
-/* Переход Спираль → Сеть: кнопка вплетения после исхода морфится из
-   прямоугольника в форму стрелки (сама форма, без текстовых символов)
-   и мягко покачивается вправо целиком — направленный жест "туда". */
+/* Переход Спираль → Сеть: после исхода вплетения — просто текст со
+   стрелкой, без рамки/фона. Стрелка — чистый CSS-треугольник рамками
+   (не clip-path, не символ), рендерится одинаково везде. Покачивание
+   вправо на всём элементе усиливает направленный жест. */
 .weave-advance {
-clip-path: polygon(0% 0%, 68% 0%, 100% 50%, 68% 100%, 0% 100%);
-padding-right: 1rem;
+border: none;
+background: none;
+position: relative;
+padding: 0.2rem 1.1rem 0.2rem 0;
 animation: advance-nudge 1.3s ease-in-out infinite;
+}
+.weave-advance::after {
+content: '';
+position: absolute;
+right: 0.15rem; top: 50%;
+width: 0; height: 0;
+transform: translateY(-50%);
+border-top: 4px solid transparent;
+border-bottom: 4px solid transparent;
+border-left: 6px solid currentColor;
 }
 @keyframes advance-nudge {
 0%,100% { transform: translateX(0); }
@@ -896,13 +908,11 @@ function transformToAdvance(btn) {
   btn.dataset.advanceDone = '1';
   const lang = (window.UC_I18N && UC_I18N.lang) || 'ru';
   btn.textContent = lang === 'en' ? 'Next' : 'Дальше';
-  // Класс запускает CSS-переход: прямоугольник (clip-path на .weave-btn)
-  // плавно морфится в форму стрелки (clip-path на .weave-advance) —
-  // форма, а не символ. Покачивание вправо — тоже на всей кнопке.
+  // Класс убирает рамку/фон и добавляет треугольник справа (CSS-псевдоэлемент,
+  // не символ) — просто текст со стрелкой, без формы кнопки.
   btn.classList.add('weave-advance');
   btn.disabled = false;
   btn.style.color = 'rgba(120,200,255,0.9)';
-  btn.style.borderColor = 'rgba(120,200,255,0.35)';
   btn.onclick = function() { window.location.href = 'set.html'; };
   const parent = btn.parentNode;
   const autoNote = parent.querySelector(`[data-auto-note="${btn.dataset.idem}"]`);
