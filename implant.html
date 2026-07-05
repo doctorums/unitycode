@@ -1480,6 +1480,16 @@ function uzorDraw() {
 }
 
 async function loadUzor() {
+  // Диагностика без консоли: implant.html?uzordiag=1 — причины сбоя
+  // показываются прямо в блоке. Без флага поведение прежнее (тихое).
+  const diag = /uzordiag=1/.test(location.search);
+  const showDiag = msg => {
+    if (!diag) return;
+    const box = document.getElementById('uzor-block');
+    const lg = document.getElementById('uzor-legend');
+    if (box) box.style.display = 'block';
+    if (lg) lg.innerHTML = '<span style="color:#f66;">DIAG: ' + msg + '</span>';
+  };
   try {
     const [allRes, connsRes] = await Promise.all([
       ucFetchRetry(`${SUPABASE_URL}/rest/v1/nodes?select=id,user_token,created_at&order=created_at.asc&limit=500`, { headers }),
@@ -1487,7 +1497,8 @@ async function loadUzor() {
     ]);
     const all = await allRes.json();
     const conns = await connsRes.json();
-    if (!Array.isArray(all) || !all.length) return;
+    if (!Array.isArray(all)) { showDiag('nodes: не массив — ' + JSON.stringify(all).slice(0, 120)); return; }
+    if (!all.length) { showDiag('nodes: пусто'); return; }
 
     // Мои узлы — с текстами (для хеша) и эссенциями, хронологически
     let mine = [];
@@ -1512,7 +1523,11 @@ async function loadUzor() {
 
     document.getElementById('uzor-block').style.display = 'block';
     uzorDraw();
-  } catch (e) { /* тихо: блок остаётся скрытым */ }
+    if (diag) {
+      const lg = document.getElementById('uzor-legend');
+      if (lg) lg.innerHTML += ` <span style="color:#0a6;">DIAG ok: узлов ${all.length}, связей ${_uzor.conns.length}, моих ${mine.length}</span>`;
+    }
+  } catch (e) { showDiag('исключение: ' + (e && e.message ? e.message : String(e))); }
 }
 
 // Тап по своему узлу — эссенция
