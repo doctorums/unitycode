@@ -434,6 +434,16 @@
       letter-spacing: 0.2em; text-align: center;
       animation: oracleBreathe 2.5s ease-in-out infinite;
     }
+
+    /* АДДИТИВНО: «Пока тебя не было» — скрыт по умолчанию,
+       показывается JS-ом только когда есть что сказать. */
+    .delta-text {
+      font-size: 0.75rem;
+      line-height: 1.9;
+      color: rgba(255,255,255,0.75);
+      font-family: 'Share Tech Mono', monospace;
+    }
+    .delta-text .delta-accent { color: var(--accent); }
   </style>
 </head>
 <body>
@@ -463,6 +473,12 @@
 </div>
 
 <main>
+
+  <!-- АДДИТИВНО: «Пока тебя не было» — виден только при наличии дельты -->
+  <div class="section" id="delta-section" style="display:none;">
+    <div class="section-tag" id="delta-tag">// ПОКА ТЕБЯ НЕ БЫЛО</div>
+    <div class="delta-text" id="delta-text"></div>
+  </div>
 
   <!-- Блок 1: Личный узел -->
   <div class="section" id="personal-section">
@@ -1112,9 +1128,102 @@ window.addEventListener('resize', () => {
 });
 window.addEventListener('orientationchange', () => setTimeout(positionDescMarquee, 400));
 
+// ═══════════════════════════════════════════════════════
+// АДДИТИВНО: «Пока тебя не было» — дельта Сети с прошлого визита.
+// Ничего не меняет в существующем рендере: свой скрытый блок,
+// свои запросы (count=exact, без выгрузки строк). При сбое сети
+// точка отсчёта НЕ двигается — дельта не теряется, покажется
+// в следующий удачный визит.
+// ═══════════════════════════════════════════════════════
+const DELTA_KEY = 'uc_pattern_seen_at';
+
+async function ucCountSince(pathAndFilter) {
+  const res = await ucFetchRetry(`${SUPABASE_URL}/rest/v1/${pathAndFilter}&limit=1`, {
+    headers: { ...headers, Prefer: 'count=exact' },
+  });
+  const cr = res.headers.get('content-range'); // формат "0-0/123"
+  const total = cr ? parseInt(cr.split('/')[1], 10) : NaN;
+  return Number.isFinite(total) ? total : 0;
+}
+
+// Русские формы множественного числа: [один, два-четыре, много]
+function ucPlural(n, forms) {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return forms[0];
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return forms[1];
+  return forms[2];
+}
+
+async function loadDelta() {
+  let since = null;
+  try { since = localStorage.getItem(DELTA_KEY); } catch (e) {}
+  const nowIso = new Date().toISOString();
+
+  // Первый визит — точки отсчёта нет, просто ставим её.
+  if (!since) {
+    try { localStorage.setItem(DELTA_KEY, nowIso); } catch (e) {}
+    return;
+  }
+
+  try {
+    const enc = encodeURIComponent(since);
+
+    // 1) новые узлы Сети; 2) новые связи Связующего
+    const nodesJob  = ucCountSince(`nodes?select=id&created_at=gt.${enc}`);
+    const linkerJob = ucCountSince(`connections?select=id&status=eq.accepted&created_by=eq.linker&created_at=gt.${enc}`);
+
+    // 3) новые связи, коснувшиеся моих узлов (если есть токен)
+    const myToken = localStorage.getItem('uc_token');
+    let mineJob = Promise.resolve(0);
+    if (myToken) {
+      mineJob = (async () => {
+        const r = await ucFetchRetry(
+          `${SUPABASE_URL}/rest/v1/nodes?user_token=eq.${encodeURIComponent(myToken)}&select=id`,
+          { headers }
+        );
+        const mine = await r.json();
+        const ids = (Array.isArray(mine) ? mine : []).map(n => n.id).slice(0, 50);
+        if (!ids.length) return 0;
+        const list = ids.join(',');
+        return ucCountSince(
+          `connections?select=id&status=eq.accepted&created_at=gt.${enc}&or=(from_node_id.in.(${list}),to_node_id.in.(${list}))`
+        );
+      })();
+    }
+
+    const [newNodes, newLinker, touchedMine] = await Promise.all([nodesJob, linkerJob, mineJob]);
+
+    if (newNodes > 0 || newLinker > 0 || touchedMine > 0) {
+      const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
+      const parts = [];
+      if (en) {
+        if (newNodes)    parts.push(`the Network grew by <span class="delta-accent">${newNodes}</span> node${newNodes === 1 ? '' : 's'}`);
+        if (newLinker)   parts.push(`the Linker wove <span class="delta-accent">${newLinker}</span> connection${newLinker === 1 ? '' : 's'}`);
+        if (touchedMine) parts.push(`<span class="delta-accent">${touchedMine}</span> new connection${touchedMine === 1 ? '' : 's'} touched your nodes`);
+      } else {
+        if (newNodes)    parts.push(`Сеть выросла на <span class="delta-accent">${newNodes}</span> ${ucPlural(newNodes, ['узел', 'узла', 'узлов'])}`);
+        if (newLinker)   parts.push(`Связующий сплёл <span class="delta-accent">${newLinker}</span> ${ucPlural(newLinker, ['связь', 'связи', 'связей'])}`);
+        if (touchedMine) parts.push(`<span class="delta-accent">${touchedMine}</span> ${ucPlural(touchedMine, ['новая связь коснулась', 'новые связи коснулись', 'новых связей коснулись'])} твоих узлов`);
+      }
+      const box = document.getElementById('delta-section');
+      const tag = document.getElementById('delta-tag');
+      const txt = document.getElementById('delta-text');
+      if (box && txt && parts.length) {
+        if (tag) tag.textContent = en ? '// WHILE YOU WERE AWAY' : '// ПОКА ТЕБЯ НЕ БЫЛО';
+        txt.innerHTML = (en ? 'Since your last visit: ' : 'С прошлого визита: ') + parts.join('; ') + '.';
+        box.style.display = 'block';
+      }
+    }
+
+    // Точку отсчёта двигаем ТОЛЬКО после успешного подсчёта.
+    try { localStorage.setItem(DELTA_KEY, nowIso); } catch (e) {}
+  } catch (e) { /* тихо: сеть подвела — покажем в следующий раз */ }
+}
+
 // Инициализация
 loadPersonal();
 loadStats();
+loadDelta();
 renderCharMenu();
 maybeIntroduceCharSelect();
 positionDescMarquee();
