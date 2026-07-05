@@ -58,21 +58,26 @@ color: rgba(255,51,102,0.7);
 font-family: 'Share Tech Mono', monospace;
 font-size: 0.6rem; letter-spacing: 0.15em;
 cursor: pointer; background: transparent;
-transition: border-color 0.2s, color 0.2s, background 0.2s;
+transition: border-color 0.2s, color 0.2s, background 0.2s, clip-path 0.6s ease, padding 0.6s ease;
 text-transform: uppercase;
 animation: btn-sway 4s ease-in-out infinite;
 transform-origin: left center;
 width: auto; max-width: fit-content;
+clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%);
 }
 @keyframes btn-sway {
 0%,100% { transform: translateX(0) rotate(0deg); }
 30% { transform: translateX(6px) rotate(0.6deg); }
 70% { transform: translateX(-4px) rotate(-0.4deg); }
 }
-/* Стрелка "Дальше" (переход Спираль → Сеть): направленное покачивание
-   вправо, отдельно от текста — усиливает жест "туда", а не общая
-   дрожь кнопки (которая на этом этапе выключается в JS). */
-.advance-arrow { display: inline-block; animation: advance-nudge 1.3s ease-in-out infinite; }
+/* Переход Спираль → Сеть: кнопка вплетения после исхода морфится из
+   прямоугольника в форму стрелки (сама форма, без текстовых символов)
+   и мягко покачивается вправо целиком — направленный жест "туда". */
+.weave-advance {
+clip-path: polygon(0% 0%, 68% 0%, 100% 50%, 68% 100%, 0% 100%);
+padding-right: 1rem;
+animation: advance-nudge 1.3s ease-in-out infinite;
+}
 @keyframes advance-nudge {
 0%,100% { transform: translateX(0); }
 50% { transform: translateX(7px); }
@@ -890,12 +895,11 @@ function transformToAdvance(btn) {
   if (!btn || !btn.parentNode || btn.dataset.advanceDone === '1') return;
   btn.dataset.advanceDone = '1';
   const lang = (window.UC_I18N && UC_I18N.lang) || 'ru';
-  const label = lang === 'en' ? 'Next' : 'Дальше';
-  // Стрелка покачивается вправо отдельно от слова — направленный жест
-  // к переходу, а не общая дрожь кнопки (btn-sway), которую здесь гасим,
-  // чтобы жест читался однозначно.
-  btn.innerHTML = '<span class="advance-arrow">→</span> ' + label;
-  btn.style.animation = 'none';
+  btn.textContent = lang === 'en' ? 'Next' : 'Дальше';
+  // Класс запускает CSS-переход: прямоугольник (clip-path на .weave-btn)
+  // плавно морфится в форму стрелки (clip-path на .weave-advance) —
+  // форма, а не символ. Покачивание вправо — тоже на всей кнопке.
+  btn.classList.add('weave-advance');
   btn.disabled = false;
   btn.style.color = 'rgba(120,200,255,0.9)';
   btn.style.borderColor = 'rgba(120,200,255,0.35)';
