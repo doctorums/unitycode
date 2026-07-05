@@ -444,6 +444,16 @@
       font-family: 'Share Tech Mono', monospace;
     }
     .delta-text .delta-accent { color: var(--accent); }
+
+    /* АДДИТИВНО: строка свежести узора над кнопкой анализа */
+    .freshness-line {
+      font-size: 0.55rem;
+      color: var(--dim);
+      letter-spacing: 0.15em;
+      margin-bottom: 0.8rem;
+      font-family: 'Share Tech Mono', monospace;
+    }
+    .freshness-line .fresh-accent { color: var(--accent); }
   </style>
 </head>
 <body>
@@ -512,6 +522,9 @@
         <span class="stat-val" id="total-users">—</span>
       </div>
     </div>
+
+    <!-- АДДИТИВНО: свежесть узора — виден только когда есть что сказать -->
+    <div class="freshness-line" id="pattern-freshness" style="display:none;"></div>
 
     <button class="analyze-btn" id="collective-btn" onclick="runCollectiveAnalysis()" data-i18n="implant.btnCollective">[ Запустить анализ Сети ]</button>
 
@@ -1220,10 +1233,68 @@ async function loadDelta() {
   } catch (e) { /* тихо: сеть подвела — покажем в следующий раз */ }
 }
 
+// ═══════════════════════════════════════════════════════
+// АДДИТИВНО: свежесть узора. Лёгкий peek меты кэша у воркера
+// (без генерации) + два count=exact запроса живых счётчиков.
+// Показывает: узор ещё не собирался / актуален / Сеть изменилась.
+// При любом сбое — молчит, страница выглядит как раньше.
+// ═══════════════════════════════════════════════════════
+async function loadFreshness() {
+  const el = document.getElementById('pattern-freshness');
+  if (!el) return;
+  try {
+    const lang = (window.UC_I18N ? UC_I18N.lang : 'ru');
+    const en = lang === 'en';
+
+    const [liveNodes, liveConns, peekRes] = await Promise.all([
+      ucCountSince(`nodes?select=id`),
+      ucCountSince(`connections?select=id&status=eq.accepted`),
+      fetch(ANALYZE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'collective', lang, angle: getCharacter(), peek: true }),
+      }).then(r => r.json()),
+    ]);
+
+    if (!peekRes || peekRes.peek !== true) return;
+
+    let html = '';
+    if (!peekRes.cached_at) {
+      html = en
+        ? '// this weave of the Network has <span class="fresh-accent">never been read</span>'
+        : '// узор этой Сети <span class="fresh-accent">ещё не собирался</span>';
+    } else {
+      const same = (peekRes.cache_node_count === liveNodes && peekRes.cache_conn_count === liveConns);
+      const ago = timeAgo(peekRes.cached_at);
+      const justNow = (window.UC_I18N && ago === UC_I18N.t('set.tNow'));
+      if (same) {
+        html = justNow
+          ? (en ? '// pattern is current &middot; woven just now'
+                : '// срез актуален &middot; собран только что')
+          : (en ? `// pattern is current &middot; woven ${ago} ago`
+                : `// срез актуален &middot; собран ${ago} назад`);
+      } else {
+        const dN = liveNodes - peekRes.cache_node_count;
+        const dC = liveConns - peekRes.cache_conn_count;
+        const parts = [];
+        if (dN > 0) parts.push(en ? `+${dN} node${dN === 1 ? '' : 's'}` : `+${dN} ${ucPlural(dN, ['узел', 'узла', 'узлов'])}`);
+        if (dC > 0) parts.push(en ? `+${dC} connection${dC === 1 ? '' : 's'}` : `+${dC} ${ucPlural(dC, ['связь', 'связи', 'связей'])}`);
+        const diff = parts.length ? ` (<span class="fresh-accent">${parts.join(', ')}</span>)` : '';
+        html = en
+          ? `// the Network has changed since the last reading${diff} &mdash; the pattern will re-weave on run`
+          : `// Сеть изменилась с последнего среза${diff} &mdash; узор пересоберётся при запуске`;
+      }
+    }
+    el.innerHTML = html;
+    el.style.display = 'block';
+  } catch (e) { /* тихо */ }
+}
+
 // Инициализация
 loadPersonal();
 loadStats();
 loadDelta();
+loadFreshness();
 renderCharMenu();
 maybeIntroduceCharSelect();
 positionDescMarquee();
