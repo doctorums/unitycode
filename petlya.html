@@ -34,6 +34,16 @@ position: relative; z-index: 5;
 .sys-msg { border: none; padding: 1.5rem; margin-bottom: 2rem; background: none; transform-origin: left center; }
 .sys-tag { font-size: 0.55rem; color: var(--accent); letter-spacing: 0.2em; margin-bottom: 0.8rem; }
 .sys-text { font-size: 0.8rem; line-height: 1.8; color: rgba(255,255,255,0.5); }
+/* tap-to-dismiss: вступление можно убрать тапом (в дополнение к уходу при
+   отправке шума). Подсказка появляется после того, как вступление осело. */
+#introMsg { cursor: pointer; }
+.intro-hint {
+  display: block; margin-top: 1.6rem;
+  font-size: 0.55rem; letter-spacing: 0.25em; text-transform: uppercase;
+  color: rgba(0,255,136,0.55);
+  animation: intro-hint-in 1.2s ease forwards;
+}
+@keyframes intro-hint-in { from { opacity: 0; } to { opacity: 0.75; } }
 .message { margin-bottom: 1.6rem; animation: msg-in 0.5s ease forwards; display: flex; }
 @keyframes msg-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .message.user { justify-content: flex-end; }
@@ -1313,6 +1323,25 @@ var seen = false;
 try { seen = sessionStorage.getItem('uc_petlya_intro') === '1'; } catch(e){}
 if (seen) { el.remove(); return; }
 try { sessionStorage.setItem('uc_petlya_intro', '1'); } catch(e){}
+// tap-to-dismiss: тап по вступлению убирает его (hideIntro идемпотентна —
+// безопасно и во время анимации, и вместе с уходом при отправке шума).
+el.style.cursor = 'pointer';
+el.addEventListener('click', function(){ hideIntro(); });
+// Подсказка «нажми, чтобы начать» — появляется после того, как вступление
+// осело (~4.6с). Тихо падает, если элемент уже убран.
+setTimeout(function(){
+  try {
+    if (introHidden) return;
+    var elNow = document.getElementById('introMsg');
+    if (!elNow || elNow.querySelector('.intro-hint')) return;
+    var lang = (window.UC_I18N && UC_I18N.lang) || 'ru';
+    var hint = document.createElement('span');
+    hint.className = 'intro-hint';
+    hint.textContent = lang === 'en' ? 'tap to begin' : 'нажми, чтобы начать';
+    var st = elNow.querySelector('.sys-text');
+    (st || elNow).appendChild(hint);
+  } catch(e){}
+}, 4600);
 var DUR = 3200, start = null;
 function curve(p) {
 if(p < 0.35) return (p / 0.35) * 1.2;
