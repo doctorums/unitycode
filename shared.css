@@ -75,6 +75,19 @@ nav a {
 nav a:hover,
 nav a.active { color: var(--accent); }
 
+/* ── Адаптив шапки (узкие экраны, портрет iPhone XR и уже) ───
+   На узком экране логотип разной длины ("СПИРАЛЬ"/"СЕТЬ"/"ПАТТЕРН"/
+   "МАТЕРИЯ") переносился на две строки и наезжал на меню — по-разному
+   на каждой странице. Уменьшаем логотип, запрещаем перенос, сдвигаем
+   левее (меньше боковой padding) и поджимаем меню, чтобы всё встало
+   в одну строку. Широкие экраны (>480px) не затрагиваются. */
+@media (max-width: 480px) {
+  header { padding: 0.85rem 0.9rem; }
+  .logo { font-size: 0.5rem; letter-spacing: 0.1em; white-space: nowrap; }
+  nav { gap: 0.7rem; }
+  nav a { font-size: 0.5rem; letter-spacing: 0.05em; }
+}
+
 /* ── Scrollbar ───────────────────────────────────────── */
 ::-webkit-scrollbar       { width: 2px; }
 ::-webkit-scrollbar-track { background: transparent; }
