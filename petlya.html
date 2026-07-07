@@ -35,26 +35,19 @@ position: relative; z-index: 5;
 .sys-tag { font-size: 0.55rem; color: var(--accent); letter-spacing: 0.2em; margin-bottom: 0.8rem; }
 .sys-text { font-size: 0.8rem; line-height: 1.8; color: rgba(255,255,255,0.5); }
 /* tap-to-dismiss: вступление можно убрать тапом (в дополнение к уходу при
-   отправке шума). Подсказка появляется после того, как вступление осело. */
+   отправке шума). */
 #introMsg { cursor: pointer; }
-.intro-hint {
-  display: block; margin-top: 1.6rem;
-  font-size: 0.55rem; letter-spacing: 0.25em; text-transform: uppercase;
-  color: rgba(0,255,136,0.55);
-  animation: intro-hint-in 1.2s ease forwards;
-}
-@keyframes intro-hint-in { from { opacity: 0; } to { opacity: 0.75; } }
-/* Вступление на широких экранах (десктоп, планшет-ландшафт) выезжает в
-   середину экрана по обеим осям. Телефоны — и портрет, и ландшафт — НЕ
-   затрагиваются: display:contents делает обёртку прозрачной в потоке,
-   поведение там ровно как сейчас. Условие min-height:600 исключает
-   крупные телефоны в ландшафте (короткий вьюпорт). */
+/* Вступление на широких экранах (десктоп и планшеты, включая iPad-портрет)
+   выезжает в верхнюю треть по золотому сечению (центр блока ~38.2% высоты).
+   ТОЛЬКО телефоны — и портрет, и ландшафт — остаются слева сверху: у них
+   либо ширина < 600 (портрет), либо высота < 600 (ландшафт). display:contents
+   делает обёртку прозрачной в потоке, поведение там ровно как сейчас. */
 .intro-wrap { display: contents; }
-@media (min-width: 900px) and (min-height: 600px) {
+@media (min-width: 600px) and (min-height: 600px) {
   .intro-wrap {
     display: block;
     position: fixed;
-    top: 50%; left: 50%;
+    top: 38.2%; left: 50%;
     transform: translate(-50%, -50%);
     z-index: 60; max-width: 90vw;
     animation: intro-drive-center 1.1s cubic-bezier(0.16,0.84,0.3,1) both;
@@ -1350,21 +1343,6 @@ try { sessionStorage.setItem('uc_petlya_intro', '1'); } catch(e){}
 // безопасно и во время анимации, и вместе с уходом при отправке шума).
 el.style.cursor = 'pointer';
 el.addEventListener('click', function(){ hideIntro(); });
-// Подсказка «нажми, чтобы начать» — появляется после того, как вступление
-// осело (~4.6с). Тихо падает, если элемент уже убран.
-setTimeout(function(){
-  try {
-    if (introHidden) return;
-    var elNow = document.getElementById('introMsg');
-    if (!elNow || elNow.querySelector('.intro-hint')) return;
-    var lang = (window.UC_I18N && UC_I18N.lang) || 'ru';
-    var hint = document.createElement('span');
-    hint.className = 'intro-hint';
-    hint.textContent = lang === 'en' ? 'tap to begin' : 'нажми, чтобы начать';
-    var st = elNow.querySelector('.sys-text');
-    (st || elNow).appendChild(hint);
-  } catch(e){}
-}, 4600);
 var DUR = 3200, start = null;
 function curve(p) {
 if(p < 0.35) return (p / 0.35) * 1.2;
