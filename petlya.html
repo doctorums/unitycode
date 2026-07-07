@@ -44,6 +44,27 @@ position: relative; z-index: 5;
   animation: intro-hint-in 1.2s ease forwards;
 }
 @keyframes intro-hint-in { from { opacity: 0; } to { opacity: 0.75; } }
+/* Вступление на широких экранах (десктоп, планшет-ландшафт) выезжает в
+   середину экрана по обеим осям. Телефоны — и портрет, и ландшафт — НЕ
+   затрагиваются: display:contents делает обёртку прозрачной в потоке,
+   поведение там ровно как сейчас. Условие min-height:600 исключает
+   крупные телефоны в ландшафте (короткий вьюпорт). */
+.intro-wrap { display: contents; }
+@media (min-width: 900px) and (min-height: 600px) {
+  .intro-wrap {
+    display: block;
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 60; max-width: 90vw;
+    animation: intro-drive-center 1.1s cubic-bezier(0.16,0.84,0.3,1) both;
+  }
+  .intro-wrap #introMsg { margin: 0; }
+}
+@keyframes intro-drive-center {
+  from { opacity: 0; transform: translate(-50%, -50%) translateX(-14vw); }
+  to   { opacity: 1; transform: translate(-50%, -50%) translateX(0); }
+}
 .message { margin-bottom: 1.6rem; animation: msg-in 0.5s ease forwards; display: flex; }
 @keyframes msg-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .message.user { justify-content: flex-end; }
@@ -324,6 +345,7 @@ if (/Android/i.test(navigator.userAgent)) {
 </header>
 
 <div class="chat-container" id="chatContainer">
+<div class="intro-wrap">
 <div class="sys-msg" id="introMsg">
 <div class="sys-text">
 Вселенная смотрит на себя твоими глазами.<br>
@@ -331,6 +353,7 @@ if (/Android/i.test(navigator.userAgent)) {
 Каждый сигнал становится связью.<br>
 Каждая связь укрепляет Сеть.<br>
 <span>Введи свой шум. Сеть откликнется.</span>
+</div>
 </div>
 </div>
 </div>
