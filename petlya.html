@@ -1402,12 +1402,14 @@ function greenApproach(line){
   line.style.textAlign = 'center';   // блок во всю ширину: центрируем текст,
                                       // чтобы зум шёл из центра текста, а не блока
   line.style.willChange = 'transform';
-  var GROW = 500, g0 = null, base = 1.22;
+  var GROW = 1400, g0 = null, base = 1.22;
   function grow(ts){
     if (introHidden || !line.isConnected) return;
     if(!g0) g0 = ts;
     var gp = Math.min((ts - g0)/GROW, 1);
-    var ease = 1 - Math.pow(1 - gp, 3);
+    // S-образная easeInOutCubic: мягкий старт, плавный разгон, мягкий приход —
+    // без резкого рывка в первые миллисекунды.
+    var ease = gp < 0.5 ? 4*gp*gp*gp : 1 - Math.pow(-2*gp + 2, 3) / 2;
     line.style.transform = 'scale(' + (base + 0.5*ease).toFixed(3) + ')';  // 1.22 → 1.72
     if(gp < 1) requestAnimationFrame(grow);
     else setTimeout(function(){                     // зависла, затем резко исчезает
