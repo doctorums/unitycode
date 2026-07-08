@@ -34,6 +34,10 @@ position: relative; z-index: 5;
 .sys-msg { border: none; padding: 1.5rem; margin-bottom: 2rem; background: none; transform-origin: left center; }
 .sys-tag { font-size: 0.55rem; color: var(--accent); letter-spacing: 0.2em; margin-bottom: 0.8rem; }
 .sys-text { font-size: 0.8rem; line-height: 1.8; color: rgba(255,255,255,0.5); }
+/* Стабильный композитный слой для строк вступления: без него Safari при
+   старте transform оставляет «призрак» исходной отрисовки (строка будто
+   раздваивается — оригинал стоит, копия улетает). */
+.sys-line { -webkit-backface-visibility: hidden; backface-visibility: hidden; }
 /* tap-to-dismiss: вступление можно убрать тапом (в дополнение к уходу при
    отправке шума). */
 #introMsg { cursor: pointer; }
@@ -1395,6 +1399,8 @@ function recedeAway(line){
 }
 function greenApproach(line){
   line.style.transformOrigin = 'center';
+  line.style.textAlign = 'center';   // блок во всю ширину: центрируем текст,
+                                      // чтобы зум шёл из центра текста, а не блока
   line.style.willChange = 'transform';
   var GROW = 500, g0 = null, base = 1.22;
   function grow(ts){
