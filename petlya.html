@@ -1353,6 +1353,66 @@ var parts = (window.UC_I18N ? UC_I18N.t("petlya.intro") : sysText.innerHTML).spl
 sysText.innerHTML = parts.map(p => '<span class="sys-line" style="display:block">' + p + '</span>').join('');
 }
 var lines = sysText ? Array.from(sysText.querySelectorAll('.sys-line')) : [];
+// ── Продолжение анимации ─────────────────────────────────────────────
+// После того как вход «завис», ждём 5с, затем строки по очереди медленно
+// и покачиваясь улетают вдаль (интервал старта 1.5с). Последняя (зелёная)
+// строка — наоборот: приближается/увеличивается за 0.5с, зависает и резко
+// исчезает, после чего весь интро убирается. Тап раньше конца → hideIntro
+// (как сейчас): все guard'ы проверяют introHidden и останавливаются.
+function scheduleIntroExit() {
+  if (!lines.length || introHidden) return;
+  var HOLD = 5000, STAGGER = 1500, greenIdx = lines.length - 1;
+  setTimeout(function(){
+    if (introHidden) return;
+    lines.forEach(function(line, i){
+      setTimeout(function(){
+        if (introHidden || !line.isConnected) return;
+        if (i === greenIdx) greenApproach(line);
+        else recedeAway(line);
+      }, i * STAGGER);
+    });
+  }, HOLD);
+}
+function recedeAway(line){
+  line.style.transformOrigin = 'center';
+  line.style.willChange = 'transform, opacity';
+  var DURR = 2600, s0 = null;
+  function step(ts){
+    if (introHidden || !line.isConnected) return;
+    if(!s0) s0 = ts;
+    var q = Math.min((ts - s0)/DURR, 1);
+    var ease = 1 - Math.pow(1 - q, 2);
+    var scale = Math.max(0.001, 1 - 0.85*ease);   // 1 → 0.15 (вдаль)
+    var lift = -70*ease;                            // уплывает вверх
+    var sway = Math.sin(q*Math.PI*4) * 5 * (1-q);   // покачивание, затухает
+    var op = q < 0.65 ? 1 : Math.max(0, 1 - (q-0.65)/0.35);
+    line.style.transform = 'translateY('+lift.toFixed(1)+'px) scale('+scale.toFixed(3)+') rotate('+sway.toFixed(2)+'deg)';
+    line.style.opacity = op.toFixed(3);
+    if(q < 1) requestAnimationFrame(step);
+    else line.style.opacity = '0';
+  }
+  requestAnimationFrame(step);
+}
+function greenApproach(line){
+  line.style.transformOrigin = 'center';
+  line.style.willChange = 'transform';
+  var GROW = 500, g0 = null, base = 1.22;
+  function grow(ts){
+    if (introHidden || !line.isConnected) return;
+    if(!g0) g0 = ts;
+    var gp = Math.min((ts - g0)/GROW, 1);
+    var ease = 1 - Math.pow(1 - gp, 3);
+    line.style.transform = 'scale(' + (base + 0.5*ease).toFixed(3) + ')';  // 1.22 → 1.72
+    if(gp < 1) requestAnimationFrame(grow);
+    else setTimeout(function(){                     // зависла, затем резко исчезает
+      if (introHidden || !line.isConnected) return;
+      introHidden = true;                           // без плавного fade — резко
+      var m = document.getElementById('introMsg');
+      if (m && m.parentNode) m.remove();
+    }, 1500);
+  }
+  requestAnimationFrame(grow);
+}
 if(sysTag) sysTag.style.transformOrigin = 'left center';
 el.style.opacity = '0'; el.style.transformOrigin = 'left center';
 setTimeout(function(){
@@ -1397,6 +1457,7 @@ lastLine.style.transform = 'scale(' + (1 + 0.22 * ease).toFixed(4) + ')';
 lastLine.style.transformOrigin = 'left center';
 lastLine.style.color = 'rgba(0,255,136,' + (0.5 + 0.5 * ease).toFixed(3) + ')';
 if(gp < 1) requestAnimationFrame(growFrame);
+else scheduleIntroExit();
 }
 setTimeout(function(){ requestAnimationFrame(growFrame); }, 300);
 }
