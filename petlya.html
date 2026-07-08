@@ -37,23 +37,20 @@ position: relative; z-index: 5;
 /* tap-to-dismiss: вступление можно убрать тапом (в дополнение к уходу при
    отправке шума). */
 #introMsg { cursor: pointer; }
-/* Вступление на широких экранах (десктоп и планшеты, включая iPad-портрет)
-   выезжает в верхнюю треть по золотому сечению (центр блока ~38.2% высоты).
-   ТОЛЬКО телефоны — и портрет, и ландшафт — остаются слева сверху: у них
-   либо ширина < 600 (портрет), либо высота < 600 (ландшафт). display:contents
-   делает обёртку прозрачной в потоке, поведение там ровно как сейчас. */
-.intro-wrap { display: contents; }
-@media (min-width: 600px) and (min-height: 600px) {
-  .intro-wrap {
-    display: block;
-    position: fixed;
-    top: 38.2%; left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 60; max-width: 90vw;
-    animation: intro-drive-center 1.1s cubic-bezier(0.16,0.84,0.3,1) both;
-  }
-  .intro-wrap #introMsg { margin: 0; }
+/* Вступление на ВСЕХ экранах (десктоп, планшеты, смартфоны — портрет и
+   ландшафт) выезжает к центру по золотому сечению (центр блока ~38.2%
+   высоты) с горизонтальным въездом. Интро — статичный текст, который
+   убирается тапом или уходит при отправке шума, поэтому центрирование не
+   конфликтует с клавиатурой (она в этот момент не открыта). */
+.intro-wrap {
+  display: block;
+  position: fixed;
+  top: 38.2%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 60; width: min(90vw, 32rem); max-width: 90vw;
+  animation: intro-drive-center 1.1s cubic-bezier(0.16,0.84,0.3,1) both;
 }
+.intro-wrap #introMsg { margin: 0; box-sizing: border-box; width: 100%; }
 @keyframes intro-drive-center {
   from { opacity: 0; transform: translate(-50%, -50%) translateX(-14vw); }
   to   { opacity: 1; transform: translate(-50%, -50%) translateX(0); }
