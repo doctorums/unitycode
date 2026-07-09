@@ -1412,11 +1412,31 @@ function greenApproach(line){
     var ease = gp < 0.5 ? 4*gp*gp*gp : 1 - Math.pow(-2*gp + 2, 3) / 2;
     line.style.transform = 'scale(' + (base + 0.5*ease).toFixed(3) + ')';  // 1.22 → 1.72
     if(gp < 1) requestAnimationFrame(grow);
-    else setTimeout(function(){                     // зависла, затем резко исчезает
+    else setTimeout(function(){                     // зависла, затем улетает вдаль
       if (introHidden || !line.isConnected) return;
-      introHidden = true;                           // без плавного fade — резко
-      var m = document.getElementById('introMsg');
-      if (m && m.parentNode) m.remove();
+      // Улетает вдаль, как остальные строки: масштаб уменьшается, уплывает
+      // вверх, покачивается и гаснет. Origin оставляем 'left center' (не
+      // трогаем), чтобы строка не переставлялась в момент старта.
+      var FLY = 2200, f0 = null, gScale = base + 0.5;   // старт с 1.72
+      function fly(ts){
+        if (introHidden || !line.isConnected) return;
+        if(!f0) f0 = ts;
+        var q = Math.min((ts - f0)/FLY, 1);
+        var ease = 1 - Math.pow(1 - q, 2);               // плавный уход
+        var scale = Math.max(0.001, gScale - (gScale - 0.15)*ease); // 1.72 → 0.15 (вдаль)
+        var lift = -90*ease;                             // уплывает вверх
+        var sway = Math.sin(q*Math.PI*4) * 5 * (1-q);    // покачивание, затухает
+        var op = q < 0.55 ? 1 : Math.max(0, 1 - (q-0.55)/0.45);
+        line.style.transform = 'translateY('+lift.toFixed(1)+'px) scale('+scale.toFixed(3)+') rotate('+sway.toFixed(2)+'deg)';
+        line.style.opacity = op.toFixed(3);
+        if(q < 1) requestAnimationFrame(fly);
+        else {
+          introHidden = true;
+          var m = document.getElementById('introMsg');
+          if (m && m.parentNode) m.remove();
+        }
+      }
+      requestAnimationFrame(fly);
     }, 1500);
   }
   requestAnimationFrame(grow);
