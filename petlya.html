@@ -1398,9 +1398,9 @@ function recedeAway(line){
   requestAnimationFrame(step);
 }
 function greenApproach(line){
-  line.style.transformOrigin = 'center';
-  line.style.textAlign = 'center';   // блок во всю ширину: центрируем текст,
-                                      // чтобы зум шёл из центра текста, а не блока
+  // Зум НА МЕСТЕ: не трогаем ни origin, ни выравнивание — строка остаётся
+  // ровно там, где встала после роста (origin 'left center'), и просто
+  // плавно увеличивается. Никакой перестановки в момент старта зума.
   line.style.willChange = 'transform';
   var GROW = 1400, g0 = null, base = 1.22;
   function grow(ts){
