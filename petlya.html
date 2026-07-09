@@ -1412,22 +1412,29 @@ function greenApproach(line){
     var ease = gp < 0.5 ? 4*gp*gp*gp : 1 - Math.pow(-2*gp + 2, 3) / 2;
     line.style.transform = 'scale(' + (base + 0.5*ease).toFixed(3) + ')';  // 1.22 → 1.72
     if(gp < 1) requestAnimationFrame(grow);
-    else setTimeout(function(){                     // зависла, затем улетает вдаль
+    else setTimeout(function(){                     // зависла, затем улетает — в ту же точку, что и белые
       if (introHidden || !line.isConnected) return;
-      // Улетает вдаль, как остальные строки: масштаб уменьшается, уплывает
-      // вверх, покачивается и гаснет. Origin оставляем 'left center' (не
-      // трогаем), чтобы строка не переставлялась в момент старта.
-      var FLY = 2200, f0 = null, gScale = base + 0.5;   // старт с 1.72
+      // Белые строки уходят с origin 'center' — сходятся к центру блока (все
+      // строки одинаковой ширины). Зелёная стоит на scale 1.72 с origin
+      // 'left center'. Переключаем на 'center' + компенсирующий сдвиг tx:
+      // в первом кадре tx совпадает с зависшим левым якорем (без рывка), к
+      // концу затухает к 0 → строка сходится к тому же центру, что и белые.
+      line.style.transformOrigin = 'center';
+      var gScale = base + 0.5;                        // 1.72
+      var w = line.offsetWidth;                       // ширина без учёта scale
+      var tx0 = (gScale - 1) * w / 2;                 // компенсация левого якоря
+      var FLY = 2200, f0 = null;
       function fly(ts){
         if (introHidden || !line.isConnected) return;
         if(!f0) f0 = ts;
         var q = Math.min((ts - f0)/FLY, 1);
-        var ease = 1 - Math.pow(1 - q, 2);               // плавный уход
+        var ease = 1 - Math.pow(1 - q, 2);            // плавный уход
         var scale = Math.max(0.001, gScale - (gScale - 0.15)*ease); // 1.72 → 0.15 (вдаль)
-        var lift = -90*ease;                             // уплывает вверх
-        var sway = Math.sin(q*Math.PI*4) * 5 * (1-q);    // покачивание, затухает
-        var op = q < 0.55 ? 1 : Math.max(0, 1 - (q-0.55)/0.45);
-        line.style.transform = 'translateY('+lift.toFixed(1)+'px) scale('+scale.toFixed(3)+') rotate('+sway.toFixed(2)+'deg)';
+        var lift = -70*ease;                          // как у белых строк
+        var sway = Math.sin(q*Math.PI*4) * 5 * (1-q); // покачивание, затухает
+        var tx = tx0 * (1 - ease);                    // затухает → сходится к центру блока
+        var op = q < 0.65 ? 1 : Math.max(0, 1 - (q-0.65)/0.35);
+        line.style.transform = 'translate('+tx.toFixed(1)+'px,'+lift.toFixed(1)+'px) scale('+scale.toFixed(3)+') rotate('+sway.toFixed(2)+'deg)';
         line.style.opacity = op.toFixed(3);
         if(q < 1) requestAnimationFrame(fly);
         else {
