@@ -1442,6 +1442,22 @@ function uzorDraw(t, progress) {
   if (!ctx) return;
   ctx.clearRect(0, 0, W, H);
 
+  // АДДИТИВНО: фон полотна — глубокий градиент вместо плоского чёрного,
+  // в палитре Паттерна (index.html даёт идею глубины, не буквальные цвета).
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0,   '#0a1f1a');
+  bg.addColorStop(0.55,'#071815');
+  bg.addColorStop(1,   '#04100e');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const glow = ctx.createRadialGradient(W * 0.74, H * 0.16, 0, W * 0.74, H * 0.16, W * 0.5);
+  glow.addColorStop(0,   'rgba(0,255,136,0.06)');
+  glow.addColorStop(0.4, 'rgba(0,200,255,0.025)');
+  glow.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
   const breathe = 0.7 + 0.3 * Math.sin(t * 0.8); // дыхание нитей полотна
   const mineIds = new Set(mine.map(n => n.id));
 
