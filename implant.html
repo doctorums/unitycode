@@ -1442,7 +1442,7 @@ function uzorDraw(t, progress) {
   if (!ctx) return;
   ctx.clearRect(0, 0, W, H);
 
-  const breathe = 0.88 + 0.12 * Math.sin(t * 0.8); // дыхание полотна
+  const breathe = 0.7 + 0.3 * Math.sin(t * 0.8); // дыхание нитей полотна
   const mineIds = new Set(mine.map(n => n.id));
 
   // Слой 1: нити полотна
@@ -1460,12 +1460,15 @@ function uzorDraw(t, progress) {
     ctx.stroke();
   });
 
-  // Слой 1: точки полотна (кроме моих — они поверх)
+  // Слой 1: точки полотна (кроме моих — они поверх).
+  // Мерцают вразнобой: фаза — из хеша узла, полотно «живое», не моргает хором.
   all.forEach(n => {
     if (mineIds.has(n.id)) return;
     const p = pos[n.id];
-    const sz = 1.2 + (ucHash(n.id) % 100) / 45;
-    ctx.fillStyle = `rgba(0,255,136,${0.28 * breathe})`;
+    const h = ucHash(n.id);
+    const sz = 1.2 + (h % 100) / 45;
+    const tw = 0.55 + 0.45 * Math.sin(t * 0.9 + (h % 628) / 100);
+    ctx.fillStyle = `rgba(0,255,136,${0.32 * tw})`;
     ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, 7); ctx.fill();
   });
 
