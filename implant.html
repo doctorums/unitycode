@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
@@ -1401,7 +1401,9 @@ function ucHash(str) { // FNV-1a, детерминированный
   return (h >>> 0);
 }
 
-function uzorDraw() {
+// Раскладка: размер канвы + позиции узлов. Вызывается при загрузке
+// и на resize — НЕ каждый кадр (пересоздание канвы дорогое).
+function uzorLayout() {
   if (!_uzor) return;
   const cv = document.getElementById('uzor-canvas');
   const box = cv.getBoundingClientRect();
@@ -1411,13 +1413,12 @@ function uzorDraw() {
   const ctx = cv.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const W = box.width, H = box.height, CX = W / 2, CY = H / 2;
-  ctx.clearRect(0, 0, W, H);
 
-  const { all, conns, mine } = _uzor;
+  const { all } = _uzor;
   const total = all.length;
   if (!total) return;
 
-  // Спираль по хронологии; джиттер — из хеша id (u детерминирован)
+  // Спираль по хронологии; джиттер — из хеша id (детерминирован)
   const turns = 3.2;
   const pos = {};
   all.forEach((n, i) => {
@@ -1428,13 +1429,28 @@ function uzorDraw() {
     pos[n.id] = { x: CX + Math.cos(ang) * rad * CX * 0.92,
                   y: CY + Math.sin(ang) * rad * CY * 0.92 };
   });
+  _uzor.pos = pos;           // и для рендера, и для тапа по эссенции
+  _uzor.W = W; _uzor.H = H;
+  _uzor.ctx = ctx;
+}
+
+// Рендер одного кадра. t — секунды анимации, progress 0..1 — прорисовка нити.
+// Статичный вид (reduced-motion / сбой) — uzorDraw(0, 1).
+function uzorDraw(t, progress) {
+  if (!_uzor || !_uzor.pos) return;
+  const { all, conns, mine, pos, W, H, ctx } = _uzor;
+  if (!ctx) return;
+  ctx.clearRect(0, 0, W, H);
+
+  const breathe = 0.88 + 0.12 * Math.sin(t * 0.8); // дыхание полотна
+  const mineIds = new Set(mine.map(n => n.id));
 
   // Слой 1: нити полотна
   conns.forEach(c => {
     const p1 = pos[c.from_node_id], p2 = pos[c.to_node_id];
     if (!p1 || !p2) return;
     ctx.strokeStyle = c.created_by === 'linker'
-      ? 'rgba(0,255,136,0.10)' : 'rgba(0,200,255,0.13)';
+      ? `rgba(0,255,136,${0.10 * breathe})` : `rgba(0,200,255,${0.13 * breathe})`;
     ctx.lineWidth = 0.7;
     ctx.beginPath(); ctx.moveTo(p1.x, p1.y);
     ctx.quadraticCurveTo(
@@ -1445,42 +1461,87 @@ function uzorDraw() {
   });
 
   // Слой 1: точки полотна (кроме моих — они поверх)
-  const mineIds = new Set(mine.map(n => n.id));
   all.forEach(n => {
     if (mineIds.has(n.id)) return;
     const p = pos[n.id];
     const sz = 1.2 + (ucHash(n.id) % 100) / 45;
-    ctx.fillStyle = 'rgba(0,255,136,0.28)';
+    ctx.fillStyle = `rgba(0,255,136,${0.28 * breathe})`;
     ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, 7); ctx.fill();
   });
 
-  // Слой 2: моя нить (хронологически) + узлы
+  // Слой 2: моя нить — прорисовывается по progress (история тянется во времени)
   if (mine.length) {
     const acc = getComputedStyle(document.documentElement)
       .getPropertyValue('--accent').trim() || '#00ff88';
-    ctx.strokeStyle = acc; ctx.globalAlpha = 0.85;
-    ctx.lineWidth = 1.4;
-    ctx.shadowColor = acc; ctx.shadowBlur = 8;
-    ctx.beginPath();
+    const pts = mine.map(n => pos[n.id]).filter(Boolean);
+
+    // длина нити и доля, видимая сейчас
+    let totalLen = 0;
+    const segLen = [];
+    for (let i = 1; i < pts.length; i++) {
+      const L = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+      segLen.push(L); totalLen += L;
+    }
+    let remain = totalLen * progress;
+
+    if (pts.length > 1 && remain > 0) {
+      ctx.strokeStyle = acc; ctx.globalAlpha = 0.85;
+      ctx.lineWidth = 1.4;
+      ctx.shadowColor = acc; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        const L = segLen[i - 1];
+        if (remain >= L) { ctx.lineTo(pts[i].x, pts[i].y); remain -= L; }
+        else {
+          const f = L ? remain / L : 0;
+          ctx.lineTo(pts[i-1].x + (pts[i].x - pts[i-1].x) * f,
+                     pts[i-1].y + (pts[i].y - pts[i-1].y) * f);
+          break;
+        }
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+    }
+
+    // узлы проявляются по мере того, как нить до них дотягивается
+    let acc2 = 0;
     mine.forEach((n, k) => {
+      if (k > 0) acc2 += segLen[k - 1] || 0;
+      if (totalLen > 0 && acc2 > totalLen * progress + 0.001) return;
       const p = pos[n.id]; if (!p) return;
-      k === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
-    });
-    if (mine.length > 1) ctx.stroke();
-    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
-    mine.forEach(n => {
-      const p = pos[n.id]; if (!p) return;
-      // характер точки — из хеша собственного текста
       const h = ucHash((n.raw_noise || '') + (n.ai_interpretation || ''));
       const sz = 2.6 + (h % 100) / 60;
       ctx.fillStyle = acc;
       ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, 7); ctx.fill();
+      // пульс кольца — точка вплетения живёт
       ctx.strokeStyle = 'rgba(0,255,136,0.35)';
       ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(p.x, p.y, sz + 4, 0, 7); ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, sz + 4 + 1.6 * Math.sin(t * 1.6 + k), 0, 7);
+      ctx.stroke();
     });
   }
-  _uzor.pos = pos; // для тапа по эссенции
+}
+
+// Цикл анимации: нить прорисовывается ~2.4с (ease-out), дыхание — постоянно.
+// reduced-motion → один статичный кадр. Фоновая вкладка — rAF сам замирает.
+const UZOR_REDUCED = window.matchMedia
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let uzorAnimOn = false, uzorT0 = 0;
+
+function uzorLoop(ts) {
+  if (!_uzor) { uzorAnimOn = false; return; }
+  if (!uzorT0) uzorT0 = ts;
+  const t = (ts - uzorT0) / 1000;
+  const p = Math.min(1, t / 2.4);
+  uzorDraw(t, 1 - Math.pow(1 - p, 3));
+  requestAnimationFrame(uzorLoop);
+}
+
+function uzorStart() {
+  uzorLayout();
+  if (UZOR_REDUCED) { uzorDraw(0, 1); return; }
+  if (!uzorAnimOn) { uzorAnimOn = true; requestAnimationFrame(uzorLoop); }
 }
 
 async function loadUzor() {
@@ -1526,7 +1587,7 @@ async function loadUzor() {
       : '<span class="lg-fabric">полотно Сети</span><span class="lg-thread">твоя нить</span><span class="lg-human">связи людей</span>';
 
     document.getElementById('uzor-block').style.display = 'block';
-    uzorDraw();
+    uzorStart();
     if (diag) {
       const lg = document.getElementById('uzor-legend');
       if (lg) lg.innerHTML += ` <span style="color:#0a6;">DIAG ok: узлов ${all.length}, связей ${_uzor.conns.length}, моих ${mine.length}</span>`;
@@ -1559,9 +1620,9 @@ document.getElementById('uzor-canvas').addEventListener('click', e => {
 let uzorResizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(uzorResizeTimer);
-  uzorResizeTimer = setTimeout(uzorDraw, 250);
+  uzorResizeTimer = setTimeout(() => { uzorLayout(); if (UZOR_REDUCED) uzorDraw(0, 1); }, 250);
 });
-window.addEventListener('orientationchange', () => setTimeout(uzorDraw, 400));
+window.addEventListener('orientationchange', () => setTimeout(() => { uzorLayout(); if (UZOR_REDUCED) uzorDraw(0, 1); }, 400));
 
 // Инициализация
 loadPersonal();
