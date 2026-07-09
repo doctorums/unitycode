@@ -1343,7 +1343,13 @@ try { sessionStorage.setItem('uc_petlya_intro', '1'); } catch(e){}
 // tap-to-dismiss: тап по вступлению убирает его (hideIntro идемпотентна —
 // безопасно и во время анимации, и вместе с уходом при отправке шума).
 el.style.cursor = 'pointer';
-el.addEventListener('click', function(){ hideIntro(); });
+el.addEventListener('click', function(){
+  hideIntro();
+  // Фокус поля прямо в обработчике тапа — это пользовательский жест, поэтому
+  // на iOS/WebKit клавиатура поднимается.
+  var inp = document.getElementById('userInput');
+  if (inp) inp.focus();
+});
 var DUR = 3200, start = null;
 function curve(p) {
 if(p < 0.35) return (p / 0.35) * 1.2;
@@ -1441,6 +1447,11 @@ function greenApproach(line){
           introHidden = true;
           var m = document.getElementById('introMsg');
           if (m && m.parentNode) m.remove();
+          // Пробуем поднять клавиатуру и в авто-финале. На iOS/WebKit без
+          // пользовательского жеста фокус клавиатуру не поднимет — это
+          // платформенное ограничение; на прочих платформах сработает.
+          var inp = document.getElementById('userInput');
+          if (inp) inp.focus();
         }
       }
       requestAnimationFrame(fly);
