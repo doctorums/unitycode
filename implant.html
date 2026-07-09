@@ -521,9 +521,12 @@
       font-family: 'Share Tech Mono', monospace;
     }
     .uzor-legend span::before { content:'—'; margin-right: 0.4em; font-weight: bold; }
-    .uzor-legend .lg-fabric::before { color: rgba(0,255,136,0.4); }
+    .uzor-legend .lg-fabric      { color: rgba(120,205,195,0.9); }
+    .uzor-legend .lg-fabric::before { color: rgba(120,205,195,0.9); }
+    .uzor-legend .lg-thread      { color: var(--accent); }
     .uzor-legend .lg-thread::before { color: var(--accent); }
-    .uzor-legend .lg-human::before  { color: #00c8ff; }
+    .uzor-legend .lg-human       { color: #4fd6ff; }
+    .uzor-legend .lg-human::before  { color: #4fd6ff; }
   </style>
 </head>
 <body>
@@ -1466,7 +1469,7 @@ function uzorDraw(t, progress) {
     const p1 = pos[c.from_node_id], p2 = pos[c.to_node_id];
     if (!p1 || !p2) return;
     ctx.strokeStyle = c.created_by === 'linker'
-      ? `rgba(0,255,136,${0.10 * breathe})` : `rgba(0,200,255,${0.13 * breathe})`;
+      ? `rgba(90,180,170,${0.14 * breathe})` : `rgba(0,200,255,${0.13 * breathe})`;
     ctx.lineWidth = 0.7;
     ctx.beginPath(); ctx.moveTo(p1.x, p1.y);
     ctx.quadraticCurveTo(
@@ -1484,7 +1487,7 @@ function uzorDraw(t, progress) {
     const h = ucHash(n.id);
     const sz = 1.2 + (h % 100) / 45;
     const tw = 0.55 + 0.45 * Math.sin(t * 0.9 + (h % 628) / 100);
-    ctx.fillStyle = `rgba(0,255,136,${0.32 * tw})`;
+    ctx.fillStyle = `rgba(90,180,170,${0.5 * tw})`;
     ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, 7); ctx.fill();
   });
 
