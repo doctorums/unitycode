@@ -527,6 +527,23 @@
     .uzor-legend .lg-thread::before { color: var(--accent); }
     .uzor-legend .lg-human       { color: #4fd6ff; }
     .uzor-legend .lg-human::before  { color: #4fd6ff; }
+
+    .uzor-save-btn {
+      display: block;
+      margin-top: 0.8rem;
+      width: 100%;
+      background: transparent;
+      border: 1px solid rgba(0,255,136,0.3);
+      color: var(--accent);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.55rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 0.55rem;
+      cursor: pointer;
+      transition: background .2s, color .2s;
+    }
+    .uzor-save-btn:hover { background: var(--accent); color: var(--black); }
   </style>
 </head>
 <body>
@@ -579,6 +596,9 @@
         <div id="uzor-essence"></div>
       </div>
       <div class="uzor-legend" id="uzor-legend"></div>
+      <button class="uzor-save-btn" id="uzor-save-btn" onclick="saveUzorImage()" style="display:none;">
+        <span data-i18n="implant.saveUzor">[ Сохранить узор ]</span>
+      </button>
     </div>
   </div>
 
@@ -1017,7 +1037,10 @@ async function runPersonalAnalysis() {
       }),
     });
     const data = await res.json();
-    typeOracle(data.interpretation || UC_I18N.t('petlya.signalUnrecognized'));
+    const interp = data.interpretation || UC_I18N.t('petlya.signalUnrecognized');
+    typeOracle(interp);
+    // АДДИТИВНО: последний личный анализ — для подписи под сохранённым узором
+    try { if (data.interpretation) localStorage.setItem('uc_last_personal_read', data.interpretation); } catch (e) {}
   } catch(e) {
     showOracleError(UC_I18N.t('implant.analyzeError'));
   } finally {
@@ -1623,6 +1646,8 @@ async function loadUzor() {
       : '<span class="lg-fabric">полотно Сети</span><span class="lg-thread">твоя нить</span><span class="lg-human">связи людей</span>';
 
     document.getElementById('uzor-block').style.display = 'block';
+    const saveBtn = document.getElementById('uzor-save-btn');
+    if (saveBtn && mine.length) saveBtn.style.display = 'block';
     uzorStart();
     if (diag) {
       const lg = document.getElementById('uzor-legend');
@@ -1685,10 +1710,79 @@ async function runDeltaAnalysis() {
       }),
     });
     const data = await res.json();
-    typeOracle(data.interpretation || UC_I18N.t('petlya.signalUnrecognized'));
+    const interp = data.interpretation || UC_I18N.t('petlya.signalUnrecognized');
+    typeOracle(interp);
+    try { if (data.interpretation) localStorage.setItem('uc_last_personal_read', data.interpretation); } catch (e) {}
   } catch (e) {
     showOracleError(UC_I18N.t('implant.analyzeError'));
   }
+}
+
+// АДДИТИВНО: сохранение узора как PNG — картинка + строка последнего
+// личного анализа как подпись (если он есть). Работает офлайн,
+// ничего не отправляет на сервер — только canvas.toDataURL на клиенте.
+function saveUzorImage() {
+  const src = document.getElementById('uzor-canvas');
+  if (!src || !src.width) return;
+  const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
+
+  let quote = '';
+  try { quote = localStorage.getItem('uc_last_personal_read') || ''; } catch (e) {}
+
+  const dpr = window.devicePixelRatio || 1;
+  const W = src.width, H = src.height;
+  const padTop = 0;
+  const capH = Math.round(120 * dpr); // подвал под подпись+бренд
+
+  const out = document.createElement('canvas');
+  out.width = W;
+  out.height = H + capH;
+  const octx = out.getContext('2d');
+
+  // фон подвала — продолжение того же градиента, что и в узоре
+  const bg = octx.createLinearGradient(0, H, 0, H + capH);
+  bg.addColorStop(0, '#04100e');
+  bg.addColorStop(1, '#020806');
+  octx.fillStyle = bg;
+  octx.fillRect(0, 0, W, H + capH);
+
+  octx.drawImage(src, 0, padTop);
+
+  // разделительная линия
+  octx.strokeStyle = 'rgba(0,255,136,0.35)';
+  octx.lineWidth = 1 * dpr;
+  octx.beginPath(); octx.moveTo(0, H); octx.lineTo(W, H); octx.stroke();
+
+  // цитата последнего анализа — перенос по словам, максимум 3 строки
+  const fs = 13 * dpr;
+  octx.font = `${fs}px 'Share Tech Mono', monospace`;
+  octx.fillStyle = 'rgba(255,255,255,0.85)';
+  octx.textAlign = 'center';
+  const maxW = W - 40 * dpr;
+  let lines = [];
+  if (quote) {
+    const words = quote.split(/\s+/);
+    let line = '';
+    for (const w of words) {
+      const test = line ? line + ' ' + w : w;
+      if (octx.measureText(test).width > maxW && line) { lines.push(line); line = w; }
+      else line = test;
+    }
+    if (line) lines.push(line);
+    if (lines.length > 3) { lines = lines.slice(0, 3); lines[2] = lines[2].replace(/\s*\S*$/, '') + '…'; }
+  }
+  let ty = H + 34 * dpr;
+  lines.forEach(l => { octx.fillText(l, W / 2, ty); ty += fs * 1.5; });
+
+  // бренд-подпись внизу
+  octx.font = `${9 * dpr}px 'Share Tech Mono', monospace`;
+  octx.fillStyle = 'rgba(0,255,136,0.5)';
+  octx.fillText('UNITYCODE // ' + (en ? 'PATTERN' : 'ПАТТЕРН'), W / 2, H + capH - 14 * dpr);
+
+  const link = document.createElement('a');
+  link.download = 'unitycode-uzor.png';
+  link.href = out.toDataURL('image/png');
+  link.click();
 }
 
 // Инициализация
