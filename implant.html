@@ -1274,11 +1274,17 @@ async function loadDelta() {
     if (myToken) {
       mineJob = (async () => {
         const r = await ucFetchRetry(
-          `${SUPABASE_URL}/rest/v1/nodes?user_token=eq.${encodeURIComponent(myToken)}&select=id`,
+          `${SUPABASE_URL}/rest/v1/nodes?user_token=eq.${encodeURIComponent(myToken)}&select=id,created_at`,
           { headers }
         );
         const mine = await r.json();
-        const ids = (Array.isArray(mine) ? mine : []).map(n => n.id).slice(0, 50);
+        const arr = Array.isArray(mine) ? mine : [];
+        // АДДИТИВНО: id своих узлов, появившихся с прошлого визита —
+        // для дельта-разбора по тапу на блок
+        window._deltaNewIds = arr
+          .filter(n => n.created_at && n.created_at > since)
+          .map(n => n.id);
+        const ids = arr.map(n => n.id).slice(0, 50);
         if (!ids.length) return 0;
         const list = ids.join(',');
         return ucCountSince(
@@ -1306,7 +1312,15 @@ async function loadDelta() {
       const txt = document.getElementById('delta-text');
       if (box && txt && parts.length) {
         if (tag) tag.textContent = en ? '// WHILE YOU WERE AWAY' : '// ПОКА ТЕБЯ НЕ БЫЛО';
-        txt.innerHTML = (en ? 'Since your last visit: ' : 'С прошлого визита: ') + parts.join('; ') + '.';
+        let suffix = '';
+        if (Array.isArray(window._deltaNewIds) && window._deltaNewIds.length) {
+          suffix = en
+            ? ' <span class="delta-accent">&middot; tap &mdash; a reading of the new</span>'
+            : ' <span class="delta-accent">&middot; тапни &mdash; разбор нового</span>';
+          box.style.cursor = 'pointer';
+          box.onclick = runDeltaAnalysis;
+        }
+        txt.innerHTML = (en ? 'Since your last visit: ' : 'С прошлого визита: ') + parts.join('; ') + '.' + suffix;
         box.style.display = 'block';
       }
     }
@@ -1645,6 +1659,37 @@ window.addEventListener('resize', () => {
   uzorResizeTimer = setTimeout(() => { uzorLayout(); if (UZOR_REDUCED) uzorDraw(0, 1); }, 250);
 });
 window.addEventListener('orientationchange', () => setTimeout(() => { uzorLayout(); if (UZOR_REDUCED) uzorDraw(0, 1); }, 400));
+
+// АДДИТИВНО: дельта-разбор — личный анализ с фокусом на узлах,
+// появившихся с прошлого визита. Тап по блоку «Пока тебя не было».
+// Воркер в этом режиме кэш не использует (набор «нового» каждый раз свой).
+async function runDeltaAnalysis() {
+  const newIds = window._deltaNewIds || [];
+  const myNodes = window._myNodes || [];
+  if (!newIds.length || !myNodes.length) { runPersonalAnalysis(); return; }
+
+  const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
+  openOracle(en ? 'READING OF THE NEW' : 'РАЗБОР НОВОГО');
+  try {
+    const res = await fetch(ANALYZE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scope: 'personal',
+        lang: (window.UC_I18N ? UC_I18N.lang : 'ru'),
+        user_token: localStorage.getItem('uc_token') || '',
+        angle: getCharacter(),
+        nodes: myNodes.map(n => ({ id: n.id, raw_noise: n.raw_noise, ai_interpretation: n.ai_interpretation })),
+        connections: window._myConns || [],
+        new_node_ids: newIds,
+      }),
+    });
+    const data = await res.json();
+    typeOracle(data.interpretation || UC_I18N.t('petlya.signalUnrecognized'));
+  } catch (e) {
+    showOracleError(UC_I18N.t('implant.analyzeError'));
+  }
+}
 
 // Инициализация
 loadPersonal();
