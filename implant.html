@@ -544,6 +544,16 @@
       transition: background .2s, color .2s;
     }
     .uzor-save-btn:hover { background: var(--accent); color: var(--black); }
+
+    .uzor-hint {
+      margin-top: 0.6rem;
+      font-size: 0.55rem;
+      line-height: 1.6;
+      color: var(--dim);
+      letter-spacing: 0.08em;
+      font-family: 'Share Tech Mono', monospace;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -599,6 +609,7 @@
       <button class="uzor-save-btn" id="uzor-save-btn" onclick="saveUzorImage()" style="display:none;">
         <span data-i18n="implant.saveUzor">[ Сохранить узор ]</span>
       </button>
+      <div class="uzor-hint" id="uzor-hint" style="display:none;"></div>
     </div>
   </div>
 
@@ -1648,6 +1659,20 @@ async function loadUzor() {
     document.getElementById('uzor-block').style.display = 'block';
     const saveBtn = document.getElementById('uzor-save-btn');
     if (saveBtn && mine.length) saveBtn.style.display = 'block';
+
+    // АДДИТИВНО: подсказка при скудной нити — честно объясняет пустоту,
+    // а не выглядит как баг. Исчезает сама, когда узлов становится больше.
+    const hintEl = document.getElementById('uzor-hint');
+    if (hintEl) {
+      if (mine.length > 0 && mine.length < 3) {
+        hintEl.textContent = en
+          ? 'the thread has just begun — it grows with every noise'
+          : 'нить только начинается — она растёт с каждым шумом';
+        hintEl.style.display = 'block';
+      } else {
+        hintEl.style.display = 'none';
+      }
+    }
     uzorStart();
     if (diag) {
       const lg = document.getElementById('uzor-legend');
