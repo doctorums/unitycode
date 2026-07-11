@@ -1731,8 +1731,28 @@ function saveUzorImage() {
 
   const dpr = window.devicePixelRatio || 1;
   const W = src.width, H = src.height;
-  const padTop = 0;
-  const capH = Math.round(120 * dpr); // подвал под подпись+бренд
+
+  // Сначала меряем перенос строк — от него зависит высота подвала.
+  const fs = 10 * dpr;
+  const lineH = fs * 1.5;
+  const maxW = W - 40 * dpr;
+  const meas = document.createElement('canvas').getContext('2d');
+  meas.font = `${fs}px 'Share Tech Mono', monospace`;
+  let lines = [];
+  if (quote) {
+    const words = quote.split(/\s+/);
+    let line = '';
+    for (const w of words) {
+      const test = line ? line + ' ' + w : w;
+      if (meas.measureText(test).width > maxW && line) { lines.push(line); line = w; }
+      else line = test;
+    }
+    if (line) lines.push(line);
+    if (lines.length > 30) { lines = lines.slice(0, 30); lines[29] += '…'; } // страховка
+  }
+
+  // Подвал: отступ + все строки цитаты + место под бренд
+  const capH = Math.round(34 * dpr + lines.length * lineH + 34 * dpr);
 
   const out = document.createElement('canvas');
   out.width = W;
@@ -1746,33 +1766,19 @@ function saveUzorImage() {
   octx.fillStyle = bg;
   octx.fillRect(0, 0, W, H + capH);
 
-  octx.drawImage(src, 0, padTop);
+  octx.drawImage(src, 0, 0);
 
   // разделительная линия
   octx.strokeStyle = 'rgba(0,255,136,0.35)';
   octx.lineWidth = 1 * dpr;
   octx.beginPath(); octx.moveTo(0, H); octx.lineTo(W, H); octx.stroke();
 
-  // цитата последнего анализа — перенос по словам, максимум 3 строки
-  const fs = 13 * dpr;
+  // цитата последнего анализа — полностью
   octx.font = `${fs}px 'Share Tech Mono', monospace`;
   octx.fillStyle = 'rgba(255,255,255,0.85)';
   octx.textAlign = 'center';
-  const maxW = W - 40 * dpr;
-  let lines = [];
-  if (quote) {
-    const words = quote.split(/\s+/);
-    let line = '';
-    for (const w of words) {
-      const test = line ? line + ' ' + w : w;
-      if (octx.measureText(test).width > maxW && line) { lines.push(line); line = w; }
-      else line = test;
-    }
-    if (line) lines.push(line);
-    if (lines.length > 3) { lines = lines.slice(0, 3); lines[2] = lines[2].replace(/\s*\S*$/, '') + '…'; }
-  }
   let ty = H + 34 * dpr;
-  lines.forEach(l => { octx.fillText(l, W / 2, ty); ty += fs * 1.5; });
+  lines.forEach(l => { octx.fillText(l, W / 2, ty); ty += lineH; });
 
   // бренд-подпись внизу
   octx.font = `${9 * dpr}px 'Share Tech Mono', monospace`;
