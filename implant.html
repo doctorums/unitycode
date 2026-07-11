@@ -1779,10 +1779,30 @@ function saveUzorImage() {
   octx.fillStyle = 'rgba(0,255,136,0.5)';
   octx.fillText('UNITYCODE // ' + (en ? 'PATTERN' : 'ПАТТЕРН'), W / 2, H + capH - 14 * dpr);
 
-  const link = document.createElement('a');
-  link.download = 'unitycode-uzor.png';
-  link.href = out.toDataURL('image/png');
-  link.click();
+  // Выдача: data-URL → blob синхронно (жест пользователя не теряем),
+  // затем нативная шторка «Поделиться» (iOS/iPadOS — сохранение в Фото,
+  // мессенджеры), фолбэк — обычное скачивание через blob-ссылку.
+  try {
+    const dataUrl = out.toDataURL('image/png');
+    const bin = atob(dataUrl.split(',')[1]);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    const blob = new Blob([arr], { type: 'image/png' });
+    const file = new File([blob], 'unitycode-uzor.png', { type: 'image/png' });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+      navigator.share({ files: [file] }).catch(() => { /* отмена шторки — не ошибка */ });
+      return;
+    }
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = 'unitycode-uzor.png';
+    link.href = url;
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 1500);
+  } catch (e) { /* тихо */ }
 }
 
 // Инициализация
