@@ -1524,6 +1524,18 @@ function ucHash(str) { // FNV-1a, детерминированный
   return (h >>> 0);
 }
 
+// АДДИТИВНО: покачивание узла «на воде». Смещение детерминировано хешем
+// (у каждого узла своя фаза и частота), sway 0..1 — сила эффекта.
+function uzorSwayPos(id, base, t, sway, W) {
+  if (!sway || !base) return base;
+  const h = ucHash(id);
+  const A = Math.max(1.5, W * 0.007) * sway;
+  return {
+    x: base.x + A * Math.sin(t * 0.6 + (h % 628) / 100),
+    y: base.y + A * Math.cos(t * 0.5 + ((h >> 8) % 628) / 100),
+  };
+}
+
 // Раскладка канвы canvasId: размер + позиции узлов. Вызывается при
 // загрузке/открытии модалки и на resize — НЕ каждый кадр.
 function uzorLayoutFor(canvasId) {
@@ -1558,11 +1570,14 @@ function uzorLayoutFor(canvasId) {
 }
 
 // Рендер одного кадра в заданный таргет. t — секунды анимации,
-// progress 0..1 — прорисовка нити. Статичный вид — uzorDraw(0, 1, target).
-function uzorDraw(t, progress, target) {
+// progress 0..1 — прорисовка нити, sway 0..1 — сила покачивания узлов
+// (0 — статичные позиции; используется только в модалке).
+function uzorDraw(t, progress, target, sway) {
   if (!_uzor || !target) return;
+  sway = sway || 0;
   const { all, conns, mine } = _uzor;
   const { pos, W, H, ctx } = target;
+  const P = id => uzorSwayPos(id, pos[id], t, sway, W);
   ctx.clearRect(0, 0, W, H);
 
   // Фон полотна — глубокий градиент вместо плоского чёрного,
@@ -1584,9 +1599,9 @@ function uzorDraw(t, progress, target) {
   const breathe = 0.7 + 0.3 * Math.sin(t * 0.8); // дыхание нитей полотна
   const mineIds = new Set(mine.map(n => n.id));
 
-  // Слой 1: нити полотна
+  // Слой 1: нити полотна — концы следуют за качающимися узлами
   conns.forEach(c => {
-    const p1 = pos[c.from_node_id], p2 = pos[c.to_node_id];
+    const p1 = P(c.from_node_id), p2 = P(c.to_node_id);
     if (!p1 || !p2) return;
     ctx.strokeStyle = c.created_by === 'linker'
       ? `rgba(90,180,170,${0.14 * breathe})` : `rgba(0,200,255,${0.13 * breathe})`;
@@ -1603,7 +1618,8 @@ function uzorDraw(t, progress, target) {
   // Мерцают вразнобой: фаза — из хеша узла, полотно «живое», не моргает хором.
   all.forEach(n => {
     if (mineIds.has(n.id)) return;
-    const p = pos[n.id];
+    const p = P(n.id);
+    if (!p) return;
     const h = ucHash(n.id);
     const sz = 1.2 + (h % 100) / 45;
     const tw = 0.55 + 0.45 * Math.sin(t * 0.9 + (h % 628) / 100);
@@ -1615,7 +1631,7 @@ function uzorDraw(t, progress, target) {
   if (mine.length) {
     const acc = getComputedStyle(document.documentElement)
       .getPropertyValue('--accent').trim() || '#00ff88';
-    const pts = mine.map(n => pos[n.id]).filter(Boolean);
+    const pts = mine.map(n => P(n.id)).filter(Boolean);
 
     let totalLen = 0;
     const segLen = [];
@@ -1648,7 +1664,7 @@ function uzorDraw(t, progress, target) {
     mine.forEach((n, k) => {
       if (k > 0) acc2 += segLen[k - 1] || 0;
       if (totalLen > 0 && acc2 > totalLen * progress + 0.001) return;
-      const p = pos[n.id]; if (!p) return;
+      const p = P(n.id); if (!p) return;
       const h = ucHash((n.raw_noise || '') + (n.ai_interpretation || ''));
       const sz = 2.6 + (h % 100) / 60;
       ctx.fillStyle = acc;
@@ -1668,6 +1684,8 @@ function uzorDraw(t, progress, target) {
 const UZOR_REDUCED = window.matchMedia
   && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 let uzorAnimOn = false, uzorT0 = 0, uzorBigT0 = 0;
+let _bigNow = { t: 0, sway: 0 };          // текущее время/сила качания модалки
+let _essenceFollow = null;                 // { id, until } — плашка следует за узлом
 
 function uzorLoop(ts) {
   if (!_uzor) { uzorAnimOn = false; return; }
@@ -1676,13 +1694,29 @@ function uzorLoop(ts) {
     if (!uzorBigT0) uzorBigT0 = ts;
     const t = (ts - uzorBigT0) / 1000;
     const p = Math.min(1, t / 2.4);
-    uzorDraw(t, 1 - Math.pow(1 - p, 3), _bigT);
+    // Покачивание «на воде» — плавно вступает после дорисовки нити
+    const sway = Math.max(0, Math.min(1, (t - 2.4) / 1.4));
+    _bigNow = { t, sway };
+    uzorDraw(t, 1 - Math.pow(1 - p, 3), _bigT, sway);
+    uzorEssenceFollow(t, sway);
   } else if (_miniT) {
     const t = (ts - uzorT0) / 1000;
     const p = Math.min(1, t / 2.4);
     uzorDraw(t, 1 - Math.pow(1 - p, 3), _miniT);
   }
   requestAnimationFrame(uzorLoop);
+}
+
+// Плашка эссенции качается вместе со своим узлом, пока видна
+function uzorEssenceFollow(t, sway) {
+  if (!_essenceFollow || !_bigT) return;
+  if (Date.now() > _essenceFollow.until) { _essenceFollow = null; return; }
+  const el = document.getElementById('uzor-essence');
+  const base = _bigT.pos[_essenceFollow.id];
+  if (!el || !base) return;
+  const p = uzorSwayPos(_essenceFollow.id, base, t, sway, _bigT.W);
+  el.style.left = p.x + 'px';
+  el.style.top = p.y + 'px';
 }
 
 function uzorStart() {
@@ -1718,6 +1752,7 @@ function closeUzorModal() {
   const modal = document.getElementById('uzor-modal');
   if (modal) modal.style.display = 'none';
   uzorModalOpen = false;
+  _essenceFollow = null;
   const el = document.getElementById('uzor-essence');
   if (el) el.style.opacity = 0;
 }
@@ -1796,17 +1831,19 @@ document.getElementById('uzor-canvas-big').addEventListener('click', e => {
   const el = document.getElementById('uzor-essence');
   let hitNode = null;
   _uzor.mine.forEach(n => {
-    const p = _bigT.pos[n.id];
+    const p = uzorSwayPos(n.id, _bigT.pos[n.id], _bigNow.t, _bigNow.sway, _bigT.W);
     if (p && Math.hypot(p.x - x, p.y - y) < 18) hitNode = n;
   });
   if (hitNode && el) {
-    const p = _bigT.pos[hitNode.id];
     const label = hitNode.essence || (hitNode.raw_noise || '').slice(0, 40);
     if (!label) return;
+    const p = uzorSwayPos(hitNode.id, _bigT.pos[hitNode.id], _bigNow.t, _bigNow.sway, _bigT.W);
     el.textContent = '\u00AB ' + label + ' \u00BB';
     el.style.left = p.x + 'px'; el.style.top = p.y + 'px';
     el.style.opacity = 1;
-    setTimeout(() => { el.style.opacity = 0; }, 2200);
+    // плашка следует за узлом всё время показа (см. uzorEssenceFollow)
+    _essenceFollow = { id: hitNode.id, until: Date.now() + 2600 };
+    setTimeout(() => { el.style.opacity = 0; }, 2600);
   }
 });
 
