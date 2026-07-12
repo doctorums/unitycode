@@ -372,6 +372,7 @@ maxlength="2000"
 
 <script src="nav.js"></script>
 <script src="i18n.js"></script>
+<script src="js/uc-data.js"></script>
 <script src="audio.js" defer></script>
 <script>
 // ═══════════════════════════════════════════════════════
@@ -901,7 +902,7 @@ async function checkAlreadyWoven(clientId, rawNoise, token) {
         + '?select=id'
         + '&client_id=eq.' + encodeURIComponent(clientId)
         + '&limit=1';
-      const rById = await fetch(urlById, { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
+      const rById = await UCData.fetchRetry(urlById, { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
       if (rById.ok) {
         const rowsById = await rById.json();
         if (Array.isArray(rowsById) && rowsById[0]) return rowsById[0].id;
@@ -916,7 +917,7 @@ async function checkAlreadyWoven(clientId, rawNoise, token) {
       + '&raw_noise=eq.' + encodeURIComponent(rawNoise)
       + '&created_at=gte.' + encodeURIComponent(since)
       + '&order=created_at.desc&limit=1';
-    const r = await fetch(url, { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
+    const r = await UCData.fetchRetry(url, { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
     if (!r.ok) return null;
     const rows = await r.json();
     return (Array.isArray(rows) && rows[0]) ? rows[0].id : null;
