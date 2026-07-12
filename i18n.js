@@ -101,6 +101,7 @@
     'implant.btnCollective': { ru:`[ Запустить анализ Сети ]`, en:`[ Run Network analysis ]` },
     'implant.btnPersonal': { ru:`[ Анализ моего узла ]`, en:`[ Analyze my node ]` },
     'implant.saveUzor': { ru:`[ Сохранить узор ]`, en:`[ Save pattern ]` },
+    'implant.uzorTapHint': { ru:`тапни, чтобы увеличить`, en:`tap to enlarge` },
     'implant.anglePractical': { ru:`Практический`, en:`Practical` },
     'implant.anglePhilosophical': { ru:`Философский`, en:`Philosophical` },
     'implant.angleEmotional': { ru:`Эмоциональный`, en:`Emotional` },
