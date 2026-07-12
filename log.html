@@ -70,6 +70,12 @@ button.refresh:active { border-color: var(--accent); color: var(--accent); }
 
 <button class="refresh" onclick="runAll()">[ обновить всё ]</button>
 
+<div class="card" id="card-ucdata">
+  <h2>Слой данных</h2>
+  <div id="ucdata-body" class="loading">проверяю...</div>
+  <div class="hint">js/uc-data.js — общий модуль чтения (ретраи на плохом канале). Пока проверяется только его наличие и живой запрос к базе; сами блоки этой страницы ещё ходят по-старому.</div>
+</div>
+
 <div class="card" id="card-env">
   <h2>Обстановка сейчас</h2>
   <div id="env-body" class="loading">проверяю...</div>
@@ -101,6 +107,7 @@ button.refresh:active { border-color: var(--accent); color: var(--accent); }
   <div class="hint">Для отладки: можно проверить шумы любого устройства, зная его токен (64 символа) или конкретный client_id вплетения. Токен виден в блоке «Обстановка» на том устройстве.</div>
 </div>
 
+<script src="js/uc-data.js"></script>
 <script>
 const SUPABASE_URL = 'https://lukyyqabkxzrgdixzphs.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
@@ -360,7 +367,29 @@ function runAll(){
   document.getElementById('queue-body').innerHTML = '<span class="loading">читаю...</span>';
   document.getElementById('server-body').innerHTML = '<span class="loading">спрашиваю базу...</span>';
   document.getElementById('net-body').innerHTML = '<span class="loading">считаю...</span>';
-  checkEnv(); checkQueue(); checkServer(); checkNet();
+  checkEnv(); checkQueue(); checkServer(); checkNet(); checkUCData();
+}
+
+// ── 0. Слой данных (js/uc-data.js) ───────────────────────
+// Проверка проводки перед переводом страниц на общий модуль:
+// модуль найден + один живой запрос через него (счёт узлов с ретраями).
+// Собственные fetch этой страницы пока идут по-старому.
+async function checkUCData(){
+  const el = document.getElementById('ucdata-body');
+  if (typeof UCData === 'undefined') {
+    el.innerHTML = '<span class="bad">не найден — js/uc-data.js не подключён или лежит не в js/</span>';
+    return;
+  }
+  el.innerHTML = '<span class="loading">модуль есть, спрашиваю базу через него...</span>';
+  try {
+    const n = await UCData.countNodes();
+    el.innerHTML = (n === null)
+      ? '<span class="warn">подключён, но база не ответила с этой сети (после ретраев)</span>'
+      : '<div class="row"><span class="k">Модуль</span><span class="v ok">подключён</span></div>'
+        + '<div class="row"><span class="k">Запрос через модуль</span><span class="v ok">узлов в Сети: ' + n + '</span></div>';
+  } catch(e) {
+    el.innerHTML = '<span class="bad">подключён, но запрос упал: ' + esc(String(e).slice(0,80)) + '</span>';
+  }
 }
 runAll();
 
