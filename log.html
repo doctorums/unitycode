@@ -73,7 +73,7 @@ button.refresh:active { border-color: var(--accent); color: var(--accent); }
 <div class="card" id="card-ucdata">
   <h2>Слой данных</h2>
   <div id="ucdata-body" class="loading">проверяю...</div>
-  <div class="hint">js/uc-data.js — общий модуль чтения (ретраи на плохом канале). Пока проверяется только его наличие и живой запрос к базе; сами блоки этой страницы ещё ходят по-старому.</div>
+  <div class="hint">js/uc-data.js — общий модуль чтения. Блоки этой страницы (очередь, мои шумы, вся Сеть, поиск) ходят через него — с ретраями на плохом канале. Пинги в «Обстановке» нарочно без ретраев: они измеряют канал как есть.</div>
 </div>
 
 <div class="card" id="card-env">
@@ -231,7 +231,7 @@ async function checkQueue(){
     const slot = el.querySelector('[data-cid="' + CSS.escape(String(item.client_id)) + '"]');
     if (!slot) continue;
     try {
-      const r = await fetch(SUPABASE_URL + '/rest/v1/nodes?client_id=eq.' + encodeURIComponent(item.client_id) + '&select=id,created_at', { headers });
+      const r = await UCData.fetchRetry(SUPABASE_URL + '/rest/v1/nodes?client_id=eq.' + encodeURIComponent(item.client_id) + '&select=id,created_at', { headers });
       if (!r.ok) throw new Error('http ' + r.status);
       const rows = await r.json();
       if (rows.length) {
@@ -251,7 +251,7 @@ async function checkServer(){
   const token = localStorage.getItem('uc_token');
   if (!token) { el.innerHTML = '<span class="warn">нет токена на этом устройстве — нечего искать</span>'; return; }
   try {
-    const r = await fetch(SUPABASE_URL + '/rest/v1/nodes?user_token=eq.' + encodeURIComponent(token)
+    const r = await UCData.fetchRetry(SUPABASE_URL + '/rest/v1/nodes?user_token=eq.' + encodeURIComponent(token)
       + '&select=id,client_id,created_at,raw_noise,lat,lng,tz&order=created_at.desc&limit=15', { headers });
     if (!r.ok) throw new Error('http ' + r.status);
     const rows = await r.json();
@@ -262,8 +262,8 @@ async function checkServer(){
     let connCount = {};
     try {
       const [cf, ct] = await Promise.all([
-        fetch(SUPABASE_URL + '/rest/v1/connections?from_node_id=in.(' + ids + ')&status=eq.accepted&select=from_node_id', { headers }),
-        fetch(SUPABASE_URL + '/rest/v1/connections?to_node_id=in.(' + ids + ')&status=eq.accepted&select=to_node_id', { headers }),
+        UCData.fetchRetry(SUPABASE_URL + '/rest/v1/connections?from_node_id=in.(' + ids + ')&status=eq.accepted&select=from_node_id', { headers }),
+        UCData.fetchRetry(SUPABASE_URL + '/rest/v1/connections?to_node_id=in.(' + ids + ')&status=eq.accepted&select=to_node_id', { headers }),
       ]);
       if (cf.ok) (await cf.json()).forEach(c => { connCount[c.from_node_id] = (connCount[c.from_node_id]||0)+1; });
       if (ct.ok) (await ct.json()).forEach(c => { connCount[c.to_node_id] = (connCount[c.to_node_id]||0)+1; });
@@ -292,8 +292,8 @@ async function checkNet(){
   const el = document.getElementById('net-body');
   try {
     const [nr, cr] = await Promise.all([
-      fetch(SUPABASE_URL + '/rest/v1/nodes?select=id,created_at,user_token,lat&order=created_at.desc&limit=1000', { headers }),
-      fetch(SUPABASE_URL + '/rest/v1/connections?select=id,created_by&status=eq.accepted&limit=1000', { headers }),
+      UCData.fetchRetry(SUPABASE_URL + '/rest/v1/nodes?select=id,created_at,user_token,lat&order=created_at.desc&limit=1000', { headers }),
+      UCData.fetchRetry(SUPABASE_URL + '/rest/v1/connections?select=id,created_by&status=eq.accepted&limit=1000', { headers }),
     ]);
     if (!nr.ok || !cr.ok) throw new Error('http');
     const nodes = await nr.json();
@@ -321,13 +321,13 @@ async function lookup(){
   el.innerHTML = '<span class="loading">ищу…</span>';
   try {
     // сначала как client_id (точное совпадение одного вплетения)
-    let r = await fetch(SUPABASE_URL + '/rest/v1/nodes?client_id=eq.' + encodeURIComponent(q)
+    let r = await UCData.fetchRetry(SUPABASE_URL + '/rest/v1/nodes?client_id=eq.' + encodeURIComponent(q)
       + '&select=id,client_id,created_at,raw_noise,lat,lng,tz,user_token&limit=1', { headers });
     let rows = r.ok ? await r.json() : [];
     let mode = 'client_id';
     if (!rows.length) {
       // затем как токен (все шумы этого устройства/фразы)
-      r = await fetch(SUPABASE_URL + '/rest/v1/nodes?user_token=eq.' + encodeURIComponent(q)
+      r = await UCData.fetchRetry(SUPABASE_URL + '/rest/v1/nodes?user_token=eq.' + encodeURIComponent(q)
         + '&select=id,client_id,created_at,raw_noise,lat,lng,tz&order=created_at.desc&limit=25', { headers });
       rows = r.ok ? await r.json() : [];
       mode = 'токен';
@@ -336,10 +336,9 @@ async function lookup(){
       // похоже, введена ключевая ФРАЗА, а не токен — в базе лежит её
       // SHA-256. Хэшируем так же, как Спираль (trim + lowercase), ищем ещё раз.
       try {
-        const enc = new TextEncoder().encode(q.trim().toLowerCase());
-        const hash = await crypto.subtle.digest('SHA-256', enc);
-        const hashed = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
-        r = await fetch(SUPABASE_URL + '/rest/v1/nodes?user_token=eq.' + hashed
+        // хэш фразы — общей реализацией из uc-data.js (та же, что в Спирали)
+        const hashed = await UCData.phraseToToken(q);
+        r = await UCData.fetchRetry(SUPABASE_URL + '/rest/v1/nodes?user_token=eq.' + hashed
           + '&select=id,client_id,created_at,raw_noise,lat,lng,tz&order=created_at.desc&limit=25', { headers });
         rows = r.ok ? await r.json() : [];
         mode = 'ключевая фраза';
