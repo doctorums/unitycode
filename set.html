@@ -156,6 +156,7 @@ to { opacity: 0; }
 <script src="audio.js" defer></script>
 
 <script src="i18n.js"></script>
+<script src="js/uc-data.js"></script>
 <script>
 const SUPABASE_URL = 'https://lukyyqabkxzrgdixzphs.supabase.co';
 const ANALYZE_URL   = 'https://unitycode-analyze.sv2txxznjm.workers.dev';
@@ -263,8 +264,8 @@ if (!myToken) return;
 const headers = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY };
 try {
 const [nodesRes, connsRes] = await Promise.all([
-fetch(`${SUPABASE_URL}/rest/v1/nodes?user_token=eq.${myToken}&select=id,raw_noise&order=created_at.desc`, { headers }),
-fetch(`${SUPABASE_URL}/rest/v1/connections?select=from_node_id,to_node_id&status=eq.accepted`, { headers }),
+UCData.fetchRetry(`${SUPABASE_URL}/rest/v1/nodes?user_token=eq.${myToken}&select=id,raw_noise&order=created_at.desc`, { headers }),
+UCData.fetchRetry(`${SUPABASE_URL}/rest/v1/connections?select=from_node_id,to_node_id&status=eq.accepted`, { headers }),
 ]);
 const [myNodes, allConns] = await Promise.all([nodesRes.json(), connsRes.json()]);
 cache.myNodes = Array.isArray(myNodes) ? myNodes : [];
@@ -580,7 +581,7 @@ let url = `${SUPABASE_URL}/rest/v1/nodes?select=id,created_at,raw_noise,lat,lng,
 if (lastCreatedAt) {
 url += `&created_at=gt.${encodeURIComponent(lastCreatedAt)}`;
 }
-const res = await fetch(url, {
+const res = await UCData.fetchRetry(url, {
 headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
 });
 if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -602,7 +603,7 @@ showLoading(false);
 async function fullRefreshNodes() {
 try {
 const url = `${SUPABASE_URL}/rest/v1/nodes?select=id,created_at,raw_noise,lat,lng,user_token&lat=not.is.null&lng=not.is.null&order=created_at.desc`;
-const res = await fetch(url, {
+const res = await UCData.fetchRetry(url, {
 headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
 });
 if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -672,7 +673,7 @@ cachedConns.forEach(addConnectionToMap);
 // Полный refresh связей: грузит все, сверяет, убирает удалённые
 async function loadConnections() {
 try {
-const res = await fetch(
+const res = await UCData.fetchRetry(
 `${SUPABASE_URL}/rest/v1/connections?select=id,from_node_id,to_node_id,created_by&status=eq.accepted`,
 { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY } }
 );
