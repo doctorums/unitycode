@@ -507,12 +507,21 @@
     #uzor-canvas { width:100%; height:100%; display:block; }
     #uzor-essence {
       position: absolute; pointer-events: none;
-      font-size: 0.6rem; color: var(--accent);
-      letter-spacing: 0.1em; text-shadow: 0 0 8px rgba(0,255,136,0.6);
-      transform: translate(-50%, -160%);
+      font-size: 0.75rem; color: #fff;
+      letter-spacing: 0.06em;
+      background: rgba(4,16,14,0.92);
+      border: 1px solid var(--accent);
+      padding: 0.35rem 0.6rem;
+      border-radius: 3px;
+      box-shadow: 0 0 14px rgba(0,255,136,0.35);
+      transform: translate(-50%, -170%);
       opacity: 0; transition: opacity 0.3s;
-      white-space: nowrap;
+      white-space: normal;
+      max-width: min(80vw, 260px);
+      text-align: center;
+      line-height: 1.4;
       font-family: 'Share Tech Mono', monospace;
+      z-index: 5;
     }
     .uzor-legend {
       display: flex; gap: 1.2rem; flex-wrap: wrap;
@@ -554,6 +563,43 @@
       font-family: 'Share Tech Mono', monospace;
       text-align: center;
     }
+
+    /* АДДИТИВНО: подсказка «тапни, чтобы увеличить» на мини-версии узора */
+    #uzor-frame-mini { cursor: pointer; }
+    .uzor-tap-hint {
+      position: absolute; left: 50%; bottom: 0.5rem;
+      transform: translateX(-50%);
+      font-size: 0.5rem; letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.55);
+      font-family: 'Share Tech Mono', monospace;
+      background: rgba(0,0,0,0.4);
+      padding: 0.2rem 0.55rem;
+      border-radius: 2px;
+      pointer-events: none;
+    }
+
+    /* АДДИТИВНО: модалка развёрнутого узора */
+    .uzor-modal {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.88);
+      display: flex; align-items: center; justify-content: center;
+      padding: 1.2rem;
+    }
+    .uzor-modal-inner {
+      position: relative;
+      width: min(92vw, 640px);
+      display: flex; flex-direction: column; align-items: center;
+    }
+    .uzor-modal-close {
+      position: absolute; top: -2.6rem; right: 0;
+      background: transparent; border: 1px solid rgba(0,255,136,0.4);
+      color: var(--accent); font-size: 1.3rem; line-height: 1;
+      width: 2.2rem; height: 2.2rem; border-radius: 3px;
+      cursor: pointer;
+    }
+    .uzor-frame-big { width: 100%; cursor: pointer; }
+    .uzor-modal .uzor-legend { margin-top: 0.9rem; }
+    .uzor-modal .uzor-save-btn { width: 100%; max-width: 320px; }
   </style>
 </head>
 <body>
@@ -601,16 +647,30 @@
     <!-- АДДИТИВНО: узор — полотно Сети + твоя нить. Скрыт до успешной
          загрузки данных; при сбое страница выглядит как раньше. -->
     <div id="uzor-block" style="display:none;">
-      <div class="uzor-frame">
+      <div class="uzor-frame" id="uzor-frame-mini" onclick="openUzorModal()">
         <canvas id="uzor-canvas"></canvas>
-        <div id="uzor-essence"></div>
+        <div class="uzor-tap-hint" id="uzor-tap-hint" data-i18n="implant.uzorTapHint">тапни, чтобы увеличить</div>
       </div>
       <div class="uzor-legend" id="uzor-legend"></div>
-      <button class="uzor-save-btn" id="uzor-save-btn" onclick="saveUzorImage()" style="display:none;">
-        <span data-i18n="implant.saveUzor">[ Сохранить узор ]</span>
-      </button>
       <div class="uzor-hint" id="uzor-hint" style="display:none;"></div>
     </div>
+
+    <!-- АДДИТИВНО: развёрнутый узор — тап по узлу здесь показывает эссенцию,
+         сохранение узора тоже отсюда. Мини-версия только открывает модалку. -->
+    <div id="uzor-modal" class="uzor-modal" style="display:none;" onclick="if(event.target===this)closeUzorModal()">
+      <div class="uzor-modal-inner">
+        <button class="uzor-modal-close" onclick="closeUzorModal()" aria-label="close">&times;</button>
+        <div class="uzor-frame uzor-frame-big">
+          <canvas id="uzor-canvas-big"></canvas>
+          <div id="uzor-essence"></div>
+        </div>
+        <div class="uzor-legend" id="uzor-legend-big"></div>
+        <button class="uzor-save-btn" id="uzor-save-btn" onclick="saveUzorImage()" style="display:none;">
+          <span data-i18n="implant.saveUzor">[ Сохранить узор ]</span>
+        </button>
+      </div>
+    </div>
+
   </div>
 
   <!-- Блок 2: Коллективный анализ -->
@@ -1442,9 +1502,14 @@ document.addEventListener('visibilitychange', () => {
 // АДДИТИВНО: УЗОР — полотно Сети + твоя нить.
 // Геометрия детерминирована данными: время (позиция на спирали),
 // хеш текста (характер точки), связи (точки вплетения).
-// Статичный рендер (анимация — позже). При сбое блок не показывается.
+// Два рендер-таргета (мини на странице, крупный в модалке) делят
+// один и тот же геометрический расчёт и один rAF-цикл — рисуется
+// только видимый таргет, второй простаивает без затрат.
 // ═══════════════════════════════════════════════════════
-let _uzor = null; // { all, conns, mine } — для перерисовки на resize
+let _uzor = null;      // { all, conns, mine } — данные, общие для обоих таргетов
+let _miniT = null;     // { pos, W, H, ctx } — мини-версия на странице
+let _bigT = null;      // { pos, W, H, ctx } — развёрнутая версия в модалке
+let uzorModalOpen = false;
 
 function ucHash(str) { // FNV-1a, детерминированный
   let h = 2166136261;
@@ -1452,13 +1517,14 @@ function ucHash(str) { // FNV-1a, детерминированный
   return (h >>> 0);
 }
 
-// Раскладка: размер канвы + позиции узлов. Вызывается при загрузке
-// и на resize — НЕ каждый кадр (пересоздание канвы дорогое).
-function uzorLayout() {
-  if (!_uzor) return;
-  const cv = document.getElementById('uzor-canvas');
+// Раскладка канвы canvasId: размер + позиции узлов. Вызывается при
+// загрузке/открытии модалки и на resize — НЕ каждый кадр.
+function uzorLayoutFor(canvasId) {
+  if (!_uzor) return null;
+  const cv = document.getElementById(canvasId);
+  if (!cv) return null;
   const box = cv.getBoundingClientRect();
-  if (!box.width) return;
+  if (!box.width) return null;
   const dpr = window.devicePixelRatio || 1;
   cv.width = box.width * dpr; cv.height = box.height * dpr;
   const ctx = cv.getContext('2d');
@@ -1467,9 +1533,10 @@ function uzorLayout() {
 
   const { all } = _uzor;
   const total = all.length;
-  if (!total) return;
+  if (!total) return null;
 
-  // Спираль по хронологии; джиттер — из хеша id (детерминирован)
+  // Спираль по хронологии; джиттер — из хеша id (детерминирован).
+  // Геометрия одна и та же для мини и большой версии — только масштаб разный.
   const turns = 3.2;
   const pos = {};
   all.forEach((n, i) => {
@@ -1480,20 +1547,18 @@ function uzorLayout() {
     pos[n.id] = { x: CX + Math.cos(ang) * rad * CX * 0.92,
                   y: CY + Math.sin(ang) * rad * CY * 0.92 };
   });
-  _uzor.pos = pos;           // и для рендера, и для тапа по эссенции
-  _uzor.W = W; _uzor.H = H;
-  _uzor.ctx = ctx;
+  return { pos, W, H, ctx };
 }
 
-// Рендер одного кадра. t — секунды анимации, progress 0..1 — прорисовка нити.
-// Статичный вид (reduced-motion / сбой) — uzorDraw(0, 1).
-function uzorDraw(t, progress) {
-  if (!_uzor || !_uzor.pos) return;
-  const { all, conns, mine, pos, W, H, ctx } = _uzor;
-  if (!ctx) return;
+// Рендер одного кадра в заданный таргет. t — секунды анимации,
+// progress 0..1 — прорисовка нити. Статичный вид — uzorDraw(0, 1, target).
+function uzorDraw(t, progress, target) {
+  if (!_uzor || !target) return;
+  const { all, conns, mine } = _uzor;
+  const { pos, W, H, ctx } = target;
   ctx.clearRect(0, 0, W, H);
 
-  // АДДИТИВНО: фон полотна — глубокий градиент вместо плоского чёрного,
+  // Фон полотна — глубокий градиент вместо плоского чёрного,
   // в палитре Паттерна (index.html даёт идею глубины, не буквальные цвета).
   const bg = ctx.createLinearGradient(0, 0, 0, H);
   bg.addColorStop(0,   '#0a1f1a');
@@ -1545,7 +1610,6 @@ function uzorDraw(t, progress) {
       .getPropertyValue('--accent').trim() || '#00ff88';
     const pts = mine.map(n => pos[n.id]).filter(Boolean);
 
-    // длина нити и доля, видимая сейчас
     let totalLen = 0;
     const segLen = [];
     for (let i = 1; i < pts.length; i++) {
@@ -1573,7 +1637,6 @@ function uzorDraw(t, progress) {
       ctx.shadowBlur = 0; ctx.globalAlpha = 1;
     }
 
-    // узлы проявляются по мере того, как нить до них дотягивается
     let acc2 = 0;
     mine.forEach((n, k) => {
       if (k > 0) acc2 += segLen[k - 1] || 0;
@@ -1583,7 +1646,6 @@ function uzorDraw(t, progress) {
       const sz = 2.6 + (h % 100) / 60;
       ctx.fillStyle = acc;
       ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, 7); ctx.fill();
-      // пульс кольца — точка вплетения живёт
       ctx.strokeStyle = 'rgba(0,255,136,0.35)';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -1593,25 +1655,64 @@ function uzorDraw(t, progress) {
   }
 }
 
-// Цикл анимации: нить прорисовывается ~2.4с (ease-out), дыхание — постоянно.
-// reduced-motion → один статичный кадр. Фоновая вкладка — rAF сам замирает.
+// Один общий цикл анимации на оба таргета: рисуется только тот, что сейчас
+// виден (модалка открыта → большой, иначе — мини). Второй простаивает.
+// Прорисовка нити ~2.4с (ease-out) — отсчитывается от появления таргета.
 const UZOR_REDUCED = window.matchMedia
   && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-let uzorAnimOn = false, uzorT0 = 0;
+let uzorAnimOn = false, uzorT0 = 0, uzorBigT0 = 0;
 
 function uzorLoop(ts) {
   if (!_uzor) { uzorAnimOn = false; return; }
   if (!uzorT0) uzorT0 = ts;
-  const t = (ts - uzorT0) / 1000;
-  const p = Math.min(1, t / 2.4);
-  uzorDraw(t, 1 - Math.pow(1 - p, 3));
+  if (uzorModalOpen && _bigT) {
+    if (!uzorBigT0) uzorBigT0 = ts;
+    const t = (ts - uzorBigT0) / 1000;
+    const p = Math.min(1, t / 2.4);
+    uzorDraw(t, 1 - Math.pow(1 - p, 3), _bigT);
+  } else if (_miniT) {
+    const t = (ts - uzorT0) / 1000;
+    const p = Math.min(1, t / 2.4);
+    uzorDraw(t, 1 - Math.pow(1 - p, 3), _miniT);
+  }
   requestAnimationFrame(uzorLoop);
 }
 
 function uzorStart() {
-  uzorLayout();
-  if (UZOR_REDUCED) { uzorDraw(0, 1); return; }
+  _miniT = uzorLayoutFor('uzor-canvas');
+  if (UZOR_REDUCED) { if (_miniT) uzorDraw(0, 1, _miniT); return; }
   if (!uzorAnimOn) { uzorAnimOn = true; requestAnimationFrame(uzorLoop); }
+}
+
+function openUzorModal() {
+  if (!_uzor) return;
+  const modal = document.getElementById('uzor-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  uzorModalOpen = true;
+  uzorBigT0 = 0; // нить в модалке прорисовывается заново — эффект «раскрытия»
+
+  const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
+  const lgBig = document.getElementById('uzor-legend-big');
+  if (lgBig) lgBig.innerHTML = en
+    ? '<span class="lg-fabric">the Network fabric</span><span class="lg-thread">your thread</span><span class="lg-human">human connections</span>'
+    : '<span class="lg-fabric">полотно Сети</span><span class="lg-thread">твоя нить</span><span class="lg-human">связи людей</span>';
+
+  const saveBtn = document.getElementById('uzor-save-btn');
+  if (saveBtn) saveBtn.style.display = _uzor.mine.length ? 'block' : 'none';
+
+  requestAnimationFrame(() => {
+    _bigT = uzorLayoutFor('uzor-canvas-big');
+    if (UZOR_REDUCED && _bigT) uzorDraw(0, 1, _bigT);
+  });
+}
+
+function closeUzorModal() {
+  const modal = document.getElementById('uzor-modal');
+  if (modal) modal.style.display = 'none';
+  uzorModalOpen = false;
+  const el = document.getElementById('uzor-essence');
+  if (el) el.style.opacity = 0;
 }
 
 async function loadUzor() {
@@ -1657,8 +1758,6 @@ async function loadUzor() {
       : '<span class="lg-fabric">полотно Сети</span><span class="lg-thread">твоя нить</span><span class="lg-human">связи людей</span>';
 
     document.getElementById('uzor-block').style.display = 'block';
-    const saveBtn = document.getElementById('uzor-save-btn');
-    if (saveBtn && mine.length) saveBtn.style.display = 'block';
 
     // АДДИТИВНО: подсказка при скудной нити — честно объясняет пустоту,
     // а не выглядит как баг. Исчезает сама, когда узлов становится больше.
@@ -1681,19 +1780,20 @@ async function loadUzor() {
   } catch (e) { showDiag('исключение: ' + (e && e.message ? e.message : String(e))); }
 }
 
-// Тап по своему узлу — эссенция
-document.getElementById('uzor-canvas').addEventListener('click', e => {
-  if (!_uzor || !_uzor.pos || !_uzor.mine.length) return;
+// Тап по узлу в развёрнутой версии — эссенция. В мини-версии тап
+// открывает модалку целиком (обработчик на .uzor-frame, см. разметку).
+document.getElementById('uzor-canvas-big').addEventListener('click', e => {
+  if (!_uzor || !_bigT || !_uzor.mine.length) return;
   const r = e.currentTarget.getBoundingClientRect();
   const x = e.clientX - r.left, y = e.clientY - r.top;
   const el = document.getElementById('uzor-essence');
   let hitNode = null;
   _uzor.mine.forEach(n => {
-    const p = _uzor.pos[n.id];
-    if (p && Math.hypot(p.x - x, p.y - y) < 14) hitNode = n;
+    const p = _bigT.pos[n.id];
+    if (p && Math.hypot(p.x - x, p.y - y) < 18) hitNode = n;
   });
   if (hitNode && el) {
-    const p = _uzor.pos[hitNode.id];
+    const p = _bigT.pos[hitNode.id];
     const label = hitNode.essence || (hitNode.raw_noise || '').slice(0, 40);
     if (!label) return;
     el.textContent = '\u00AB ' + label + ' \u00BB';
@@ -1703,12 +1803,31 @@ document.getElementById('uzor-canvas').addEventListener('click', e => {
   }
 });
 
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && uzorModalOpen) closeUzorModal();
+});
+
 let uzorResizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(uzorResizeTimer);
-  uzorResizeTimer = setTimeout(() => { uzorLayout(); if (UZOR_REDUCED) uzorDraw(0, 1); }, 250);
+  uzorResizeTimer = setTimeout(() => {
+    _miniT = uzorLayoutFor('uzor-canvas');
+    if (UZOR_REDUCED && _miniT) uzorDraw(0, 1, _miniT);
+    if (uzorModalOpen) {
+      _bigT = uzorLayoutFor('uzor-canvas-big');
+      if (UZOR_REDUCED && _bigT) uzorDraw(0, 1, _bigT);
+    }
+  }, 250);
 });
-window.addEventListener('orientationchange', () => setTimeout(() => { uzorLayout(); if (UZOR_REDUCED) uzorDraw(0, 1); }, 400));
+window.addEventListener('orientationchange', () => setTimeout(() => {
+  _miniT = uzorLayoutFor('uzor-canvas');
+  if (UZOR_REDUCED && _miniT) uzorDraw(0, 1, _miniT);
+  if (uzorModalOpen) {
+    _bigT = uzorLayoutFor('uzor-canvas-big');
+    if (UZOR_REDUCED && _bigT) uzorDraw(0, 1, _bigT);
+  }
+}, 400));
+
 
 // АДДИТИВНО: дельта-разбор — личный анализ с фокусом на узлах,
 // появившихся с прошлого визита. Тап по блоку «Пока тебя не было».
@@ -1747,7 +1866,7 @@ async function runDeltaAnalysis() {
 // личного анализа как подпись (если он есть). Работает офлайн,
 // ничего не отправляет на сервер — только canvas.toDataURL на клиенте.
 function saveUzorImage() {
-  const src = document.getElementById('uzor-canvas');
+  const src = document.getElementById('uzor-canvas-big');
   if (!src || !src.width) return;
   const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
 
