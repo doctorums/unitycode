@@ -588,6 +588,7 @@
     .uzor-modal-inner {
       position: relative;
       width: min(92vw, 640px);
+      max-height: 94vh;
       display: flex; flex-direction: column; align-items: center;
     }
     .uzor-modal-close {
@@ -597,7 +598,13 @@
       width: 2.2rem; height: 2.2rem; border-radius: 3px;
       cursor: pointer;
     }
-    .uzor-frame-big { width: 100%; cursor: pointer; }
+    .uzor-frame-big {
+      /* сторона квадрата ограничена и шириной, и высотой экрана,
+         чтобы рамка вместе с легендой и кнопкой влезала во вьюпорт */
+      width: min(100%, 62vh);
+      margin: 0 auto;
+      cursor: pointer;
+    }
     .uzor-modal .uzor-legend { margin-top: 0.9rem; }
     .uzor-modal .uzor-save-btn { width: 100%; max-width: 320px; }
   </style>
@@ -1701,10 +1708,10 @@ function openUzorModal() {
   const saveBtn = document.getElementById('uzor-save-btn');
   if (saveBtn) saveBtn.style.display = _uzor.mine.length ? 'block' : 'none';
 
-  requestAnimationFrame(() => {
+  requestAnimationFrame(() => requestAnimationFrame(() => {
     _bigT = uzorLayoutFor('uzor-canvas-big');
     if (UZOR_REDUCED && _bigT) uzorDraw(0, 1, _bigT);
-  });
+  }));
 }
 
 function closeUzorModal() {
