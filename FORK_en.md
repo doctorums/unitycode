@@ -19,31 +19,35 @@ Plus the entrance (`index.html`) — a generative intro, and content pages
 (`materials.html` — "Matter", `kniga.html` — the reader) that are not tied to the
 protocol and can be changed freely.
 
-The thinking and the writing are done by three agents on Cloudflare Workers:
+The thinking and the writing are done by three agents on Cloudflare Workers.
+Their code lives in the `workers/` folder:
 
-- `worker-generate.js` → Spiral. Engine — **YandexGPT**. Contract: `POST { raw_noise, lang } → { interpretation }`.
-- `worker-analyze.js` → Pattern. Engine — **MiMo**. Contract: `POST { scope, nodes, connections?, lang } → { interpretation, scope, count }`.
-- `worker-write.js` → the write gateway. The only thing that writes to the database. Contract: `POST { action, token, turnstile, ... } → { ok }`.
-  Inside it there are two more steps after the gatekeeper: **distill** (a short
-  essence for "Matter") and **the Linker** — after a node is successfully written,
-  it runs in the background, looks for resonance with existing nodes, and creates
-  connections on its own (no human involved).
+- `workers/unitycode-petlya.js` → Spiral. Engine — **YandexGPT**.
+  Contract: `POST { raw_noise, lang } → { interpretation }`.
+- `workers/unitycode-analyze.js` → Pattern. Engine — **MiMo**.
+  Contract: `POST { scope, nodes, connections?, lang } → { interpretation, scope, count }`.
+- `workers/unitycode-write.js` → the write gateway. The only thing that writes to the database.
+  Contract: `POST { action, token, turnstile, ... } → { ok }`.
+  Inside it, three agents run in sequence: the **Gatekeeper** (signal or emptiness),
+  **Distill** (a short essence for "Matter") and **the Linker** — after a node is
+  successfully written, it runs in the background, looks for resonance with existing
+  nodes, and creates connections on its own.
 
-The database is Supabase (tables `nodes`, `connections`, `linker_log`). SQL lives in
-`create tables.sql`, `add connections.sql`, `add-linker-log.sql` and `supabase-rls.sql`.
+> ⚠️ The files in `workers/` are **snapshots** of the deployed code, published for forkers.
+> In production the Workers live in the Cloudflare Dashboard, and that is the source of
+> truth. If a snapshot has drifted from production, production wins.
+
+The database is Supabase. Tables: `nodes`, `connections`, `events`, `linker_log`,
+`analysis_cache`. The whole schema, RLS included, is in a single file: `schema.sql`.
 
 -----
 
-## Important about security (this has changed)
+## Important about security
 
-Previously the browser wrote to Supabase directly with its own key — anyone could
-script in nodes and connections. Now it works differently, and this is part of the
-architecture:
-
-- **The browser does not write to the database.** All writes go through `worker-write.js`,
+- **The browser does not write to the database.** All writes go through the write Worker,
   which holds a **secret** Supabase service key. The key lives only in the Worker and never reaches the client.
-- **RLS is enabled.** `supabase-rls.sql` forbids writes for the anon role and leaves
-  read-only access. Without it your database is open to the whole world for writing — run it, no exceptions.
+- **RLS is enabled** right inside `schema.sql` — the anon role is left with read-only access.
+  Run it, no exceptions: without RLS your database is open to the whole world for writing.
 - **Turnstile** (Cloudflare's captcha, mostly invisible): the write Worker verifies the
   token and rate-limits via KV. The public Site Key sits in the client; the Secret Key — only in the Worker.
 - **The public Supabase key in the client is read-only.** That's fine: RLS won't let it write anything.
@@ -56,20 +60,23 @@ architecture:
 
 **2. Spin up your own Supabase database** (free tier):
 
-- run `create tables.sql`, then `add connections.sql` and `add-linker-log.sql` in the SQL Editor;
-- **make sure to run `supabase-rls.sql`** — it closes writes for the anon role;
+- run **`schema.sql`** in the SQL Editor — it creates all five tables and turns RLS on;
+- if you later create tables by hand, don't forget `NOTIFY pgrst, 'reload schema';`,
+  otherwise the REST API will silently stop writing to the new table;
 - from Settings → API take your `Project URL`, the public key (`anon`/`publishable` — for reads)
   and the **secret** service key (for the write Worker; never put it in the client).
 
 **3. Enable Turnstile** in Cloudflare (the Turnstile section): create a widget →
 you'll get a Site Key (public) and a Secret Key.
 
-**4. Spin up the three Workers** in Cloudflare (copy `worker-generate.js`, `worker-analyze.js`, `worker-write.js`):
+**4. Spin up the three Workers** in Cloudflare — copy the code from the `workers/` folder:
 
-- generator: secret `YANDEX_API_KEY`, your own `YANDEX_FOLDER_ID` in the code;
-- analyst: secret `MIMO_API_KEY`;
-- write gateway: secrets `MIMO_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `TURNSTILE_SECRET` and a KV binding `RATE_KV`;
-- **add your domain to `ALLOWED_ORIGINS`** in each (top of the file — look for the "FORKER" mark).
+- **generator** (`unitycode-petlya.js`): secret `YANDEX_API_KEY`, your own `YANDEX_FOLDER_ID` in the code;
+- **analyst** (`unitycode-analyze.js`): secret `MIMO_API_KEY`; variable `SUPABASE_URL`,
+  secret `SUPABASE_SERVICE_KEY` (for the analysis cache — without them the analyst still works, just costs more);
+- **write gateway** (`unitycode-write.js`): secrets `MIMO_API_KEY`, `SUPABASE_SERVICE_KEY`,
+  `TURNSTILE_SECRET`, variable `SUPABASE_URL`, and a KV binding `RATE_KV`;
+- **add your domain to `ALLOWED_ORIGINS`** in each (top of the file — look for the "ФОРКЕР / FORKER" mark).
 
 **5. Put your credentials into the pages** (the exact spots are marked with a comment at the top of each file):
 
@@ -116,10 +123,12 @@ portals. This is not a prohibition — it's an honest warning about the conseque
    `to_node_id`, `status`, `created_by`), plus RLS enabled (writes only via the gateway).
    A different structure → your nodes won't fit into the shared map.
 1. **The Linker is no longer a "future" agent — it already works.** The third step
-   inside `worker-write.js`: after a node is written, it runs in the background, looks
+   inside the write Worker: after a node is written, it runs in the background, looks
    for resonance with existing nodes, and creates connections on its own
    (`connections.created_by = 'linker'`). If you change its logic in your fork, do it so
    that the connections it creates stay readable by other forks under the same schema.
+   The Linker's doctrine (attribution, transparency, reversibility, "connections yes,
+   nodes no") is described in `CONCEPT.md`.
 
 -----
 
