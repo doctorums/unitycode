@@ -22,10 +22,13 @@
   'use strict';
 
   // ── Конфиг ────────────────────────────────────────────────────────────
-  // Fallback-значения. Страница, объявившая свои константы, имеет приоритет.
+  // Единственный источник этих значений — этот файл (страницы объявляют
+  // свои константы через const, что НЕ создаёт window.SUPABASE_*, поэтому
+  // «взять со страницы» в браузере не работает — не рассчитывать на это).
+  // Ключ публичный (только чтение через RLS), в модуле ему место.
   // ФОРКЕР: подставь свои.
   const DEFAULT_URL = 'https://lukyyqabkxzrgdixzphs.supabase.co';
-  const DEFAULT_KEY = 'sb_publishable_c9WSkYqAErdE3B9d6xKQrA_M-4-r3Q0';
+  const DEFAULT_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
 
   function url() {
     return (typeof global.SUPABASE_URL === 'string' && global.SUPABASE_URL) || DEFAULT_URL;
