@@ -735,6 +735,7 @@
 
 <script src="nav.js"></script>
 <script src="i18n.js"></script>
+<script src="js/uc-data.js"></script>
 <script src="audio.js" defer></script>
 <script>
 const SUPABASE_URL = 'https://lukyyqabkxzrgdixzphs.supabase.co';
@@ -964,24 +965,12 @@ function timeAgo(iso) {
 }
 
 // ═══════════════════════════════════════════════════════
-// АДДИТИВНО: ретрай с бэкоффом для чтения из Supabase.
-// Не меняет рендер и не трогает UI — только даёт GET-запросу
-// ещё пару попыток на плохом канале, прежде чем сдаться.
+// Ретрай с бэкоффом для чтения из Supabase — теперь общий:
+// тело живёт в js/uc-data.js (UCData.fetchRetry), поведение
+// то же (3 попытки, 0.8с → 2с → 5с). Обёртка сохраняет
+// прежнее имя — все вызовы на странице не меняются.
 // ═══════════════════════════════════════════════════════
-async function ucFetchRetry(url, options, attempts = 3, delaysMs = [800, 2000, 5000]) {
-  let lastErr;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      const res = await fetch(url, options);
-      if (res.ok) return res;
-      lastErr = new Error('HTTP ' + res.status);
-    } catch (e) {
-      lastErr = e;
-    }
-    if (i < attempts - 1) await new Promise(r => setTimeout(r, delaysMs[i] || 5000));
-  }
-  throw lastErr;
-}
+const ucFetchRetry = (...args) => UCData.fetchRetry(...args);
 
 // ═══════════════════════════════════════════════════════
 // ЛИЧНЫЙ БЛОК
