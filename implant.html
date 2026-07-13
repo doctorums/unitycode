@@ -2130,18 +2130,46 @@ function buildNetworkAnalysisImage() {
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     const blob = new Blob([arr], { type: 'image/png' });
     _netImgFile = new File([blob], 'unitycode-set-analiz.png', { type: 'image/png' });
-  } catch (e) { _netImgFile = null; }
+  } catch (e) {
+    _netImgFile = null;
+    try { _netImgDiag('пресборка упала: ' + (e && e.name) + ' ' + (e && e.message)); } catch (_) {}
+  }
 }
 
 // Лёгкая часть — вызывается тапом по кнопке. Файл уже готов,
 // share стартует синхронно внутри жеста.
+// ВРЕМЕННО: строка диагностики под кнопкой — у Вити нет консоли,
+// статус каждого шага показываем прямо в модалке. Убрать после отладки.
+function _netImgDiag(msg) {
+  let el = document.getElementById('netimg-diag');
+  if (!el) {
+    const btn = document.getElementById('oracle-save-btn');
+    if (!btn) return;
+    el = document.createElement('div');
+    el.id = 'netimg-diag';
+    el.style.cssText = 'font-size:0.5rem;color:#0a6;margin-top:0.4rem;text-align:center;word-break:break-all;';
+    btn.insertAdjacentElement('afterend', el);
+  }
+  el.textContent = msg;
+}
+
 function saveNetworkAnalysisImage() {
-  if (!_netImgFile) { buildNetworkAnalysisImage(); }  // страховка, если пресборка не случилась
-  const file = _netImgFile;
-  if (!file) return;
   try {
-    if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
-      navigator.share({ files: [file] }).catch(() => { /* отмена шторки — не ошибка */ });
+    if (!_netImgFile) {
+      _netImgDiag('файл не пресобран, строю сейчас...');
+      buildNetworkAnalysisImage();
+    }
+    const file = _netImgFile;
+    if (!file) { _netImgDiag('сборка PNG не удалась: текст=' + (_oracleFullText ? _oracleFullText.length + ' симв.' : 'ПУСТО')); return; }
+
+    const canSh = !!(navigator.canShare && navigator.share);
+    const canShFiles = canSh && navigator.canShare({ files: [file] });
+    _netImgDiag('файл ' + Math.round(file.size/1024) + 'КБ; share=' + canSh + '; files=' + canShFiles);
+
+    if (canShFiles) {
+      navigator.share({ files: [file] })
+        .then(() => _netImgDiag('шторка открылась, ок'))
+        .catch(err => _netImgDiag('share отклонён: ' + (err && err.name) + ' ' + (err && err.message)));
       return;
     }
     const url = URL.createObjectURL(file);
@@ -2150,8 +2178,11 @@ function saveNetworkAnalysisImage() {
     link.href = url;
     document.body.appendChild(link);
     link.click();
+    _netImgDiag('share недоступен — пробую скачивание');
     setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 1500);
-  } catch (e) { /* тихо */ }
+  } catch (e) {
+    _netImgDiag('исключение: ' + (e && e.name) + ' ' + (e && e.message));
+  }
 }
 
 // Инициализация
