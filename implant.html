@@ -826,6 +826,8 @@ function typeOracle(text) {
       if (_oracleSavable) {
         const saveBtn = document.getElementById('oracle-save-btn');
         if (saveBtn) saveBtn.style.display = 'block';
+        // строим PNG сейчас, пока никто не тапнул — к жесту всё готово
+        setTimeout(buildNetworkAnalysisImage, 50);
       }
       _oracleTimer = null;
       // доскроллить окно к низу, показать кнопку, и ЗАФИКСИРОВАТЬ размер —
@@ -2007,7 +2009,15 @@ function saveUzorImage() {
 // здесь тот же хеш садит на смысл текста, не на конкретный узел).
 // Одна и та же интерпретация Сети всегда даёт одну и ту же картину —
 // это не иллюстрация случайности, а визуальный отпечаток текста.
-function saveNetworkAnalysisImage() {
+let _netImgFile = null;  // PNG анализа Сети, построенный ЗАРАНЕЕ — см. buildNetworkAnalysisImage
+
+// Тяжёлая часть (canvas → PNG → File) выполняется заранее, в момент
+// появления кнопки, а НЕ в обработчике тапа. Причина — iOS: если между
+// жестом и navigator.share() проходит заметное время (toDataURL на
+// большом канвасе — сотни мс), Safari считает жест протухшим и молча
+// не открывает шторку. По тапу должна остаться только выдача готового.
+function buildNetworkAnalysisImage() {
+  _netImgFile = null;
   const text = String(_oracleFullText || '').trim();
   if (!text) return;
   const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
@@ -2112,24 +2122,31 @@ function saveNetworkAnalysisImage() {
   ctx.fillStyle = 'rgba(0,255,136,0.5)';
   ctx.fillText('UNITYCODE // ' + (en ? 'NETWORK' : 'СЕТЬ'), W / 2, H + capH - 14 * dpr);
 
-  // ── Выдача — идентично saveUzorImage: data-URL → blob синхронно
-  // (жест не теряем), нативная шторка «Поделиться», фолбэк — скачивание.
+  // Только сборка файла — никакой выдачи здесь.
   try {
     const dataUrl = out.toDataURL('image/png');
     const bin = atob(dataUrl.split(',')[1]);
     const arr = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     const blob = new Blob([arr], { type: 'image/png' });
-    const file = new File([blob], 'unitycode-set-analiz.png', { type: 'image/png' });
+    _netImgFile = new File([blob], 'unitycode-set-analiz.png', { type: 'image/png' });
+  } catch (e) { _netImgFile = null; }
+}
 
+// Лёгкая часть — вызывается тапом по кнопке. Файл уже готов,
+// share стартует синхронно внутри жеста.
+function saveNetworkAnalysisImage() {
+  if (!_netImgFile) { buildNetworkAnalysisImage(); }  // страховка, если пресборка не случилась
+  const file = _netImgFile;
+  if (!file) return;
+  try {
     if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
       navigator.share({ files: [file] }).catch(() => { /* отмена шторки — не ошибка */ });
       return;
     }
-
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(file);
     const link = document.createElement('a');
-    link.download = 'unitycode-set-analiz.png';
+    link.download = file.name;
     link.href = url;
     document.body.appendChild(link);
     link.click();
