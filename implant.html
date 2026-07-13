@@ -729,6 +729,9 @@
     <div class="oracle-viewport" id="oracle-viewport">
       <div class="oracle-text" id="oracle-text"></div>
     </div>
+    <button class="uzor-save-btn" id="oracle-save-btn" onclick="saveNetworkAnalysisImage()" style="display:none;">
+      <span data-i18n="implant.saveNetAnalysis">[ Сохранить анализ ]</span>
+    </button>
     <button class="oracle-close" id="oracle-close" onclick="closeOracle()" data-i18n="implant.close">// закрыть</button>
   </div>
 </div>
@@ -758,6 +761,7 @@ const headers = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_
 let _oracleTimer = null;
 let _oracleSeq = 0; // версия сессии печати: отменяет старую, если открыли заново
 let _oracleFullText = ''; // полный текст текущего ответа — нужен для тапа-прерывания
+let _oracleSavable = false; // сохранение картинки доступно только для анализа Сети (collective)
 let _outroTimers = [];
 function clearOutro() { _outroTimers.forEach(clearTimeout); _outroTimers = []; }
 
@@ -769,10 +773,11 @@ function resetOracleText(textEl) {
   textEl.style.removeProperty('transition');
 }
 
-function openOracle(label) {
+function openOracle(label, savable) {
   const ov = document.getElementById('oracle');
   const textEl = document.getElementById('oracle-text');
   const closeBtn = document.getElementById('oracle-close');
+  const saveBtn = document.getElementById('oracle-save-btn');
   const labelEl = document.getElementById('oracle-label');
   const win = document.querySelector('.oracle-window');
   clearOutro();
@@ -788,6 +793,8 @@ function openOracle(label) {
   const waitMsg = (window.UC_I18N ? UC_I18N.t('implant.listening') : '// Сеть слушает');
   textEl.innerHTML = '<span class="oracle-waiting">' + waitMsg + '<span class="oracle-cursor">▋</span></span>';
   closeBtn.classList.remove('show');
+  _oracleSavable = !!savable;
+  if (saveBtn) saveBtn.style.display = 'none'; // покажется в typeOracle только когда допечатано И savable
   ov.classList.add('open');
 }
 
@@ -816,6 +823,10 @@ function typeOracle(text) {
     if (i >= words.length) {
       textEl.classList.add('breathing'); // допечатали — текст «задышал»
       closeBtn.classList.add('show');
+      if (_oracleSavable) {
+        const saveBtn = document.getElementById('oracle-save-btn');
+        if (saveBtn) saveBtn.style.display = 'block';
+      }
       _oracleTimer = null;
       // доскроллить окно к низу, показать кнопку, и ЗАФИКСИРОВАТЬ размер —
       // он не должен меняться во время стояния/фейда/краула (иначе кнопка
@@ -1155,7 +1166,7 @@ async function runCollectiveAnalysis() {
   const btn = document.getElementById('collective-btn');
 
   btn.disabled = true;
-  openOracle(UC_I18N.t('implant.labelNetPattern'));
+  openOracle(UC_I18N.t('implant.labelNetPattern'), true); // savable — единственное место с картинкой на сохранение
 
   try {
     // Берём последние 30 шумов (с id) + пары связей для анализа мостов
@@ -1981,6 +1992,144 @@ function saveUzorImage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.download = 'unitycode-uzor.png';
+    link.href = url;
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 1500);
+  } catch (e) { /* тихо */ }
+}
+
+// АДДИТИВНО: сохранение анализа Сети (коллективный срез) как PNG.
+// В отличие от Узора — тут нет исходного графа для копирования (личный
+// Узор рисует реальные точки своих узлов). Здесь картина генеративная:
+// абстрактное созвездие, детерминированное из текста самого наблюдения
+// (тот же приём, что ucHash уже применяет к id узла для покачивания —
+// здесь тот же хеш садит на смысл текста, не на конкретный узел).
+// Одна и та же интерпретация Сети всегда даёт одну и ту же картину —
+// это не иллюстрация случайности, а визуальный отпечаток текста.
+function saveNetworkAnalysisImage() {
+  const text = String(_oracleFullText || '').trim();
+  if (!text) return;
+  const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
+  const dpr = window.devicePixelRatio || 1;
+
+  // Логический размер картины — независим от экрана (не копируем canvas
+  // страницы), квадрат хорошо ложится в шторку «Поделиться».
+  const W = 720 * dpr, H = 720 * dpr;
+
+  // Подвал считаем так же, как в saveUzorImage: сначала меряем перенос
+  // строк текста анализа, от этого зависит высота подписи снизу.
+  const fs = 11 * dpr;
+  const lineH = fs * 1.5;
+  const maxW = W - 48 * dpr;
+  const meas = document.createElement('canvas').getContext('2d');
+  meas.font = `${fs}px 'Share Tech Mono', monospace`;
+  const words = text.split(/\s+/);
+  let lines = [], line = '';
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (meas.measureText(test).width > maxW && line) { lines.push(line); line = w; }
+    else line = test;
+  }
+  if (line) lines.push(line);
+  if (lines.length > 40) { lines = lines.slice(0, 40); lines[39] += '…'; } // страховка на очень длинный анализ
+
+  const capH = Math.round(38 * dpr + lines.length * lineH + 36 * dpr);
+
+  const out = document.createElement('canvas');
+  out.width = W;
+  out.height = H + capH;
+  const ctx = out.getContext('2d');
+
+  // ── Фон: тот же градиент, что и у Узора — единый визуальный язык
+  const bg = ctx.createLinearGradient(0, 0, 0, H + capH);
+  bg.addColorStop(0, '#04100e');
+  bg.addColorStop(1, '#020806');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H + capH);
+
+  // ── Генеративное созвездие, детерминированное из текста ──────────
+  const seed = ucHash(text);
+  const n = 46 + (seed % 20); // 46–65 точек — плотность тоже зависит от текста
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const h = ucHash(text + '_' + i);
+    const angle = (h % 6283) / 1000;                    // 0..2π
+    const rNorm = Math.sqrt(((h >> 8) % 1000) / 1000);  // sqrt — равномерно по площади, не по радиусу
+    const r = rNorm * (W * 0.44);
+    const cx = W / 2 + Math.cos(angle) * r;
+    const cy = H / 2 + Math.sin(angle) * r * 0.92; // лёгкий эллипс, не идеальный круг
+    const size = (1.2 + ((h >> 16) % 100) / 40) * dpr;
+    pts.push({ x: cx, y: cy, size, h });
+  }
+
+  // связи между точками, что оказались близко — тонкая паутина,
+  // не буквальный граф пользователя, а образ связности вообще
+  ctx.strokeStyle = 'rgba(0,255,136,0.10)';
+  ctx.lineWidth = 1 * dpr;
+  const threshold = W * 0.16;
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j++) {
+      const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
+      if (Math.hypot(dx, dy) < threshold) {
+        ctx.beginPath();
+        ctx.moveTo(pts[i].x, pts[i].y);
+        ctx.lineTo(pts[j].x, pts[j].y);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // сами точки — мягкое свечение
+  pts.forEach(p => {
+    const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 4);
+    glow.addColorStop(0, 'rgba(0,255,136,0.9)');
+    glow.addColorStop(1, 'rgba(0,255,136,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(230,255,240,0.95)';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // разделительная линия перед подписью
+  ctx.strokeStyle = 'rgba(0,255,136,0.35)';
+  ctx.lineWidth = 1 * dpr;
+  ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(W, H); ctx.stroke();
+
+  // текст наблюдения — полностью, тем же шрифтом, что и в Узоре
+  ctx.font = `${fs}px 'Share Tech Mono', monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.textAlign = 'center';
+  let ty = H + 38 * dpr;
+  lines.forEach(l => { ctx.fillText(l, W / 2, ty); ty += lineH; });
+
+  // бренд-подпись
+  ctx.font = `${9 * dpr}px 'Share Tech Mono', monospace`;
+  ctx.fillStyle = 'rgba(0,255,136,0.5)';
+  ctx.fillText('UNITYCODE // ' + (en ? 'NETWORK' : 'СЕТЬ'), W / 2, H + capH - 14 * dpr);
+
+  // ── Выдача — идентично saveUzorImage: data-URL → blob синхронно
+  // (жест не теряем), нативная шторка «Поделиться», фолбэк — скачивание.
+  try {
+    const dataUrl = out.toDataURL('image/png');
+    const bin = atob(dataUrl.split(',')[1]);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    const blob = new Blob([arr], { type: 'image/png' });
+    const file = new File([blob], 'unitycode-set-analiz.png', { type: 'image/png' });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+      navigator.share({ files: [file] }).catch(() => { /* отмена шторки — не ошибка */ });
+      return;
+    }
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = 'unitycode-set-analiz.png';
     link.href = url;
     document.body.appendChild(link);
     link.click();
