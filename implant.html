@@ -2065,11 +2065,14 @@ function buildNetworkAnalysisImage() {
   for (let i = 0; i < n; i++) {
     const h = ucHash(text + '_' + i);
     const angle = (h % 6283) / 1000;                    // 0..2π
-    const rNorm = Math.sqrt(((h >> 8) % 1000) / 1000);  // sqrt — равномерно по площади, не по радиусу
+    // ВАЖНО: сдвиг только беззнаковый (>>>). ucHash возвращает uint32;
+    // знаковый >> на хэшах > 2^31 даёт отрицательное → sqrt(отриц.) = NaN
+    // → ctx.arc(NaN) → TypeError non-finite. Ловилось не на каждом тексте.
+    const rNorm = Math.sqrt(((h >>> 8) % 1000) / 1000); // sqrt — равномерно по площади, не по радиусу
     const r = rNorm * (W * 0.44);
     const cx = W / 2 + Math.cos(angle) * r;
     const cy = H / 2 + Math.sin(angle) * r * 0.92; // лёгкий эллипс, не идеальный круг
-    const size = (1.2 + ((h >> 16) % 100) / 40) * dpr;
+    const size = (1.2 + ((h >>> 16) % 100) / 40) * dpr;
     pts.push({ x: cx, y: cy, size, h });
   }
 
