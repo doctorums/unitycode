@@ -203,10 +203,24 @@ async function logLinker(env, nodeId, trace) {
 // Аддитивный append-only журнал: пишется ПАРАЛЛЕЛЬНО основной записи
 // в nodes/connections, ничего не меняет в их логике и в ответе
 // клиенту. Сбой лога не должен ронять остальное — пишет молча.
+//
+// Версионирование формата: каждый payload несёт _v — версию СХЕМЫ
+// события данного type. События неизменяемы, но их форма эволюционирует;
+// без метки версии читатель журнала через год будет угадывать форму
+// по наличию ключей. Правило: меняешь состав payload у типа —
+// подними EVENT_SCHEMA_V этого типа на 1 и опиши изменение рядом.
+// События, записанные до 13.07.2026, метки не имеют (отсутствие _v
+// читается как «v1 до введения версионирования»).
+const EVENT_SCHEMA_V = {
+  node_created: 1,        // v1: raw_noise, ai_interpretation, essence?, lat?, lng?, tz?
+  connection_created: 1,  // v1: from_node_id, to_node_id, created_by
+  node_duplicate_retry: 1,// v1: пустой payload, значим только client_id строки
+};
+
 async function logEvent(env, type, { clientId, nodeId, payload } = {}) {
   try {
     if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return;
-    const row = { type, payload: payload || {} };
+    const row = { type, payload: Object.assign({ _v: EVENT_SCHEMA_V[type] || 1 }, payload || {}) };
     if (clientId) row.client_id = clientId;
     if (nodeId) row.node_id = nodeId;
     await sbInsert(env, 'events', row, false, clientId ? 'resolution=ignore-duplicates' : '');
