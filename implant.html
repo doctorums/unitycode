@@ -1203,6 +1203,10 @@ async function runCollectiveAnalysis() {
     // graph_counts — свежие полные счётчики, по ним worker решает:
     // отдать кэш или пересчитать.
     const gc = { nodes: totalNodes, conns: Array.isArray(conns) ? conns.length : 0 };
+    // АДДИТИВНО: снимок счётчиков на момент ЭТОГО анализа — для картины
+    // сохранения (buildNetworkAnalysisImage). Плотность паутины на PNG
+    // отражает реальную связность Сети в час чтения, а не абстракцию.
+    window._netSnapshot = gc;
     const aiRes = await fetch(ANALYZE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2058,29 +2062,96 @@ function buildNetworkAnalysisImage() {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H + capH);
 
-  // ── Генеративное созвездие, детерминированное из текста ──────────
+  // ── Генеративное созвездие: композиция из ритма текста ───────────
+  // Раньше точки ложились равномерным скэттером по всей площади — хэш
+  // задавал расположение, но структура картины никак не следовала за
+  // структурой текста. Теперь предложения анализа становятся центрами
+  // тяжести: длинное наблюдение с несколькими мыслями даёт несколько
+  // сгустков, короткое — плотное ядро. Хэш текста остаётся источником
+  // ВСЕЙ псевдослучайности (тот же текст → те же координаты), он лишь
+  // перестал быть единственным источником структуры.
   const seed = ucHash(text);
   const n = 46 + (seed % 20); // 46–65 точек — плотность тоже зависит от текста
+
+  // Ритм текста: предложения и разброс их длин. Совсем короткие огрызки
+  // (< 8 симв.) отбрасываем — это обычно артефакты разбиения, не мысли.
+  const sentences = text.split(/[.!?…]+/).map(s => s.trim()).filter(s => s.length >= 8);
+  const lens = sentences.map(s => s.length);
+  const meanLen = lens.length ? lens.reduce((a, b) => a + b, 0) / lens.length : 0;
+  // Коэффициент вариации длин: ровные предложения → 0, рваный ритм → ~1.
+  // Число предложений у YandexGPT стабильно (3–6), поэтому одного счёта
+  // мало — разброс длин вариативнее и он двигает число кластеров ±1.
+  let cv = 0;
+  if (lens.length > 1 && meanLen > 0) {
+    const varSum = lens.reduce((a, b) => a + (b - meanLen) * (b - meanLen), 0);
+    cv = Math.sqrt(varSum / lens.length) / meanLen;
+    if (!Number.isFinite(cv)) cv = 0;
+  }
+  let K = Math.round(sentences.length + Math.min(cv, 1));
+  if (!Number.isFinite(K)) K = 3;
+  K = Math.max(2, Math.min(6, K)); // страховка: пустой/монолитный текст → всё равно рисуем
+
+  // Центры кластеров: базовые углы разложены равномерно (чтобы два центра
+  // не слиплись случайно), джиттер угла и радиус — из хэша ПРЕДЛОЖЕНИЯ,
+  // то есть композиция детерминирована содержанием, не только длиной.
+  const clusters = [];
+  for (let k = 0; k < K; k++) {
+    const src = sentences[k % Math.max(1, sentences.length)] || (text + '_c' + k);
+    const ch = ucHash(src + '_c' + k);
+    const baseA = (Math.PI * 2 * k) / K;
+    const jitA = ((ch % 1000) / 1000 - 0.5) * 1.0;            // ±0.5 рад
+    const cr = (0.12 + ((ch >>> 10) % 200) / 1000) * W;       // 0.12–0.32 W от центра
+    const spread = (0.09 + ((ch >>> 20) % 80) / 1000) * W;    // 0.09–0.17 W — размер сгустка
+    // Вес кластера ∝ длине предложения: длинная мысль — заметнее сгусток.
+    const weight = sentences.length ? (lens[k % lens.length] || meanLen || 1) : 1;
+    clusters.push({
+      cx: W / 2 + Math.cos(baseA + jitA) * cr,
+      cy: H / 2 + Math.sin(baseA + jitA) * cr * 0.92, // тот же лёгкий эллипс
+      spread, weight,
+    });
+  }
+  const wSum = clusters.reduce((a, c) => a + c.weight, 0) || 1;
+
   const pts = [];
   for (let i = 0; i < n; i++) {
     const h = ucHash(text + '_' + i);
+    // Выбор кластера — детерминированно по хэшу, пропорционально весам.
+    let pick = ((h >>> 4) % 1000) / 1000 * wSum;
+    let c = clusters[0];
+    for (const cl of clusters) { pick -= cl.weight; if (pick <= 0) { c = cl; break; } }
     const angle = (h % 6283) / 1000;                    // 0..2π
     // ВАЖНО: сдвиг только беззнаковый (>>>). ucHash возвращает uint32;
     // знаковый >> на хэшах > 2^31 даёт отрицательное → sqrt(отриц.) = NaN
     // → ctx.arc(NaN) → TypeError non-finite. Ловилось не на каждом тексте.
-    const rNorm = Math.sqrt(((h >>> 8) % 1000) / 1000); // sqrt — равномерно по площади, не по радиусу
-    const r = rNorm * (W * 0.44);
-    const cx = W / 2 + Math.cos(angle) * r;
-    const cy = H / 2 + Math.sin(angle) * r * 0.92; // лёгкий эллипс, не идеальный круг
+    const rNorm = Math.sqrt(((h >>> 8) % 1000) / 1000); // sqrt — равномерно по площади сгустка
+    const r = rNorm * c.spread;
+    let cx = c.cx + Math.cos(angle) * r;
+    let cy = c.cy + Math.sin(angle) * r * 0.92;
+    // Кламп в холст с полем — сгусток у края не должен резаться рамкой.
+    const m = 20 * dpr;
+    cx = Math.min(W - m, Math.max(m, cx));
+    cy = Math.min(H - m, Math.max(m, cy));
+    if (!Number.isFinite(cx) || !Number.isFinite(cy)) continue; // страховка от NaN — точку молча пропускаем
     const size = (1.2 + ((h >>> 16) % 100) / 40) * dpr;
     pts.push({ x: cx, y: cy, size, h });
   }
 
-  // связи между точками, что оказались близко — тонкая паутина,
-  // не буквальный граф пользователя, а образ связности вообще
-  ctx.strokeStyle = 'rgba(0,255,136,0.10)';
+  // связи между точками, что оказались близко — тонкая паутина.
+  // Порог связывания и яркость линий теперь отражают РЕАЛЬНУЮ связность
+  // Сети в момент этого анализа (связей на узел, снимок _netSnapshot из
+  // runCollectiveAnalysis): густо связанная Сеть → гуще и ярче паутина,
+  // узлов много при редких связях → одинокие точки. Картина — срез
+  // момента, не только отпечаток текста; вся геометрия при этом остаётся
+  // детерминированной хэшем текста, граф меняет лишь порог и прозрачность.
+  const snap = window._netSnapshot || window._graphCounts || null;
+  let density = (snap && Number.isFinite(snap.nodes) && snap.nodes > 0)
+    ? snap.conns / snap.nodes : NaN;
+  if (!Number.isFinite(density)) density = 0.5;   // нет данных → нейтральная середина
+  density = Math.min(2, Math.max(0, density));    // кламп: 0..2 связей на узел
+  const webAlpha = 0.06 + 0.05 * (density / 2);   // 0.06–0.11
+  ctx.strokeStyle = 'rgba(0,255,136,' + webAlpha.toFixed(3) + ')';
   ctx.lineWidth = 1 * dpr;
-  const threshold = W * 0.16;
+  const threshold = W * (0.09 + 0.09 * (density / 2)); // 0.09–0.18 W
   for (let i = 0; i < pts.length; i++) {
     for (let j = i + 1; j < pts.length; j++) {
       const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
