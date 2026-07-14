@@ -1,4 +1,4 @@
-  <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
@@ -895,20 +895,24 @@ function typeOracle(text) {
   step();
 }
 
-// Ритуал завершения (один проход): постоял 30с → фейд → пауза 3с →
-// текст проплывает вверх и тает → окно схлопывается в центр.
+// Стояние перед началом ритуала. Раньше было 15с, потому что это был
+// ЕДИНСТВЕННЫЙ шанс прочитать текст до того, как он начнёт таять. Сейчас
+// не так: тап-прерывание возвращает текст и отдаёт скролл человеку, а
+// кнопка сохранения уносит полный текст в подвале картинки. Стояние стало
+// просто паузой перед кино — для паузы 15с многовато.
+const ORACLE_HOLD = 8000;
+
+// Ритуал завершения (один проход): постоял → фейд → картина → краул →
+// окно схлопывается в центр.
 // Любое закрытие/новый анализ (рост _oracleSeq) отменяет цепочку.
-function startOracleOutro(mySeq, fullText) {
+// skipHold=true — перезапуск после тапа: 8 секунд тишины УЖЕ отстояли
+// (их отсчитал idle-таймер), второй раз держать текст незачем — сразу фейд.
+function startOracleOutro(mySeq, fullText, skipHold) {
   const textEl = document.getElementById('oracle-text');
   clearOutro();
   const alive = () => mySeq === _oracleSeq && document.getElementById('oracle').classList.contains('open');
 
-  // Стояние перед началом ритуала. Раньше было 15с, потому что это был
-  // ЕДИНСТВЕННЫЙ шанс прочитать текст до того, как он начнёт таять. Сейчас
-  // не так: тап-прерывание возвращает текст и отдаёт скролл человеку, а
-  // кнопка сохранения уносит полный текст в подвале картинки. Стояние стало
-  // просто паузой перед кино — для паузы 15с многовато.
-  const HOLD = 8000;
+  const HOLD = skipHold ? 0 : ORACLE_HOLD;
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     textEl.classList.remove('breathing');   // снять дыхание (animation)
@@ -1000,11 +1004,15 @@ function interruptOracleOutro() {
 // АДДИТИВНО: непрерывность ритуала. Раньше тап убивал кино насовсем: окно
 // просто стояло до нажатия «закрыть». Теперь тап = пауза, а не отмена —
 // человек читает и листает сколько нужно, а как только перестал трогать
-// экран на IDLE секунд, ритуал запускается заново с начала (стояние → фейд
-// → картина → краул → закрытие). Тап во время нового ритуала снова его
-// паузит — цикл можно повторять бесконечно, ничего не теряется.
+// экран на 8 секунд, текст начинает таять (фейд → картина → краул →
+// закрытие). Эти 8 секунд тишины и есть стояние — внутри ритуала оно уже
+// не повторяется. Тап во время нового ритуала снова его паузит — цикл можно
+// повторять бесконечно, ничего не теряется.
 function armOracleIdleRestart() {
-  const IDLE = 15000; // тишины достаточно, чтобы понять: человек дочитал
+  // Тишина после того, как человек убрал руки, И ЕСТЬ стояние — отсчитываем
+  // ровно ORACLE_HOLD, а перезапуск заходит сразу с фейда (skipHold), иначе
+  // текст простоял бы дважды: сначала idle, потом ещё HOLD внутри ритуала.
+  const IDLE = ORACLE_HOLD;
   const win = document.querySelector('.oracle-window');
   if (!win) return;
   const mySeq = _oracleSeq;
@@ -1026,7 +1034,7 @@ function armOracleIdleRestart() {
   function fire() {
     _idleTimer = null;
     if (!alive()) { clearOutro(); return; }
-    startOracleOutro(mySeq, _oracleFullText); // ритуал с начала; его clearOutro снимет слушатели
+    startOracleOutro(mySeq, _oracleFullText, true); // сразу с фейда; его clearOutro снимет слушатели
   }
 
   win.addEventListener('touchstart', bump, { passive: true });
@@ -2195,16 +2203,37 @@ function buildNetworkAnalysisImage() {
   if (!Number.isFinite(K)) K = 3;
   K = Math.max(2, Math.min(6, K)); // страховка: пустой/монолитный текст → всё равно рисуем
 
+  // ── Архетипы формы из языка агента (путь Б, см. DECISIONS) ────────
+  // Аналитик описывает граф топологическим словарём («хаб», «повис на
+  // одном ребре», «раскол», «замыкаются в кольцо») — по 29 кэшированным
+  // анализам маркеры срабатывают в 25 из 29. Но по 3–4 сразу, поэтому НЕ
+  // «маркер → отдельная картинка», а каждый маркер — ДЕФОРМАЦИЯ поверх
+  // кластерной композиции; эффекты складываются, не конфликтуя. «Мост»
+  // сознательно не используется: он в 23/29 текстов и ничего не различает.
+  // Нет маркеров → нет деформаций, картина остаётся как была.
+  const tLow = text.toLowerCase();
+  const mods = {
+    hub:      /(хаб|hub|центр|ядро|core|стянул|притягивает|сходятся|доминир)/.test(tLow),
+    isolated: /(одино|изолир|повис|на грани|выпаден|отдельно|не вошёл|не вошел|оторван|сирот|isolat|lonely|dangl)/.test(tLow),
+    split:    /(раскол|рассека|разрыв|разлом|расход|расщеп|распад|трещин|разделя|split|fracture|rift)/.test(tLow),
+    cycle:    /(треугольник|цикл|кольц|замкнут|круг|петл|loop|возвраща|triangle|ring|circle)/.test(tLow),
+  };
+  const mh = ucHash(text + '_mods'); // общий сид решений модификаторов
+
   // Центры кластеров: базовые углы разложены равномерно (чтобы два центра
   // не слиплись случайно), джиттер угла и радиус — из хэша ПРЕДЛОЖЕНИЯ,
   // то есть композиция детерминирована содержанием, не только длиной.
+  // Модификатор cycle: «замкнутость» — центры садятся на общее кольцо
+  // (одинаковый радиус, малый джиттер) — глазом читается как контур/петля.
   const clusters = [];
   for (let k = 0; k < K; k++) {
     const src = sentences[k % Math.max(1, sentences.length)] || (text + '_c' + k);
     const ch = ucHash(src + '_c' + k);
     const baseA = (Math.PI * 2 * k) / K;
-    const jitA = ((ch % 1000) / 1000 - 0.5) * 1.0;            // ±0.5 рад
-    const cr = (0.12 + ((ch >>> 10) % 200) / 1000) * W;       // 0.12–0.32 W от центра
+    const jitA = ((ch % 1000) / 1000 - 0.5) * (mods.cycle ? 0.4 : 1.0);
+    const cr = mods.cycle
+      ? 0.28 * W                                          // кольцо: общий радиус
+      : (0.12 + ((ch >>> 10) % 200) / 1000) * W;          // 0.12–0.32 W от центра
     const spread = (0.09 + ((ch >>> 20) % 80) / 1000) * W;    // 0.09–0.17 W — размер сгустка
     // Вес кластера ∝ длине предложения: длинная мысль — заметнее сгусток.
     const weight = sentences.length ? (lens[k % lens.length] || meanLen || 1) : 1;
@@ -2213,6 +2242,21 @@ function buildNetworkAnalysisImage() {
       cy: H / 2 + Math.sin(baseA + jitA) * cr * 0.92, // тот же лёгкий эллипс
       spread, weight,
     });
+  }
+
+  // Модификатор hub: «центр притяжения» — сильнейший кластер тяжелеет
+  // (собирает больше точек и уплотняется), остальные центры подтягиваются
+  // к нему на пятую часть расстояния. Одна доминанта с окружением.
+  if (mods.hub && clusters.length > 1) {
+    let dom = clusters[0];
+    for (const c of clusters) if (c.weight > dom.weight) dom = c;
+    dom.weight *= 2.2;
+    dom.spread *= 0.8;
+    for (const c of clusters) {
+      if (c === dom) continue;
+      c.cx += (dom.cx - c.cx) * 0.2;
+      c.cy += (dom.cy - c.cy) * 0.2;
+    }
   }
   const wSum = clusters.reduce((a, c) => a + c.weight, 0) || 1;
 
@@ -2240,6 +2284,39 @@ function buildNetworkAnalysisImage() {
     pts.push({ x: cx, y: cy, size, h });
   }
 
+  // Модификатор split: «раскол» — пустой коридор через картину. Линия
+  // разлома проходит через центр под детерминированным углом; точки,
+  // попавшие в полосу, выталкиваются к её краю, а нити паутины через
+  // разлом не прокладываются (см. цикл связей ниже). Читается как трещина.
+  const splitA = (mh % 6283) / 1000;                 // угол разлома
+  const splitNx = -Math.sin(splitA), splitNy = Math.cos(splitA); // нормаль к линии
+  const splitGap = 0.055 * W;                        // полуширина коридора
+  const splitDist = (x, y) => (x - W / 2) * splitNx + (y - H / 2) * splitNy;
+  if (mods.split) {
+    const m = 20 * dpr;
+    for (const p of pts) {
+      const d = splitDist(p.x, p.y);
+      if (Math.abs(d) < splitGap) {
+        const push = (d >= 0 ? 1 : -1) * (splitGap - Math.abs(d));
+        p.x = Math.min(W - m, Math.max(m, p.x + splitNx * push));
+        p.y = Math.min(H - m, Math.max(m, p.y + splitNy * push));
+      }
+    }
+  }
+
+  // Модификатор isolated: «повис на одном ребре» — одна точка уходит на
+  // дальний край и держится за тело графа единственной нитью (рисуется
+  // после паутины; из общего цикла связей она исключена).
+  let isoIdx = -1;
+  if (mods.isolated && pts.length > 3) {
+    isoIdx = mh % pts.length;
+    const ia = ((mh >>> 8) % 6283) / 1000;
+    const m = 20 * dpr;
+    const p = pts[isoIdx];
+    p.x = Math.min(W - m, Math.max(m, W / 2 + Math.cos(ia) * 0.44 * W));
+    p.y = Math.min(H - m, Math.max(m, H / 2 + Math.sin(ia) * 0.44 * W * 0.92));
+  }
+
   // связи между точками, что оказались близко — тонкая паутина.
   // Порог связывания и яркость линий теперь отражают РЕАЛЬНУЮ связность
   // Сети в момент этого анализа (связей на узел, снимок _netSnapshot из
@@ -2257,14 +2334,37 @@ function buildNetworkAnalysisImage() {
   ctx.lineWidth = 1 * dpr;
   const threshold = W * (0.09 + 0.09 * (density / 2)); // 0.09–0.18 W
   for (let i = 0; i < pts.length; i++) {
+    if (i === isoIdx) continue; // одинокая точка — вне общей паутины
     for (let j = i + 1; j < pts.length; j++) {
+      if (j === isoIdx) continue;
       const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
-      if (Math.hypot(dx, dy) < threshold) {
-        ctx.beginPath();
-        ctx.moveTo(pts[i].x, pts[i].y);
-        ctx.lineTo(pts[j].x, pts[j].y);
-        ctx.stroke();
-      }
+      if (Math.hypot(dx, dy) >= threshold) continue;
+      // через разлом нити не тянутся: концы по разные стороны — пропуск
+      if (mods.split && splitDist(pts[i].x, pts[i].y) * splitDist(pts[j].x, pts[j].y) < 0) continue;
+      ctx.beginPath();
+      ctx.moveTo(pts[i].x, pts[i].y);
+      ctx.lineTo(pts[j].x, pts[j].y);
+      ctx.stroke();
+    }
+  }
+
+  // Единственная нить одинокой точки — к ближайшей соседке, чуть ярче
+  // общей паутины: ребро, на котором всё держится, должно быть заметно.
+  if (isoIdx >= 0) {
+    const p = pts[isoIdx];
+    let best = -1, bd = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      if (i === isoIdx) continue;
+      const d = Math.hypot(pts[i].x - p.x, pts[i].y - p.y);
+      if (d < bd) { bd = d; best = i; }
+    }
+    if (best >= 0 && Number.isFinite(bd)) {
+      ctx.strokeStyle = 'rgba(0,255,136,' + Math.min(0.22, webAlpha * 2).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(pts[best].x, pts[best].y);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(0,255,136,' + webAlpha.toFixed(3) + ')'; // вернуть общий стиль
     }
   }
 
