@@ -2127,6 +2127,37 @@ let _netImgBgUrl = '';   // ЛЁГКАЯ копия (только созвезд
                          // второго акта; полный PNG под анимацией краула дёргает Safari
 
 // Тяжёлая часть (canvas → PNG → File) выполняется заранее, в момент
+// ── Настроение картины по характеру анализа (angle) ──────────────────
+// Утверждено глазами на palette-test 14.07: оттенок остаётся в зелёной
+// семье (подпись проекта не ломаем), работу делают свет и линии. Пустой
+// характер ('') — байт в байт прежняя картина: hue 152 / sat 100 /
+// light 50 == rgba(0,255,136), все множители 1. Фон, подвал и подпись
+// НЕ окрашиваются — документальная часть остаётся фирменной.
+const UC_MOODS = {
+  '': { hue: 152, sat: 100, light: 50,
+        glowMul: 1, sizeMul: 1, sizeVar: 1,
+        lineWidthMul: 1, lineAlphaMul: 1, thresholdMul: 1, lineJitter: 0 },
+  practical: { // в холод к бирюзе; тоньше и чётче линии, точки ровнее — «чертёжность»
+        hue: 167, sat: 95, light: 50,
+        glowMul: 0.8, sizeMul: 0.9, sizeVar: 0.5,
+        lineWidthMul: 0.85, lineAlphaMul: 1.15, thresholdMul: 0.9, lineJitter: 0 },
+  philosophical: { // глубже и темнее; свечение сдержанное, редкие дальние связи
+        hue: 157, sat: 80, light: 36,
+        glowMul: 0.95, sizeMul: 1.05, sizeVar: 0.8,
+        lineWidthMul: 0.85, lineAlphaMul: 0.65, thresholdMul: 1.25, lineJitter: 0 },
+  emotional: { // в тепло; ярче свечение, «пульс» размеров, нить от нити отличается
+        hue: 137, sat: 100, light: 54,
+        glowMul: 1.25, sizeMul: 1, sizeVar: 1.8,
+        lineWidthMul: 1, lineAlphaMul: 1, thresholdMul: 1, lineJitter: 0.6 },
+  connections: { // точки тише и мельче — паутина сама герой картины
+        hue: 152, sat: 100, light: 50,
+        glowMul: 0.55, sizeMul: 0.6, sizeVar: 0.6,
+        lineWidthMul: 1.3, lineAlphaMul: 1.8, thresholdMul: 1.15, lineJitter: 0 },
+};
+function ucMoodHsla(mood, a) {
+  return 'hsla(' + mood.hue + ',' + mood.sat + '%,' + mood.light + '%,' + a + ')';
+}
+
 // появления кнопки, а НЕ в обработчике тапа. Причина — iOS: если между
 // жестом и navigator.share() проходит заметное время (toDataURL на
 // большом канвасе — сотни мс), Safari считает жест протухшим и молча
@@ -2136,6 +2167,10 @@ function buildNetworkAnalysisImage() {
   _netImgBgUrl = '';
   const text = String(_oracleFullText || '').trim();
   if (!text) return;
+  // Настроение — от ВЫБРАННОГО характера. Текст с ~той же вероятностью
+  // сгенерирован под ним же (angle в ключе кэша воркера); узкая щель —
+  // смена характера при живом кэше — художественно простительна.
+  const mood = UC_MOODS[getCharacter()] || UC_MOODS[''];
   const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
   const dpr = window.devicePixelRatio || 1;
 
@@ -2329,10 +2364,10 @@ function buildNetworkAnalysisImage() {
     ? snap.conns / snap.nodes : NaN;
   if (!Number.isFinite(density)) density = 0.5;   // нет данных → нейтральная середина
   density = Math.min(2, Math.max(0, density));    // кламп: 0..2 связей на узел
-  const webAlpha = 0.06 + 0.05 * (density / 2);   // 0.06–0.11
-  ctx.strokeStyle = 'rgba(0,255,136,' + webAlpha.toFixed(3) + ')';
-  ctx.lineWidth = 1 * dpr;
-  const threshold = W * (0.09 + 0.09 * (density / 2)); // 0.09–0.18 W
+  const webAlpha = (0.06 + 0.05 * (density / 2)) * mood.lineAlphaMul; // база 0.06–0.11
+  ctx.strokeStyle = ucMoodHsla(mood, webAlpha.toFixed(3));
+  ctx.lineWidth = 1 * dpr * mood.lineWidthMul;
+  const threshold = W * (0.09 + 0.09 * (density / 2)) * mood.thresholdMul; // база 0.09–0.18 W
   for (let i = 0; i < pts.length; i++) {
     if (i === isoIdx) continue; // одинокая точка — вне общей паутины
     for (let j = i + 1; j < pts.length; j++) {
@@ -2341,6 +2376,12 @@ function buildNetworkAnalysisImage() {
       if (Math.hypot(dx, dy) >= threshold) continue;
       // через разлом нити не тянутся: концы по разные стороны — пропуск
       if (mods.split && splitDist(pts[i].x, pts[i].y) * splitDist(pts[j].x, pts[j].y) < 0) continue;
+      // эмоциональный: нить от нити отличается — альфа дрожит по хэшу пары
+      if (mood.lineJitter > 0) {
+        const jh = (ucHash(i + '_' + j + '_j') % 1000) / 1000;
+        const a = Math.max(0.01, webAlpha * (1 + (jh - 0.5) * 2 * mood.lineJitter));
+        ctx.strokeStyle = ucMoodHsla(mood, a.toFixed(3));
+      }
       ctx.beginPath();
       ctx.moveTo(pts[i].x, pts[i].y);
       ctx.lineTo(pts[j].x, pts[j].y);
@@ -2359,27 +2400,31 @@ function buildNetworkAnalysisImage() {
       if (d < bd) { bd = d; best = i; }
     }
     if (best >= 0 && Number.isFinite(bd)) {
-      ctx.strokeStyle = 'rgba(0,255,136,' + Math.min(0.22, webAlpha * 2).toFixed(3) + ')';
+      ctx.strokeStyle = ucMoodHsla(mood, Math.min(0.22, webAlpha * 2).toFixed(3));
       ctx.beginPath();
       ctx.moveTo(p.x, p.y);
       ctx.lineTo(pts[best].x, pts[best].y);
       ctx.stroke();
-      ctx.strokeStyle = 'rgba(0,255,136,' + webAlpha.toFixed(3) + ')'; // вернуть общий стиль
+      ctx.strokeStyle = ucMoodHsla(mood, webAlpha.toFixed(3)); // вернуть общий стиль
     }
   }
 
-  // сами точки — мягкое свечение
-  pts.forEach(p => {
-    const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 4);
-    glow.addColorStop(0, 'rgba(0,255,136,0.9)');
-    glow.addColorStop(1, 'rgba(0,255,136,0)');
+  // сами точки — мягкое свечение; размер и свет — от настроения
+  pts.forEach((p, idx) => {
+    const jh = mood.sizeVar !== 1 ? (ucHash(idx + '_sv') % 1000) / 1000 : 0.5;
+    const sizeJ = Math.max(0.4, 1 + (jh - 0.5) * (mood.sizeVar - 1)); // «пульс» размеров
+    const size = p.size * mood.sizeMul * sizeJ;
+    const glowR = size * 4 * mood.glowMul;
+    const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowR);
+    glow.addColorStop(0, ucMoodHsla(mood, 0.9));
+    glow.addColorStop(1, ucMoodHsla(mood, 0));
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size * 4, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = 'rgba(230,255,240,0.95)';
     ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
     ctx.fill();
   });
 
