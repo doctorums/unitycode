@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+  <!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
@@ -731,7 +731,7 @@
       <!-- АДДИТИВНО: картина анализа Сети во всё поле вывода. Проявляется
            ПОСЛЕ фейда напечатанного текста, и краул идёт уже поверх неё
            (см. startOracleOutro). Только для анализа Сети (savable). -->
-      <div id="oracle-bg" style="display:none;position:absolute;inset:0;z-index:0;background-size:cover;background-position:center;opacity:0;transition:opacity 2.2s ease;transform:translateZ(0);will-change:opacity;"></div>
+      <div id="oracle-bg" style="display:none;position:absolute;inset:0;z-index:0;background-size:cover;background-position:center;opacity:0;transform:translateZ(0);will-change:opacity;"></div>
       <div class="oracle-text" id="oracle-text"></div>
     </div>
     <button class="uzor-save-btn" id="oracle-save-btn" onclick="saveNetworkAnalysisImage()" style="display:none;">
@@ -768,7 +768,14 @@ let _oracleSeq = 0; // версия сессии печати: отменяет 
 let _oracleFullText = ''; // полный текст текущего ответа — нужен для тапа-прерывания
 let _oracleSavable = false; // сохранение картинки доступно только для анализа Сети (collective)
 let _outroTimers = [];
-function clearOutro() { _outroTimers.forEach(clearTimeout); _outroTimers = []; }
+let _idleTimer = null;   // перезапуск ритуала после того, как человек убрал руки
+let _idleDisarm = null;  // снятие слушателей idle — вызывается из clearOutro
+function clearOutro() {
+  _outroTimers.forEach(clearTimeout); _outroTimers = [];
+  if (_idleTimer) { clearTimeout(_idleTimer); _idleTimer = null; }
+  // слушатели idle иначе копились бы: окно не удаляется, а переиспользуется
+  if (_idleDisarm) { _idleDisarm(); _idleDisarm = null; }
+}
 
 function resetOracleText(textEl) {
   textEl.classList.remove('breathing', 'fading', 'crawl');
@@ -776,10 +783,15 @@ function resetOracleText(textEl) {
   textEl.style.removeProperty('position');
   textEl.style.removeProperty('opacity');
   textEl.style.removeProperty('transition');
-  // АДДИТИВНО: подложка второго акта гаснет при любом сбросе текста —
-  // прерывание тапом, новое открытие, новая печать
+  // АДДИТИВНО: картина второго плана гаснет при любом сбросе текста —
+  // прерывание тапом, новое открытие, новая печать. Снимаем и transition,
+  // иначе при прерывании она будет медленно таять вместо мгновенного ухода.
   const bg = document.getElementById('oracle-bg');
-  if (bg) { bg.style.opacity = '0'; bg.style.display = 'none'; }
+  if (bg) {
+    bg.style.removeProperty('transition');
+    bg.style.opacity = '0';
+    bg.style.display = 'none';
+  }
 }
 
 function openOracle(label, savable) {
@@ -891,7 +903,12 @@ function startOracleOutro(mySeq, fullText) {
   clearOutro();
   const alive = () => mySeq === _oracleSeq && document.getElementById('oracle').classList.contains('open');
 
-  // 1) постоял 15с → фейд-аут текста (плавно, 3с) через inline-стили
+  // Стояние перед началом ритуала. Раньше было 15с, потому что это был
+  // ЕДИНСТВЕННЫЙ шанс прочитать текст до того, как он начнёт таять. Сейчас
+  // не так: тап-прерывание возвращает текст и отдаёт скролл человеку, а
+  // кнопка сохранения уносит полный текст в подвале картинки. Стояние стало
+  // просто паузой перед кино — для паузы 15с многовато.
+  const HOLD = 8000;
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     textEl.classList.remove('breathing');   // снять дыхание (animation)
@@ -899,37 +916,52 @@ function startOracleOutro(mySeq, fullText) {
     textEl.style.transition = 'opacity 3s ease';
     void textEl.offsetHeight;               // форс reflow — браузер запомнил opacity:1
     textEl.style.opacity = '0';             // теперь плавно поедет к 0 за 3с
-  }, 15000));
+  }, HOLD));
 
   // 2) фейд завершился (3с) → для анализа Сети из темноты проявляется
-  //    картина во всё поле вывода (2.2с). Для остальных окон — ничего,
-  //    пауза как была.
+  //    картина во всё поле вывода. Для остальных окон — ничего, пауза как была.
+  const BG_FADE = 3.5; // секунды: медленное, спокойное проявление
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     if (!_oracleSavable || !_netImgBgUrl) return; // не анализ Сети / картина не собралась
     const bg = document.getElementById('oracle-bg');
     if (!bg) return;
+    // ВАЖНО: вьюпорт сейчас проскроллен вниз (typeOracle досктроллил его к
+    // концу текста), а подложка absolute/inset:0 скроллится ВМЕСТЕ с
+    // содержимым — иначе виден только её верхний край, а потом «дёрг» на
+    // весь экран, когда краул сбрасывает scrollTop. Сбрасываем ЗАРАНЕЕ.
+    const vp = document.getElementById('oracle-viewport');
+    if (vp) { vp.scrollTop = 0; vp.style.overflow = 'hidden'; }
+    // Мусор после фейд-аута: фейд кончается ровно в этот тик, и остатки
+    // полупрозрачных строк успевают лечь на проявляющуюся картину. Чистим.
+    textEl.textContent = '';
+    textEl.style.removeProperty('transition');
     // Маленькая квадратная копия + вуаль CSS-градиентом, чтобы краул поверх
     // читался (градиент над МАЛЕНЬКОЙ картинкой Safari тянет без проблем;
     // полный PNG в background под анимацией он дёргает или не рисует вовсе)
+    bg.style.transition = 'opacity ' + BG_FADE + 's ease';
     bg.style.backgroundImage =
       'linear-gradient(rgba(2,8,6,0.5), rgba(2,8,6,0.5)), url(' + _netImgBgUrl + ')';
     bg.style.display = 'block';
     void bg.offsetHeight;      // форс reflow — transition opacity отработает
     bg.style.opacity = '1';
-  }, 15000 + 3000));
+  }, HOLD + 3000));
 
-  // 3) пауза 1.5с → текст ползёт снизу вверх (краул) — теперь ПОВЕРХ картины
+  // 3) картина полностью проявилась + пауза 1.5с → текст ползёт снизу вверх
+  //    (краул) — теперь ПОВЕРХ картины. Для окон без картины пауза та же,
+  //    что и раньше: 1.5с после фейда.
   // Скорость краула по длине текста. Делитель меньше = быстрее.
   // Минимум 14с (короткий текст), потолка НЕТ — длинный текст (например,
   // когда у графа много связей и анализ растёт на пару абзацев) получает
   // пропорционально больше времени, иначе текст пролетает слишком быстро
   // и кажется, что часть «не показали», хотя технически всё прошло.
   const crawlDur = Math.max(14, Math.round(String(fullText).length / 15));
+  const hasPicture = _oracleSavable; // ждать проявления картины есть смысл только тут
+  const crawlAt = HOLD + 3000 + (hasPicture ? BG_FADE * 1000 : 0) + 1500;
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     const vp = document.getElementById('oracle-viewport');
-    if (vp) { vp.scrollTop = 0; vp.style.overflow = 'hidden'; } // только теперь — для чистого краула
+    if (vp) { vp.scrollTop = 0; vp.style.overflow = 'hidden'; } // для окон без картины — здесь
     textEl.classList.remove('fading', 'breathing');
     textEl.style.removeProperty('transition');  // убрать фейд-переход
     textEl.style.removeProperty('opacity');     // вернуть видимость (краул сам ставит opacity)
@@ -937,13 +969,13 @@ function startOracleOutro(mySeq, fullText) {
     textEl.style.setProperty('--crawl-dur', crawlDur + 's');
     void textEl.offsetHeight;          // форс reflow перед стартом анимации
     textEl.classList.add('crawl');     // поехал снизу вверх сплошным потоком
-  }, 15000 + 3000 + 1500));
+  }, crawlAt));
 
   // 4) краул закончился → окно схлопывается в центр
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     closeOracle();
-  }, 15000 + 3000 + 1500 + crawlDur * 1000 + 500));
+  }, crawlAt + crawlDur * 1000 + 500));
 }
 
 // Тап в зону текста после допечатки: если уже запущен ритуал исчезновения
@@ -951,7 +983,7 @@ function startOracleOutro(mySeq, fullText) {
 // на место и отдаём скролл в руки человеку. Во время самой печати или
 // если ритуал ещё не запущен — ничего не делает.
 function interruptOracleOutro() {
-  if (!_outroTimers.length) return; // нечего прерывать
+  if (!_outroTimers.length && !_idleTimer) return; // нечего прерывать
   clearOutro();
   const textEl = document.getElementById('oracle-text');
   const vp = document.getElementById('oracle-viewport');
@@ -962,6 +994,47 @@ function interruptOracleOutro() {
     vp.style.overflowY = 'auto'; // явно, не надеясь на снятие инлайна — гарантирует скролл
     vp.scrollTop = 0;            // читаем текст сначала, а не с произвольной точки краула
   }
+  armOracleIdleRestart();        // руки убрал — ритуал продолжится сам
+}
+
+// АДДИТИВНО: непрерывность ритуала. Раньше тап убивал кино насовсем: окно
+// просто стояло до нажатия «закрыть». Теперь тап = пауза, а не отмена —
+// человек читает и листает сколько нужно, а как только перестал трогать
+// экран на IDLE секунд, ритуал запускается заново с начала (стояние → фейд
+// → картина → краул → закрытие). Тап во время нового ритуала снова его
+// паузит — цикл можно повторять бесконечно, ничего не теряется.
+function armOracleIdleRestart() {
+  const IDLE = 15000; // тишины достаточно, чтобы понять: человек дочитал
+  const win = document.querySelector('.oracle-window');
+  if (!win) return;
+  const mySeq = _oracleSeq;
+  const alive = () => mySeq === _oracleSeq && document.getElementById('oracle').classList.contains('open');
+
+  const disarm = () => {
+    win.removeEventListener('touchstart', bump);
+    win.removeEventListener('scroll', bump, true); // scroll всплывает только в capture
+    win.removeEventListener('mousedown', bump);
+    win.removeEventListener('wheel', bump);
+  };
+
+  // Любое касание/скролл/колесо — отодвигают перезапуск на полный IDLE
+  function bump() {
+    if (_idleTimer) clearTimeout(_idleTimer);
+    _idleTimer = setTimeout(fire, IDLE);
+  }
+
+  function fire() {
+    _idleTimer = null;
+    if (!alive()) { clearOutro(); return; }
+    startOracleOutro(mySeq, _oracleFullText); // ритуал с начала; его clearOutro снимет слушатели
+  }
+
+  win.addEventListener('touchstart', bump, { passive: true });
+  win.addEventListener('scroll', bump, true);
+  win.addEventListener('mousedown', bump);
+  win.addEventListener('wheel', bump, { passive: true });
+  _idleDisarm = disarm;
+  _idleTimer = setTimeout(fire, IDLE);
 }
 
 function showOracleError(msg) {
