@@ -393,6 +393,7 @@
       position: absolute;
       left: 0; right: 0;
       top: 0;
+      z-index: 1;                         /* поверх подложки-картины второго акта */
       opacity: 1;
       will-change: transform;
       transform: translateY(60vh);        /* старт: ниже видимой области */
@@ -727,6 +728,10 @@
   <div class="oracle-window">
     <div class="oracle-label" id="oracle-label" data-i18n="implant.labelNetPattern">// НАБЛЮДЕНИЕ СЕТИ</div>
     <div class="oracle-viewport" id="oracle-viewport">
+      <!-- АДДИТИВНО: подложка второго акта — картина анализа во всё поле,
+           поверх неё вторым проходом ползёт текст. Показывается только
+           после первого краула (см. startOracleSecondAct). -->
+      <div id="oracle-bg" style="display:none;position:absolute;inset:0;z-index:0;background-size:cover;background-position:top center;opacity:0;transition:opacity 2.2s ease;"></div>
       <div class="oracle-text" id="oracle-text"></div>
     </div>
     <!-- АДДИТИВНО: превью картины анализа — видно ДО сохранения. Контейнер
@@ -777,6 +782,10 @@ function resetOracleText(textEl) {
   textEl.style.removeProperty('position');
   textEl.style.removeProperty('opacity');
   textEl.style.removeProperty('transition');
+  // АДДИТИВНО: подложка второго акта гаснет при любом сбросе текста —
+  // прерывание тапом, новое открытие, новая печать
+  const bg = document.getElementById('oracle-bg');
+  if (bg) { bg.style.opacity = '0'; bg.style.display = 'none'; }
 }
 
 function openOracle(label, savable) {
@@ -923,11 +932,49 @@ function startOracleOutro(mySeq, fullText) {
     textEl.classList.add('crawl');     // поехал снизу вверх сплошным потоком
   }, 15000 + 3000 + 1500));
 
-  // 3) краул закончился → окно схлопывается в центр
+  // 3) краул закончился → для анализа Сети — второй акт (картина + второй
+  //    проход текста), для остальных — окно схлопывается в центр как раньше
+  _outroTimers.push(setTimeout(() => {
+    if (!alive()) return;
+    if (_oracleSavable && _netImgDataUrl) { startOracleSecondAct(mySeq, fullText, crawlDur); return; }
+    closeOracle();
+  }, 15000 + 3000 + 1500 + crawlDur * 1000 + 500));
+}
+
+// АДДИТИВНО: второй акт — только для анализа Сети (savable) и только если
+// картина успела собраться. Первый проход текста ушёл за верх → из темноты
+// проявляется картина во всё поле → поверх неё текст выползает второй раз →
+// окно закрывается. Тап в любой момент = interruptOracleOutro (все таймеры
+// в _outroTimers, alive() проверяет seq) — возврат к читаемому тексту,
+// превью и кнопке, как без второго акта.
+function startOracleSecondAct(mySeq, fullText, crawlDur) {
+  const textEl = document.getElementById('oracle-text');
+  const bg = document.getElementById('oracle-bg');
+  const alive = () => mySeq === _oracleSeq && document.getElementById('oracle').classList.contains('open');
+  if (!bg) { closeOracle(); return; }
+
+  // Картина во всё поле + лёгкая тёмная вуаль, чтобы текст читался поверх
+  bg.style.backgroundImage =
+    'linear-gradient(rgba(2,8,6,0.5), rgba(2,8,6,0.5)), url(' + _netImgDataUrl + ')';
+  bg.style.display = 'block';
+  void bg.offsetHeight;        // форс reflow — transition opacity отработает
+  bg.style.opacity = '1';
+
+  // 2.6с на проявление картины в тишине, затем второй проход текста
+  _outroTimers.push(setTimeout(() => {
+    if (!alive()) return;
+    textEl.classList.remove('crawl');  // сброс завершённой анимации
+    textEl.textContent = fullText;
+    textEl.style.setProperty('--crawl-dur', crawlDur + 's');
+    void textEl.offsetHeight;          // форс reflow — краул стартует заново
+    textEl.classList.add('crawl');
+  }, 2600));
+
+  // второй проход завершён → закрытие, как в первом акте
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
     closeOracle();
-  }, 15000 + 3000 + 1500 + crawlDur * 1000 + 500));
+  }, 2600 + crawlDur * 1000 + 800));
 }
 
 // Тап в зону текста после допечатки: если уже запущен ритуал исчезновения
@@ -2026,6 +2073,7 @@ function saveUzorImage() {
 // Одна и та же интерпретация Сети всегда даёт одну и ту же картину —
 // это не иллюстрация случайности, а визуальный отпечаток текста.
 let _netImgFile = null;  // PNG анализа Сети, построенный ЗАРАНЕЕ — см. buildNetworkAnalysisImage
+let _netImgDataUrl = ''; // тот же кадр как dataUrl — для превью и подложки второго акта
 
 // Тяжёлая часть (canvas → PNG → File) выполняется заранее, в момент
 // появления кнопки, а НЕ в обработчике тапа. Причина — iOS: если между
@@ -2034,6 +2082,7 @@ let _netImgFile = null;  // PNG анализа Сети, построенный 
 // не открывает шторку. По тапу должна остаться только выдача готового.
 function buildNetworkAnalysisImage() {
   _netImgFile = null;
+  _netImgDataUrl = '';
   const text = String(_oracleFullText || '').trim();
   if (!text) return;
   const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
@@ -2216,6 +2265,7 @@ function buildNetworkAnalysisImage() {
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     const blob = new Blob([arr], { type: 'image/png' });
     _netImgFile = new File([blob], 'unitycode-set-analiz.png', { type: 'image/png' });
+    _netImgDataUrl = dataUrl;
     // АДДИТИВНО: превью в окно оракула — тот же dataUrl, что ушёл в File.
     // Человек видит, ЧТО сохраняет, до шторки. Тап по превью = тап по кнопке.
     try {
@@ -2224,6 +2274,7 @@ function buildNetworkAnalysisImage() {
     } catch (_) { /* превью не критично */ }
   } catch (e) {
     _netImgFile = null;
+    _netImgDataUrl = '';
     try { _netImgDiag('пресборка упала: ' + (e && e.name) + ' ' + (e && e.message)); } catch (_) {}
   }
 }
