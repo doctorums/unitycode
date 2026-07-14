@@ -728,17 +728,11 @@
   <div class="oracle-window">
     <div class="oracle-label" id="oracle-label" data-i18n="implant.labelNetPattern">// НАБЛЮДЕНИЕ СЕТИ</div>
     <div class="oracle-viewport" id="oracle-viewport">
-      <!-- АДДИТИВНО: подложка второго акта — картина анализа во всё поле,
-           поверх неё вторым проходом ползёт текст. Показывается только
-           после первого краула (см. startOracleSecondAct). -->
+      <!-- АДДИТИВНО: картина анализа Сети во всё поле вывода. Проявляется
+           ПОСЛЕ фейда напечатанного текста, и краул идёт уже поверх неё
+           (см. startOracleOutro). Только для анализа Сети (savable). -->
       <div id="oracle-bg" style="display:none;position:absolute;inset:0;z-index:0;background-size:cover;background-position:center;opacity:0;transition:opacity 2.2s ease;transform:translateZ(0);will-change:opacity;"></div>
       <div class="oracle-text" id="oracle-text"></div>
-    </div>
-    <!-- АДДИТИВНО: превью картины анализа — видно ДО сохранения. Контейнер
-         фиксированного размера: место резервируется вместе с кнопкой, до
-         фиксации высоты окна, картинка вливается когда PNG дособерётся. -->
-    <div id="netimg-preview-wrap" style="display:none;width:180px;height:180px;margin:0.9rem auto 0.1rem;border:1px solid rgba(0,255,136,0.25);background:#04100e;overflow:hidden;cursor:pointer;" onclick="saveNetworkAnalysisImage()">
-      <img id="netimg-preview" alt="" style="display:block;width:100%;height:100%;">
     </div>
     <button class="uzor-save-btn" id="oracle-save-btn" onclick="saveNetworkAnalysisImage()" style="display:none;">
       <span data-i18n="implant.saveNetAnalysis">[ Сохранить анализ ]</span>
@@ -810,8 +804,6 @@ function openOracle(label, savable) {
   closeBtn.classList.remove('show');
   _oracleSavable = !!savable;
   if (saveBtn) saveBtn.style.display = 'none'; // покажется в typeOracle только когда допечатано И savable
-  const pw = document.getElementById('netimg-preview-wrap');
-  if (pw) pw.style.display = 'none'; // превью тоже прячем до пересборки
   ov.classList.add('open');
 }
 
@@ -843,11 +835,8 @@ function typeOracle(text) {
       if (_oracleSavable) {
         const saveBtn = document.getElementById('oracle-save-btn');
         if (saveBtn) saveBtn.style.display = 'block';
-        // место под превью резервируем СЕЙЧАС, до замера/фиксации высоты
-        // окна ниже — иначе картинка, пришедшая после lock, вылезет за него
-        const pw = document.getElementById('netimg-preview-wrap');
-        if (pw) pw.style.display = 'block';
-        // строим PNG сейчас, пока никто не тапнул — к жесту всё готово
+        // строим PNG сейчас, пока никто не тапнул — к жесту всё готово,
+        // и к фейду картина уже есть для проявления во всё поле
         setTimeout(buildNetworkAnalysisImage, 50);
       }
       _oracleTimer = null;
@@ -912,7 +901,25 @@ function startOracleOutro(mySeq, fullText) {
     textEl.style.opacity = '0';             // теперь плавно поедет к 0 за 3с
   }, 15000));
 
-  // 2) фейд завершился (3с) + пауза 1.5с → текст ползёт снизу вверх (краул)
+  // 2) фейд завершился (3с) → для анализа Сети из темноты проявляется
+  //    картина во всё поле вывода (2.2с). Для остальных окон — ничего,
+  //    пауза как была.
+  _outroTimers.push(setTimeout(() => {
+    if (!alive()) return;
+    if (!_oracleSavable || !_netImgBgUrl) return; // не анализ Сети / картина не собралась
+    const bg = document.getElementById('oracle-bg');
+    if (!bg) return;
+    // Маленькая квадратная копия + вуаль CSS-градиентом, чтобы краул поверх
+    // читался (градиент над МАЛЕНЬКОЙ картинкой Safari тянет без проблем;
+    // полный PNG в background под анимацией он дёргает или не рисует вовсе)
+    bg.style.backgroundImage =
+      'linear-gradient(rgba(2,8,6,0.5), rgba(2,8,6,0.5)), url(' + _netImgBgUrl + ')';
+    bg.style.display = 'block';
+    void bg.offsetHeight;      // форс reflow — transition opacity отработает
+    bg.style.opacity = '1';
+  }, 15000 + 3000));
+
+  // 3) пауза 1.5с → текст ползёт снизу вверх (краул) — теперь ПОВЕРХ картины
   // Скорость краула по длине текста. Делитель меньше = быстрее.
   // Минимум 14с (короткий текст), потолка НЕТ — длинный текст (например,
   // когда у графа много связей и анализ растёт на пару абзацев) получает
@@ -923,15 +930,6 @@ function startOracleOutro(mySeq, fullText) {
     if (!alive()) return;
     const vp = document.getElementById('oracle-viewport');
     if (vp) { vp.scrollTop = 0; vp.style.overflow = 'hidden'; } // только теперь — для чистого краула
-    // АДДИТИВНО: с началом краула превью и кнопка гаснут — поле целиком
-    // отдаётся кино (окно залочено, вьюпорт flex:1 займёт их место).
-    // Тап-прерывание (interruptOracleOutro) вернёт их обратно.
-    if (_oracleSavable) {
-      const pw = document.getElementById('netimg-preview-wrap');
-      const sb = document.getElementById('oracle-save-btn');
-      if (pw) pw.style.display = 'none';
-      if (sb) sb.style.display = 'none';
-    }
     textEl.classList.remove('fading', 'breathing');
     textEl.style.removeProperty('transition');  // убрать фейд-переход
     textEl.style.removeProperty('opacity');     // вернуть видимость (краул сам ставит opacity)
@@ -941,58 +939,11 @@ function startOracleOutro(mySeq, fullText) {
     textEl.classList.add('crawl');     // поехал снизу вверх сплошным потоком
   }, 15000 + 3000 + 1500));
 
-  // 3) краул закончился → для анализа Сети — второй акт (картина + второй
-  //    проход текста), для остальных — окно схлопывается в центр как раньше
+  // 4) краул закончился → окно схлопывается в центр
   _outroTimers.push(setTimeout(() => {
     if (!alive()) return;
-    if (_oracleSavable && _netImgBgUrl) { startOracleSecondAct(mySeq, fullText, crawlDur); return; }
     closeOracle();
   }, 15000 + 3000 + 1500 + crawlDur * 1000 + 500));
-}
-
-// АДДИТИВНО: второй акт — только для анализа Сети (savable) и только если
-// картина успела собраться. Первый проход текста ушёл за верх → из темноты
-// проявляется картина во всё поле → поверх неё текст выползает второй раз →
-// окно закрывается. Тап в любой момент = interruptOracleOutro (все таймеры
-// в _outroTimers, alive() проверяет seq) — возврат к читаемому тексту,
-// превью и кнопке, как без второго акта.
-function startOracleSecondAct(mySeq, fullText, crawlDur) {
-  const textEl = document.getElementById('oracle-text');
-  const bg = document.getElementById('oracle-bg');
-  const alive = () => mySeq === _oracleSeq && document.getElementById('oracle').classList.contains('open');
-  if (!bg) { closeOracle(); return; }
-
-  // «Всё поле» — буквально: превью и кнопку прячем на время акта. Окно
-  // залочено по высоте, вьюпорт flex:1 растянется на освободившееся место.
-  // interruptOracleOutro вернёт их обратно.
-  const pw = document.getElementById('netimg-preview-wrap');
-  const sb = document.getElementById('oracle-save-btn');
-  if (pw) pw.style.display = 'none';
-  if (sb) sb.style.display = 'none';
-
-  // Маленькая квадратная копия + вуаль CSS-градиентом, чтобы текст читался
-  // (градиент поверх МАЛЕНЬКОЙ картинки Safari тянет без проблем)
-  bg.style.backgroundImage =
-    'linear-gradient(rgba(2,8,6,0.5), rgba(2,8,6,0.5)), url(' + _netImgBgUrl + ')';
-  bg.style.display = 'block';
-  void bg.offsetHeight;        // форс reflow — transition opacity отработает
-  bg.style.opacity = '1';
-
-  // 2.6с на проявление картины в тишине, затем второй проход текста
-  _outroTimers.push(setTimeout(() => {
-    if (!alive()) return;
-    textEl.classList.remove('crawl');  // сброс завершённой анимации
-    textEl.textContent = fullText;
-    textEl.style.setProperty('--crawl-dur', crawlDur + 's');
-    void textEl.offsetHeight;          // форс reflow — краул стартует заново
-    textEl.classList.add('crawl');
-  }, 2600));
-
-  // второй проход завершён → закрытие, как в первом акте
-  _outroTimers.push(setTimeout(() => {
-    if (!alive()) return;
-    closeOracle();
-  }, 2600 + crawlDur * 1000 + 800));
 }
 
 // Тап в зону текста после допечатки: если уже запущен ритуал исчезновения
@@ -1004,15 +955,8 @@ function interruptOracleOutro() {
   clearOutro();
   const textEl = document.getElementById('oracle-text');
   const vp = document.getElementById('oracle-viewport');
-  resetOracleText(textEl);              // снимает classes breathing/fading/crawl + inline opacity/transition
+  resetOracleText(textEl);              // снимает classes breathing/fading/crawl + inline opacity/transition + гасит картину
   textEl.textContent = _oracleFullText; // на случай, если застали середину фейда/краула
-  // АДДИТИВНО: если второй акт успел спрятать превью и кнопку — вернуть
-  if (_oracleSavable) {
-    const pw = document.getElementById('netimg-preview-wrap');
-    const sb = document.getElementById('oracle-save-btn');
-    if (pw) pw.style.display = 'block';
-    if (sb) sb.style.display = 'block';
-  }
   if (vp) {
     vp.style.removeProperty('overflow');
     vp.style.overflowY = 'auto'; // явно, не надеясь на снятие инлайна — гарантирует скролл
@@ -2098,7 +2042,6 @@ function saveUzorImage() {
 // Одна и та же интерпретация Сети всегда даёт одну и ту же картину —
 // это не иллюстрация случайности, а визуальный отпечаток текста.
 let _netImgFile = null;  // PNG анализа Сети, построенный ЗАРАНЕЕ — см. buildNetworkAnalysisImage
-let _netImgDataUrl = ''; // полный кадр как dataUrl — для превью
 let _netImgBgUrl = '';   // ЛЁГКАЯ копия (только созвездие, 540px, вуаль в кадре) — подложка
                          // второго акта; полный PNG под анимацией краула дёргает Safari
 
@@ -2109,7 +2052,6 @@ let _netImgBgUrl = '';   // ЛЁГКАЯ копия (только созвезд
 // не открывает шторку. По тапу должна остаться только выдача готового.
 function buildNetworkAnalysisImage() {
   _netImgFile = null;
-  _netImgDataUrl = '';
   _netImgBgUrl = '';
   const text = String(_oracleFullText || '').trim();
   if (!text) return;
@@ -2293,13 +2235,11 @@ function buildNetworkAnalysisImage() {
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     const blob = new Blob([arr], { type: 'image/png' });
     _netImgFile = new File([blob], 'unitycode-set-analiz.png', { type: 'image/png' });
-    _netImgDataUrl = dataUrl;
     // АДДИТИВНО: квадратная копия ТОЛЬКО созвездия (без подписи), даунскейл
-    // до 540px, без вуали — единый источник для превью и подложки второго
-    // акта. Полный PNG сюда не годится дважды: в превью 180×180 он даёт
-    // уродливый кроп верхней полосы, а как background под анимацией краула
-    // Safari его либо дёргает, либо молча не рисует (многомегабайтный
-    // dataURL). Маленький квадрат решает оба случая.
+    // до 540px — для проявления картины во всё поле вывода после фейда.
+    // Полный PNG как background под анимацией краула Safari либо дёргает,
+    // либо молча не рисует (многомегабайтный dataURL). Маленький квадрат
+    // решает оба случая; в сохраняемый файл по-прежнему уходит полный кадр.
     try {
       const bgC = document.createElement('canvas');
       const BS = 540;
@@ -2307,16 +2247,9 @@ function buildNetworkAnalysisImage() {
       const bctx = bgC.getContext('2d');
       bctx.drawImage(out, 0, 0, W, H, 0, 0, BS, BS);
       _netImgBgUrl = bgC.toDataURL('image/png');
-    } catch (_) { _netImgBgUrl = ''; /* без копии: превью нет, акт не начнётся */ }
-    // Превью — квадрат в квадрат, картина целиком, без кропа.
-    // Человек видит, ЧТО сохраняет, до шторки. Тап по превью = тап по кнопке.
-    try {
-      const pimg = document.getElementById('netimg-preview');
-      if (pimg && _netImgBgUrl) pimg.src = _netImgBgUrl;
-    } catch (_) { /* превью не критично */ }
+    } catch (_) { _netImgBgUrl = ''; /* без копии картина просто не проявится */ }
   } catch (e) {
     _netImgFile = null;
-    _netImgDataUrl = '';
     _netImgBgUrl = '';
     try { _netImgDiag('пресборка упала: ' + (e && e.name) + ' ' + (e && e.message)); } catch (_) {}
   }
