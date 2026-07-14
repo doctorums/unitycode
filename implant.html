@@ -1282,8 +1282,17 @@ async function runCollectiveAnalysis() {
   try {
     // Берём последние 30 шумов (с id) + пары связей для анализа мостов
     const [nodesRes, connsRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/nodes?select=id,raw_noise,ai_interpretation&order=created_at.desc&limit=30`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/connections?select=from_node_id,to_node_id&status=eq.accepted`, { headers }),
+      // limit=60 — согласован с MAX_NODES в worker-analyze. Было 30 при 34
+      // узлах в базе: аналитик молча не видел 4 самых старых узла, а его
+      // «точные» степени занижались (напр. «Мы в тупике» — 6 связей, агент
+      // видел 5). Срез идёт по created_at.desc, поэтому забывалось всегда
+      // НАЧАЛО Сети. Связи при этом шлются ВСЕ, без лимита.
+      fetch(`${SUPABASE_URL}/rest/v1/nodes?select=id,raw_noise,ai_interpretation&order=created_at.desc&limit=60`, { headers }),
+      // created_by — КТО построил мост: 'linker' (догадка ИИ-Связующего) или
+      // человек. Без этого поля аналитик считал все связи равными фактами и
+      // говорил «Сеть узнаёт себя» о структуре, которую на 70% создал другой
+      // агент. Теперь он знает, на чьей структуре строит вывод.
+      fetch(`${SUPABASE_URL}/rest/v1/connections?select=from_node_id,to_node_id,created_by&status=eq.accepted`, { headers }),
     ]);
     const nodes = await nodesRes.json();
     const conns = await connsRes.json();
