@@ -738,7 +738,7 @@
          фиксированного размера: место резервируется вместе с кнопкой, до
          фиксации высоты окна, картинка вливается когда PNG дособерётся. -->
     <div id="netimg-preview-wrap" style="display:none;width:180px;height:180px;margin:0.9rem auto 0.1rem;border:1px solid rgba(0,255,136,0.25);background:#04100e;overflow:hidden;cursor:pointer;" onclick="saveNetworkAnalysisImage()">
-      <img id="netimg-preview" alt="" style="display:block;width:100%;height:auto;">
+      <img id="netimg-preview" alt="" style="display:block;width:100%;height:100%;">
     </div>
     <button class="uzor-save-btn" id="oracle-save-btn" onclick="saveNetworkAnalysisImage()" style="display:none;">
       <span data-i18n="implant.saveNetAnalysis">[ Сохранить анализ ]</span>
@@ -970,8 +970,10 @@ function startOracleSecondAct(mySeq, fullText, crawlDur) {
   if (pw) pw.style.display = 'none';
   if (sb) sb.style.display = 'none';
 
-  // Лёгкая копия созвездия (вуаль уже в кадре — один слой, без градиента)
-  bg.style.backgroundImage = 'url(' + _netImgBgUrl + ')';
+  // Маленькая квадратная копия + вуаль CSS-градиентом, чтобы текст читался
+  // (градиент поверх МАЛЕНЬКОЙ картинки Safari тянет без проблем)
+  bg.style.backgroundImage =
+    'linear-gradient(rgba(2,8,6,0.5), rgba(2,8,6,0.5)), url(' + _netImgBgUrl + ')';
   bg.style.display = 'block';
   void bg.offsetHeight;        // форс reflow — transition opacity отработает
   bg.style.opacity = '1';
@@ -2292,25 +2294,25 @@ function buildNetworkAnalysisImage() {
     const blob = new Blob([arr], { type: 'image/png' });
     _netImgFile = new File([blob], 'unitycode-set-analiz.png', { type: 'image/png' });
     _netImgDataUrl = dataUrl;
-    // АДДИТИВНО: лёгкая подложка второго акта — ТОЛЬКО квадрат созвездия
-    // (без подписи), даунскейл до 540px, тёмная вуаль вгравирована прямо
-    // в кадр. Один маленький слой вместо «градиент + огромный PNG» —
-    // иначе Safari дёргает краул, перерисовывая гиганта под transform.
+    // АДДИТИВНО: квадратная копия ТОЛЬКО созвездия (без подписи), даунскейл
+    // до 540px, без вуали — единый источник для превью и подложки второго
+    // акта. Полный PNG сюда не годится дважды: в превью 180×180 он даёт
+    // уродливый кроп верхней полосы, а как background под анимацией краула
+    // Safari его либо дёргает, либо молча не рисует (многомегабайтный
+    // dataURL). Маленький квадрат решает оба случая.
     try {
       const bgC = document.createElement('canvas');
       const BS = 540;
       bgC.width = BS; bgC.height = BS;
       const bctx = bgC.getContext('2d');
       bctx.drawImage(out, 0, 0, W, H, 0, 0, BS, BS);
-      bctx.fillStyle = 'rgba(2,8,6,0.5)';
-      bctx.fillRect(0, 0, BS, BS);
       _netImgBgUrl = bgC.toDataURL('image/png');
-    } catch (_) { _netImgBgUrl = ''; /* без подложки акт просто не начнётся */ }
-    // АДДИТИВНО: превью в окно оракула — тот же dataUrl, что ушёл в File.
+    } catch (_) { _netImgBgUrl = ''; /* без копии: превью нет, акт не начнётся */ }
+    // Превью — квадрат в квадрат, картина целиком, без кропа.
     // Человек видит, ЧТО сохраняет, до шторки. Тап по превью = тап по кнопке.
     try {
       const pimg = document.getElementById('netimg-preview');
-      if (pimg) pimg.src = dataUrl;
+      if (pimg && _netImgBgUrl) pimg.src = _netImgBgUrl;
     } catch (_) { /* превью не критично */ }
   } catch (e) {
     _netImgFile = null;
