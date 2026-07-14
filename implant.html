@@ -729,6 +729,12 @@
     <div class="oracle-viewport" id="oracle-viewport">
       <div class="oracle-text" id="oracle-text"></div>
     </div>
+    <!-- АДДИТИВНО: превью картины анализа — видно ДО сохранения. Контейнер
+         фиксированного размера: место резервируется вместе с кнопкой, до
+         фиксации высоты окна, картинка вливается когда PNG дособерётся. -->
+    <div id="netimg-preview-wrap" style="display:none;width:180px;height:180px;margin:0.9rem auto 0.1rem;border:1px solid rgba(0,255,136,0.25);background:#04100e;overflow:hidden;cursor:pointer;" onclick="saveNetworkAnalysisImage()">
+      <img id="netimg-preview" alt="" style="display:block;width:100%;height:auto;">
+    </div>
     <button class="uzor-save-btn" id="oracle-save-btn" onclick="saveNetworkAnalysisImage()" style="display:none;">
       <span data-i18n="implant.saveNetAnalysis">[ Сохранить анализ ]</span>
     </button>
@@ -795,6 +801,8 @@ function openOracle(label, savable) {
   closeBtn.classList.remove('show');
   _oracleSavable = !!savable;
   if (saveBtn) saveBtn.style.display = 'none'; // покажется в typeOracle только когда допечатано И savable
+  const pw = document.getElementById('netimg-preview-wrap');
+  if (pw) pw.style.display = 'none'; // превью тоже прячем до пересборки
   ov.classList.add('open');
 }
 
@@ -826,6 +834,10 @@ function typeOracle(text) {
       if (_oracleSavable) {
         const saveBtn = document.getElementById('oracle-save-btn');
         if (saveBtn) saveBtn.style.display = 'block';
+        // место под превью резервируем СЕЙЧАС, до замера/фиксации высоты
+        // окна ниже — иначе картинка, пришедшая после lock, вылезет за него
+        const pw = document.getElementById('netimg-preview-wrap');
+        if (pw) pw.style.display = 'block';
         // строим PNG сейчас, пока никто не тапнул — к жесту всё готово
         setTimeout(buildNetworkAnalysisImage, 50);
       }
@@ -2204,6 +2216,12 @@ function buildNetworkAnalysisImage() {
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     const blob = new Blob([arr], { type: 'image/png' });
     _netImgFile = new File([blob], 'unitycode-set-analiz.png', { type: 'image/png' });
+    // АДДИТИВНО: превью в окно оракула — тот же dataUrl, что ушёл в File.
+    // Человек видит, ЧТО сохраняет, до шторки. Тап по превью = тап по кнопке.
+    try {
+      const pimg = document.getElementById('netimg-preview');
+      if (pimg) pimg.src = dataUrl;
+    } catch (_) { /* превью не критично */ }
   } catch (e) {
     _netImgFile = null;
     try { _netImgDiag('пресборка упала: ' + (e && e.name) + ' ' + (e && e.message)); } catch (_) {}
@@ -2238,12 +2256,15 @@ function saveNetworkAnalysisImage() {
 
     const canSh = !!(navigator.canShare && navigator.share);
     const canShFiles = canSh && navigator.canShare({ files: [file] });
-    _netImgDiag('файл ' + Math.round(file.size/1024) + 'КБ; share=' + canSh + '; files=' + canShFiles);
 
     if (canShFiles) {
       navigator.share({ files: [file] })
-        .then(() => _netImgDiag('шторка открылась, ок'))
-        .catch(err => _netImgDiag('share отклонён: ' + (err && err.name) + ' ' + (err && err.message)));
+        .then(() => _netImgDiag(''))
+        .catch(err => {
+          // AbortError = человек сам закрыл шторку — это отмена, не сбой
+          if (err && err.name === 'AbortError') { _netImgDiag(''); return; }
+          _netImgDiag('share отклонён: ' + (err && err.name) + ' ' + (err && err.message));
+        });
       return;
     }
     const url = URL.createObjectURL(file);
