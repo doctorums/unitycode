@@ -14,8 +14,113 @@
   // подтверждено диагностикой на устройстве Артёма (28.06).
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
+  // ═══════════════════════════════════════════════════════════════
+  // АДДИТИВНО (14.07): три независимых слоя звуковой вариативности,
+  // каждый — множитель поверх УЖЕ существующих пресетов страниц, не
+  // замена их индивидуальности (petlya остаётся стеклянной, implant —
+  // разреженным, и т.д.). Та же логика, что применена днём к картине
+  // анализа: композиция/плотность/настроение как независимые слои.
+  //   1) время суток — тепло тембра + общая громкость (один узел внизу
+  //      графа, ниже mute — см. initCtx)
+  //   2) характер (angle) — ритм: паузы между событиями, частота удвоений
+  //   3) плотность Сети — интенсивность: как часто вообще что-то звучит
+  // ═══════════════════════════════════════════════════════════════
+
+  // --- 1) Время суток ---------------------------------------------
+  // cutoff — срез lowpass-фильтра в самом низу графа (выше = ярче/полнее).
+  // volMul — общий множитель громкости после masterGain (mute его не трогает).
+  const TIME_MOODS = {
+    night:   { cutoff: 2600,  volMul: 0.65 }, // 0–5:  глуше и тише
+    morning: { cutoff: 6000,  volMul: 0.85 }, // 6–10: мягкое пробуждение
+    day:     { cutoff: 16000, volMul: 1.0  }, // 11–17: полный и светлый
+    evening: { cutoff: 4200,  volMul: 0.9  }, // 18–23: теплее, чуть приглушен
+  };
+  function getTimeMood() {
+    const h = new Date().getHours();
+    const key = h < 6 ? 'night' : h < 11 ? 'morning' : h < 18 ? 'day' : 'evening';
+    return TIME_MOODS[key];
+  }
+
+  // --- 2) Характер (то же меню ⚙, что красит картину анализа) -----
+  // КЛЮЧ ДОЛЖЕН СОВПАДАТЬ с CHAR_KEY в implant.html — источник истины там,
+  // здесь только чтение. Если когда-нибудь переименуешь ключ в implant.html,
+  // не забудь синхронно поправить и тут (иначе звук молча перестанет слышать
+  // выбор персонажа — тот же класс риска, что и version drift).
+  const CHAR_KEY = 'uc_agent_character';
+  const CHARACTER_RHYTHM = {
+    '':              { gapMul: 1.0,  pairMul: 1.0 },  // без изменений — как заложено в пресете страницы
+    practical:       { gapMul: 0.75, pairMul: 0.8  },  // короче паузы, меньше хаоса удвоений — «по делу»
+    philosophical:   { gapMul: 1.5,  pairMul: 0.6  },  // реже и разреженнее — созерцательно
+    emotional:       { gapMul: 0.9,  pairMul: 1.6  },  // чаще удвоения — живее, «пульс»
+    connections:     { gapMul: 0.8,  pairMul: 1.8  },  // акцент на частоте сетевых импульсов
+  };
+  function getCharacterRhythm() {
+    let v = '';
+    try { v = localStorage.getItem(CHAR_KEY) || ''; } catch (e) {}
+    return CHARACTER_RHYTHM[v] || CHARACTER_RHYTHM[''];
+  }
+
+  // --- 3) Плотность Сети --------------------------------------------
+  // netDensity читается ЖИВЬЁМ внутри пресет-функций на каждой итерации —
+  // не только один раз при старте. Если фоновый fetch придёт ПОЗЖЕ, чем
+  // эмбиент уже начал играть с нейтральным значением, следующий цикл всё
+  // равно подхватит новое число — не нужно ничего перезапускать.
+  // Нейтральное значение (1.0 из диапазона 0..2) — на случай оффлайна/сбоя:
+  // эмбиент стартует сразу, без ожидания сети (принцип «работает на любом
+  // канале» — см. DECISIONS.md).
+  let netDensity = 1.0;
+  const DENSITY_CACHE_KEY = 'uc_audio_density_cache';
+  const DENSITY_CACHE_TTL = 10 * 60 * 1000; // 10 минут — не долбить сеть на каждой навигации между страницами
+  // Те же публичные креды, что уже трижды продублированы в petlya/implant/
+  // set.html (anon/publishable-ключ, только чтение через RLS — дублирование
+  // безопасно, но держи в уме при следующей правке доступа).
+  const SB_URL = 'https://lukyyqabkxzrgdixzphs.supabase.co';
+  const SB_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
+
+  function loadNetDensity() {
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(DENSITY_CACHE_KEY) || 'null');
+      if (cached && Number.isFinite(cached.density) && Date.now() - cached.ts < DENSITY_CACHE_TTL) {
+        netDensity = cached.density;
+        return;
+      }
+    } catch (e) { /* битый кэш — просто идём в сеть заново */ }
+
+    const headers = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, Prefer: 'count=exact' };
+    Promise.all([
+      fetch(SB_URL + '/rest/v1/nodes?select=id&limit=1', { headers }),
+      fetch(SB_URL + '/rest/v1/connections?select=id&limit=1', { headers }),
+    ]).then(([nRes, cRes]) => {
+      const nCount = parseInt((nRes.headers.get('content-range') || '').split('/')[1] || '0', 10);
+      const cCount = parseInt((cRes.headers.get('content-range') || '').split('/')[1] || '0', 10);
+      if (!Number.isFinite(nCount) || nCount <= 0) return; // нет данных — остаёмся на нейтральном
+      let d = cCount / nCount;                              // связей на узел, тот же расчёт, что для картины
+      if (!Number.isFinite(d)) return;
+      d = Math.min(2, Math.max(0, d));
+      netDensity = d;
+      try { sessionStorage.setItem(DENSITY_CACHE_KEY, JSON.stringify({ density: d, ts: Date.now() })); } catch (e) {}
+    }).catch(() => { /* сеть недоступна — ambient уже играет на нейтральном значении, это ок */ });
+  }
+
+  // Характер (сессия почти никогда не меняется на лету) × плотность Сети
+  // (может доехать позже — читается свежей на каждый вызов).
+  function getRhythmMul() {
+    const ch = getCharacterRhythm();
+    const d = netDensity; // 0..2
+    const densityGapMul = 1.25 - 0.25 * d; // 0 связей на узел → паузы ×1.25 (реже); 2 → ×0.75 (чаще)
+    const densityVolMul = 0.85 + 0.15 * d; // 0 → ×0.85 (тише); 2 → ×1.15 (громче)
+    return {
+      gapMul: ch.gapMul * densityGapMul,
+      pairMul: ch.pairMul,
+      volMul: densityVolMul,
+    };
+  }
+  // ═══════════════════════════════════════════════════════════════
+
   let ctx = null;
   let masterGain = null;
+  let toneFilter = null;   // время суток: тепло/яркость
+  let timeVolGain = null;  // время суток: общая громкость
   let carrier = null;
   let started = false;
   let muted = localStorage.getItem(LS_KEY) === '1';
@@ -35,7 +140,19 @@
     masterGain = ctx.createGain();
     masterGain.gain.setValueAtTime(0, ctx.currentTime);
     masterGain.gain.linearRampToValueAtTime(muted ? 0 : MASTER_VOL, ctx.currentTime + 1.2);
-    masterGain.connect(ctx.destination);
+
+    // Время суток — один узел ниже masterGain по цепи. mute управляет ТОЛЬКО
+    // masterGain.gain (см. toggleMute) и с этими узлами не конфликтует.
+    const tm = getTimeMood();
+    toneFilter = ctx.createBiquadFilter();
+    toneFilter.type = 'lowpass';
+    toneFilter.frequency.value = tm.cutoff;
+    timeVolGain = ctx.createGain();
+    timeVolGain.gain.value = tm.volMul;
+
+    masterGain.connect(toneFilter);
+    toneFilter.connect(timeVolGain);
+    timeVolGain.connect(ctx.destination);
   }
 
   function startCarrier() {
@@ -399,6 +516,10 @@
 
   function presetSpaceEcho(minGap, maxGap, vol) {
     if (!presetRunning) return;
+    // Читаем множитель СЕЙЧАС, а не при первом вызове: характер и особенно
+    // плотность Сети (фоновый fetch) могут «доехать» уже после старта
+    // ambient — следующая итерация подхватит их сама, без перезапуска.
+    const rm = getRhythmMul();
     const t = ctx.currentTime;
     const freq = [110, 146, 165, 196][Math.floor(Math.random() * 4)];
     const osc = ctx.createOscillator(), g = ctx.createGain();
@@ -406,14 +527,18 @@
     osc.type = 'sine'; osc.frequency.value = freq;
     delay.delayTime.value = 0.55; feedback.gain.value = 0.55;
     delayFilter.type = 'lowpass'; delayFilter.frequency.value = 1200;
+    const effVol = vol * rm.volMul;
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(vol, t + 1.2);
+    g.gain.linearRampToValueAtTime(effVol, t + 1.2);
     g.gain.linearRampToValueAtTime(0, t + 3.5);
     osc.connect(g); g.connect(masterGain);
     g.connect(delay); delay.connect(delayFilter); delayFilter.connect(feedback);
     feedback.connect(delay); delay.connect(masterGain);
     osc.start(t); osc.stop(t + 3.6);
-    const next = minGap + Math.random() * (maxGap - minGap);
+    // ВАЖНО: в рекурсию уходят БАЗОВЫЕ minGap/maxGap/vol, не effVol/effGap —
+    // иначе множитель применялся бы повторно на каждой итерации и паузы
+    // экспоненциально схлопнулись бы (или громкость улетела бы в ноль/бесконечность).
+    const next = (minGap * rm.gapMul) + Math.random() * ((maxGap - minGap) * rm.gapMul);
     setTimeout(() => presetSpaceEcho(minGap, maxGap, vol), next * 1000);
   }
 
@@ -450,6 +575,7 @@
   // узкую полосу вокруг частоты, здесь просто срезан низ — звенит весь верх.
   function presetGlassChime(minGap, maxGap, vol) {
     if (!presetRunning) return;
+    const rm = getRhythmMul();
     const t = ctx.currentTime;
     const scale = [659.3, 784, 880, 987.8, 1174.7]; // E5 G5 A5 B5 D6
     const freq = scale[Math.floor(Math.random() * scale.length)];
@@ -458,31 +584,37 @@
     osc.type = 'sine'; osc.frequency.value = freq;
     osc2.type = 'sine'; osc2.frequency.value = freq * 2.006; // расстроенная октава — то же биение, что в дроне
     filter.type = 'highpass'; filter.frequency.value = 500;
+    const effVol = vol * rm.volMul;
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(vol, t + 0.02);              // резкая атака — щелчок по стеклу
+    g.gain.linearRampToValueAtTime(effVol, t + 0.02);              // резкая атака — щелчок по стеклу
     g.gain.exponentialRampToValueAtTime(0.0005, t + 1.8 + Math.random() * 1.2); // долгий хвост
     osc.connect(filter); osc2.connect(filter); filter.connect(g); g.connect(masterGain);
     osc.start(t); osc.stop(t + 3.2);
     osc2.start(t); osc2.stop(t + 3.2);
-    const next = minGap + Math.random() * (maxGap - minGap);
+    // рекурсия — по БАЗОВЫМ minGap/maxGap, см. комментарий в presetSpaceEcho
+    const next = (minGap * rm.gapMul) + Math.random() * ((maxGap - minGap) * rm.gapMul);
     setTimeout(() => presetGlassChime(minGap, maxGap, vol), next * 1000);
   }
 
   function presetNetworkPulse(minGap, maxGap, vol, pairChance) {
     if (!presetRunning) return;
+    const rm = getRhythmMul();
     const t = ctx.currentTime;
     const freq = 200 + Math.random() * 400;
     const osc = ctx.createOscillator(), g = ctx.createGain(), filter = ctx.createBiquadFilter();
     osc.type = 'triangle'; osc.frequency.value = freq;
     filter.type = 'bandpass'; filter.frequency.value = freq; filter.Q.value = 8;
+    const effVol = vol * rm.volMul;
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(vol, t + 0.04);
+    g.gain.linearRampToValueAtTime(effVol, t + 0.04);
     g.gain.exponentialRampToValueAtTime(0.0005, t + 0.5 + Math.random() * 0.4);
     osc.connect(filter); filter.connect(g); g.connect(masterGain);
     osc.start(t); osc.stop(t + 1);
-    const next = minGap + Math.random() * (maxGap - minGap);
+    // рекурсия — по БАЗОВЫМ minGap/maxGap/pairChance, см. presetSpaceEcho
+    const next = (minGap * rm.gapMul) + Math.random() * ((maxGap - minGap) * rm.gapMul);
     setTimeout(() => presetNetworkPulse(minGap, maxGap, vol, pairChance), next * 1000);
-    if (Math.random() < pairChance) {
+    const effPairChance = Math.min(0.95, pairChance * rm.pairMul);
+    if (Math.random() < effPairChance) {
       setTimeout(() => presetNetworkPulse(minGap, maxGap, vol, pairChance), (next + 0.3) * 1000);
     }
   }
@@ -737,6 +869,12 @@
   }
 
   function boot() {
+    // Плотность Сети — фоновый запрос сразу при загрузке, а не по жесту.
+    // Есть запас времени до реального старта эмбиента (первый тап/переход) —
+    // часто fetch успеет разрешиться заранее. Если нет — presetSpaceEcho/
+    // NetworkPulse/GlassChime подхватят значение на следующей же итерации.
+    try { loadNetDensity(); } catch (e) {}
+
     if (sessionStorage.getItem('uc_audio_came_from_nav') === '1' && !muted) {
       sessionStorage.removeItem('uc_audio_came_from_nav');
       try {
