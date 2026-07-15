@@ -514,19 +514,41 @@
     ambientNodes.push(src);
   }
 
+  // --- Язык интерфейса → характер эха (метафора множественности) ------
+  // Каждый язык — голос, вошедший в проект в свою эпоху (см. i18n.js:
+  // SUPPORTED=['ru','en','es','fr','zh'] — порядок добавления в проект,
+  // не какая-либо иерархия важности). Голос, пришедший позже/издалека,
+  // несёт более длинный и тёплый след в пространстве; ближний — короче
+  // и ярче. Сознательно НЕ про «как звучит культура X» — такое чтение
+  // обсуждалось и отклонено 14.07 как стереотипное; здесь только дистанция
+  // и множественность голосов, сходящихся в одну Сеть.
+  const LANG_RESONANCE = {
+    ru: { delay: 0.40, feedback: 0.45, cutoff: 1400 },
+    en: { delay: 0.55, feedback: 0.55, cutoff: 1200 },
+    es: { delay: 0.68, feedback: 0.60, cutoff: 1000 },
+    fr: { delay: 0.80, feedback: 0.65, cutoff: 850  },
+    zh: { delay: 0.95, feedback: 0.70, cutoff: 700  },
+  };
+  function getLangResonance() {
+    let lang = 'ru';
+    try { lang = (window.UC_I18N && UC_I18N.lang) || 'ru'; } catch (e) {}
+    return LANG_RESONANCE[lang] || LANG_RESONANCE.ru;
+  }
+
   function presetSpaceEcho(minGap, maxGap, vol) {
     if (!presetRunning) return;
     // Читаем множитель СЕЙЧАС, а не при первом вызове: характер и особенно
     // плотность Сети (фоновый fetch) могут «доехать» уже после старта
     // ambient — следующая итерация подхватит их сама, без перезапуска.
     const rm = getRhythmMul();
+    const lr = getLangResonance();
     const t = ctx.currentTime;
     const freq = [110, 146, 165, 196][Math.floor(Math.random() * 4)];
     const osc = ctx.createOscillator(), g = ctx.createGain();
     const delay = ctx.createDelay(2.5), feedback = ctx.createGain(), delayFilter = ctx.createBiquadFilter();
     osc.type = 'sine'; osc.frequency.value = freq;
-    delay.delayTime.value = 0.55; feedback.gain.value = 0.55;
-    delayFilter.type = 'lowpass'; delayFilter.frequency.value = 1200;
+    delay.delayTime.value = lr.delay; feedback.gain.value = lr.feedback;
+    delayFilter.type = 'lowpass'; delayFilter.frequency.value = lr.cutoff;
     const effVol = vol * rm.volMul;
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(effVol, t + 1.2);
