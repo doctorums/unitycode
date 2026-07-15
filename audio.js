@@ -417,6 +417,57 @@
     setTimeout(() => presetSpaceEcho(minGap, maxGap, vol), next * 1000);
   }
 
+  // --- Petlya: хрупкий, стеклянный тембр (страница плетения шума).
+  // Раньше petlya и index звучали ИДЕНТИЧНО — оба падали в generic
+  // startAmbient(). Здесь принципиально другой регистр и другая физика
+  // звука, не просто другие частоты того же дрона: основной тон поднят
+  // в верхний регистр (220 Гц вместо гула 41-110 Гц), и обертон — не
+  // чистая гармоника, а слегка расстроенная октава (×3.01, а не ×3) —
+  // это и даёт медленные биения, на слух читающиеся как «стекло», а не
+  // как ровный синус.
+  function presetGlassDrone(vol) {
+    const osc = ctx.createOscillator(), osc2 = ctx.createOscillator(), g = ctx.createGain(), g2 = ctx.createGain();
+    const lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
+    osc.type = 'sine'; osc.frequency.value = 220;
+    osc2.type = 'sine'; osc2.frequency.value = 220 * 3.01; // расстроенный обертон — биения, не чистая гармоника
+    g2.gain.value = 0.16; // верхний обертон заметно тише основного тона
+    lfo.frequency.value = 0.06; lfoGain.gain.value = vol * 0.25;
+    lfo.connect(lfoGain); lfoGain.connect(g.gain);
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(vol, ctx.currentTime + 2);
+    osc.connect(g);
+    osc2.connect(g2); g2.connect(g);
+    g.connect(masterGain);
+    osc.start(); osc2.start(); lfo.start();
+    ambientNodes.push(osc, osc2, lfo);
+  }
+
+  // Перезвон — не пульс генератора (тот жил в среднем регистре 200-600 Гц
+  // с быстрым спадом), а звон: высокий регистр (E5-D6), пара расстроенных
+  // осцилляторов вместо одного (та же логика биений, что в дроне), резкая
+  // атака и долгий экспоненциальный хвост — как удар по стеклу, а не тон.
+  // highpass вместо bandpass у оригинала: там, где networkPulse вырезает
+  // узкую полосу вокруг частоты, здесь просто срезан низ — звенит весь верх.
+  function presetGlassChime(minGap, maxGap, vol) {
+    if (!presetRunning) return;
+    const t = ctx.currentTime;
+    const scale = [659.3, 784, 880, 987.8, 1174.7]; // E5 G5 A5 B5 D6
+    const freq = scale[Math.floor(Math.random() * scale.length)];
+    const osc = ctx.createOscillator(), osc2 = ctx.createOscillator(), g = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    osc.type = 'sine'; osc.frequency.value = freq;
+    osc2.type = 'sine'; osc2.frequency.value = freq * 2.006; // расстроенная октава — то же биение, что в дроне
+    filter.type = 'highpass'; filter.frequency.value = 500;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.02);              // резкая атака — щелчок по стеклу
+    g.gain.exponentialRampToValueAtTime(0.0005, t + 1.8 + Math.random() * 1.2); // долгий хвост
+    osc.connect(filter); osc2.connect(filter); filter.connect(g); g.connect(masterGain);
+    osc.start(t); osc.stop(t + 3.2);
+    osc2.start(t); osc2.stop(t + 3.2);
+    const next = minGap + Math.random() * (maxGap - minGap);
+    setTimeout(() => presetGlassChime(minGap, maxGap, vol), next * 1000);
+  }
+
   function presetNetworkPulse(minGap, maxGap, vol, pairChance) {
     if (!presetRunning) return;
     const t = ctx.currentTime;
@@ -639,12 +690,21 @@
       if (name === 'setBalance') {
         presetVoidDrone(0.05);
         presetAirNoise(0.012);
-        setTimeout(() => presetSpaceEcho(6, 14, 0.1), 800);
-        setTimeout(() => presetNetworkPulse(1.5, 5, 0.025, 0.3), 2000);
+        // ритмичнее: пара идёт чуть чаще, и удвоения (pairChance) выросли
+        // заметно — созвездие должно ощущаться живее implant, не только
+        // тише/громче, а именно ЧАЩЕ происходящим.
+        setTimeout(() => presetSpaceEcho(5, 10, 0.1), 800);
+        setTimeout(() => presetNetworkPulse(1.2, 4, 0.025, 0.45), 2000);
       } else if (name === 'implantMinimal') {
-        presetVoidDrone(0.03);
-        setTimeout(() => presetSpaceEcho(14, 24, 0.07), 1500);
-        setTimeout(() => presetNetworkPulse(6, 12, 0.015, 0.05), 4000);
+        // тише и разреженнее: громкости снижены ещё, паузы между событиями
+        // раздвинуты дальше, двойные импульсы почти выключены (0.05→0.015) —
+        // implant должен ощущаться как пауза для чтения, а не фон с делами.
+        presetVoidDrone(0.025);
+        setTimeout(() => presetSpaceEcho(18, 30, 0.055), 1500);
+        setTimeout(() => presetNetworkPulse(8, 16, 0.012, 0.015), 4000);
+      } else if (name === 'petlyaGlass') {
+        presetGlassDrone(0.025);
+        setTimeout(() => presetGlassChime(4, 9, 0.03), 1000);
       } else if (name === 'materialsAD') {
         presetDroneBase(0.035);
         presetMelodicLayer();
@@ -660,7 +720,8 @@
     if (file === 'set.html') return 'setBalance';
     if (file === 'implant.html') return 'implantMinimal';
     if (file === 'materials.html') return 'materialsAD';
-    return null;
+    if (file === 'petlya.html') return 'petlyaGlass';
+    return null; // index.html — единственная страница на generic startAmbient()
   }
 
   function launchForPage() {
