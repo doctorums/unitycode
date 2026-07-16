@@ -426,6 +426,30 @@ setTimeout(waitForLeaflet, 50);
 }
 window.addEventListener('DOMContentLoaded', waitForLeaflet);
 
+// ФИКС 16.07: шапка (.header, position:fixed сверху) «улетала» при
+// открытии клавиатуры — фокус на #uc-set-phrase поднимает клавиатуру,
+// Safari сдвигает ВИДИМЫЙ вьюпорт вниз (страница технически не ресайзится,
+// а скроллится под клавиатуру), а position:fixed остаётся привязан к
+// верху LAYOUT-вьюпорта — визуально шапка уходит вверх за пределы экрана.
+// Та же природа бага, что чинили в Спирали у звезды, но там лечилось
+// переходом на absolute; здесь нельзя — шапка ДОЛЖНА оставаться прибитой
+// к верху при обычном скролле контента, это её прямое назначение.
+// Правильный инструмент для именно этого случая — Visual Viewport API:
+// он единственный реально знает, куда сместился ВИДИМЫЙ вьюпорт при
+// клавиатуре (в отличие от window.scrollY, который тут ни при чём — body
+// overflow:hidden, обычного скролла страницы нет вообще). transform
+// дешевле, чем менять top (не вызывает reflow), и складывается поверх
+// имеющегося top:0 из CSS, не конфликтуя с ним.
+if (window.visualViewport) {
+  const _ucHeader = document.querySelector('header');
+  const ucFixHeaderOffset = () => {
+    if (!_ucHeader) return;
+    _ucHeader.style.transform = 'translateY(' + window.visualViewport.offsetTop + 'px)';
+  };
+  window.visualViewport.addEventListener('resize', ucFixHeaderOffset);
+  window.visualViewport.addEventListener('scroll', ucFixHeaderOffset);
+}
+
 function initMap() {
 if (mapInitialized) return;
 mapInitialized = true;
