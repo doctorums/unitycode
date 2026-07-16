@@ -383,7 +383,7 @@
       const src = ctx.createBufferSource();
       const g = ctx.createGain();
       src.buffer = buf;
-      g.gain.value = 1; // сам голос уже отнормирован Яндексом; masterGain/toneFilter отработают общий баланс
+      g.gain.value = 0.55; // тише (было 1.0) — по прослушиванию 16.07: голос перебивал эмбиент
       src.connect(g); g.connect(masterGain);
       src.start();
       return true;
