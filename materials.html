@@ -823,8 +823,15 @@ function renderMarkdown(md){
     ctx.restore();
   }
 
+  // ФИКС 16.07 (аудит): тот же баг, что чинили в petlya — растр канваса
+  // из innerWidth/innerHeight без debounce ловит переходные размеры iOS
+  // (поворот, смена хрома Safari) и застревает с ними: CSS-бокс на весь
+  // экран, растр меньше — просвечивает фон. Размер берём у body
+  // (100dvh уже резолвится верно), не пересоздаём звёзды при том же размере.
   function init(){
-    W=cv.width=innerWidth; H=cv.height=innerHeight;
+    const _w=document.body.clientWidth, _h=document.body.clientHeight;
+    if(_w===W && _h===H) return;
+    W=cv.width=_w; H=cv.height=_h;
     const N=Math.min(S.maxCount, Math.round(W*H/3600*S.density));
     stars=Array.from({length:N},()=>({
       x:Math.random()*W, y:Math.random()*H,
@@ -987,7 +994,10 @@ function renderMarkdown(md){
     drawNoise(t); drawShip(); drawSparks();
     requestAnimationFrame(loop);
   }
-  addEventListener('resize',init); init(); scheduleComet(); schedulePlanet(); spawnNoise(); setTimeout(spawnNoise,1500); requestAnimationFrame(loop);
+  let _skyRT; // debounce 250мс + отложенный пересчёт после поворота — как в petlya
+  addEventListener('resize',()=>{clearTimeout(_skyRT);_skyRT=setTimeout(init,250);});
+  addEventListener('orientationchange',()=>setTimeout(init,400));
+  init(); scheduleComet(); schedulePlanet(); spawnNoise(); setTimeout(spawnNoise,1500); requestAnimationFrame(loop);
 })();
 </script>
 </body>
