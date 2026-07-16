@@ -74,6 +74,38 @@
 <script src="i18n.js"></script>
 <script src="audio.js" defer></script>
 <script>
+// ⚠️ ВСТАВЬ URL voice-воркера (unitycode-voice) после деплоя:
+const VOICE_WORKER_URL = 'https://unitycode-voice.sv2txxznjm.workers.dev';
+
+// Голос Сети в Материи: эссенция звучит «на лету», один голос за раз.
+// Пока звучит — новые вызовы игнорируются (голос это событие, не поток;
+// из двух подряд озвучится та, что первой дозрела до проявления). Любая
+// ошибка (нет сети, сбой синтеза, автоплей заблокирован) молча гасит
+// замок — звук лишь украшение, ничего не ломает.
+let _ucMatBusy = false;
+function ucMatSpeak(text){
+  try{
+    const t=String(text||'').trim();
+    if(!t || _ucMatBusy) return;
+    if(!VOICE_WORKER_URL || VOICE_WORKER_URL.indexOf('ЗАМЕНИ')!==-1) return; // ещё не настроен
+    _ucMatBusy=true;
+    fetch(VOICE_WORKER_URL+'?text='+encodeURIComponent(t.slice(0,200)))
+      .then(r=>{
+        const ct=r.headers.get('Content-Type')||'';
+        if(!ct.includes('audio')){ _ucMatBusy=false; return null; }
+        return r.blob();
+      })
+      .then(blob=>{
+        if(!blob) return;
+        const a=new Audio(URL.createObjectURL(blob));
+        a.addEventListener('ended',()=>{ _ucMatBusy=false; });
+        a.addEventListener('error',()=>{ _ucMatBusy=false; });
+        a.play().catch(()=>{ _ucMatBusy=false; }); // автоплей мог не пройти — не держим замок
+      })
+      .catch(()=>{ _ucMatBusy=false; });
+  }catch(e){ _ucMatBusy=false; }
+}
+
 /* ╔══════════════════════════════════════════════════════════════════════╗
    ║  CONFIG — ПРИБОРНАЯ ПАНЕЛЬ СТРАНИЦЫ. Меняй значения здесь.            ║
    ║  Всё оформление страницы Материалов управляется отсюда.              ║
@@ -485,6 +517,10 @@ function renderMarkdown(md){
     const mode=Math.random();
     let n={
       text:it.text, base:it.weight||28,
+      // id есть только у живых эссенций (из базы); у дефолтных строк его нет.
+      // По нему отличаем, что можно озвучить: голос — только живым мыслям
+      // Сети, дефолтная подстраховка звучать не должна (решение 15.07).
+      id:it.id||null, spoken:false, born:performance.now(),
       wx:rnd(-0.5,0.5), wy:rnd(-0.4,0.4),
       vx:rnd(-0.0003,0.0003), vy:rnd(-0.00025,0.00025),
       z:0, vz:0, ph:Math.random()*7, parts:null,
@@ -574,6 +610,15 @@ function renderMarkdown(md){
       ctx.fillStyle='rgba('+C+','+(0.9*alpha).toFixed(3)+')';
       ctx.fillText(n.text,tx,ty);
       ctx.shadowBlur=0; ctx.textAlign='start'; ctx.textBaseline='alphabetic';
+      // ── Голос Сети: эссенция звучит НЕ сразу, а когда проявилась и
+      //    немного полетала (born + пауза). Только живые (есть id) —
+      //    дефолтная подстраховка немая. Одна за раз: пока звучит, новые
+      //    молчат (ucMatSpeak сам держит замок) — голос это событие, не
+      //    поток; из двух подряд озвучится та, что первой дозреет.
+      if(n.id && !n.spoken && alpha>0.55 && (performance.now()-n.born)>2600){
+        n.spoken=true;             // помечаем сразу, чтобы не пытаться повторно каждый кадр
+        ucMatSpeak(n.text);
+      }
       // ── столкновения с планетой/кометой ──
       if(scale>0.4 && !n.captured){
         const textR=sz*0.9;   // зона текста (вся фраза, не только центр)
