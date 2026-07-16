@@ -356,6 +356,40 @@
     }
   }
 
+  // ФИКС 16.07 — голос эссенций (unitycode-voice) молчал почти всегда:
+  // и в Спирали, и в Материи звук создавался через `new Audio(blob).play()`,
+  // а это подчиняется политике автоплея браузера — в Материи вызов идёт
+  // из автономного цикла анимации (без единого жеста вообще), в Спирали —
+  // спустя два последовательных сетевых ответа после клика, когда «жест»
+  // уже почти наверняка протух для Safari. Деньги за синтез списывались
+  // (Яндекс исправно работал), но .play() тихо отклонялся политикой.
+  //
+  // Решение — тот же канал, что уже держит sparks/explode/shipCapture:
+  // Web Audio API поверх УЖЕ разблокированного ctx, а не отдельный
+  // <audio>-элемент. AudioContext, однажды снятый с паузы жестом, не
+  // требует нового жеста на каждый последующий узел — можно планировать
+  // buffer source из любого места, хоть из цикла requestAnimationFrame,
+  // ровно как уже делают fxSparks/fxExplode. decodeAudioData сам по себе
+  // асинхронный, но не имеет отношения к политике автоплея.
+  //
+  // Вход — ArrayBuffer (не Blob!) с синтезированным TTS (oggopus от
+  // unitycode-voice). Возвращает Promise<boolean> — true если реально
+  // заиграло, false если тихо пропущено (не начат/muted/сбой декодирования).
+  function speak(arrayBuffer) {
+    if (!started) { start(); }
+    if (!ctx || muted) return Promise.resolve(false);
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx.decodeAudioData(arrayBuffer.slice(0)).then(buf => {
+      const src = ctx.createBufferSource();
+      const g = ctx.createGain();
+      src.buffer = buf;
+      g.gain.value = 1; // сам голос уже отнормирован Яндексом; masterGain/toneFilter отработают общий баланс
+      src.connect(g); g.connect(masterGain);
+      src.start();
+      return true;
+    }).catch(() => false); // битый буфер/неподдерживаемый формат — молча пропускаем, голос лишь украшение
+  }
+
   function fxSubmit() {
     [220, 330, 440].forEach((f, i) => {
       const osc = ctx.createOscillator();
@@ -926,6 +960,7 @@
 
   window.UCAudio = {
     fx: fx,
+    speak: speak, // голос эссенций — через уже разблокированный ctx, см. фикс 16.07
     toggleMute: toggleMute,
     isMuted: () => muted,
     start: start,
