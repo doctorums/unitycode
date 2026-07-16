@@ -1587,8 +1587,33 @@ requestAnimationFrame(frame);
     sizeSmall:0.9, sizeBig:1.6, bigChance:0.12,
     twinkle:1.0, drift:0.02, minAlpha:0.15, maxAlpha:0.75 };
   let W,H,stars;
+
+  // ФИКС 16.07: растр канваса брался из window.innerWidth/innerHeight —
+  // это НЕ то же самое, что уже корректно посчитанный body (у него
+  // `height:100vh; height:100dvh`, который на iOS учитывает схлопывание
+  // адресной строки и клавиатуру правильно). innerWidth/innerHeight могут
+  // на миг отдать значение ДО того, как Safari закончил анимацию смены
+  // хрома — а resize-слушатель ниже был БЕЗ debounce и вызывал init()
+  // синхронно, застревая с этим переходным размером: CSS-бокс канваса
+  // (position:fixed;inset:0) остаётся на весь экран, а внутренний растр
+  // (cv.width/height) — меньше, и там, где растра не хватает, browser
+  // либо растягивает его, либо (в части браузеров) оставляет пустым —
+  // просвечивает фон СТРАНИЦЫ ниже канваса. Отсюда «дыра с сеткой» на
+  // скриншотах — и на iPhone, и на iPad, оба используют один и тот же код.
+  //
+  // Решение — три части:
+  //  1) размер берём у body.clientWidth/clientHeight (тот же бокс, что уже
+  //     верно резолвит dvh), а не у window.innerWidth/innerHeight;
+  //  2) тот же debounce 250мс, что уже у звезды — не ловим переходные кадры;
+  //  3) не пересоздаём звёзды, если размер РЕАЛЬНО не изменился — резайз
+  //     на iOS может сработать несколько раз подряд почти с тем же числом.
+  function getViewportSize() {
+    return { w: document.body.clientWidth, h: document.body.clientHeight };
+  }
   function init(){
-    W=cv.width=innerWidth; H=cv.height=innerHeight;
+    const { w, h } = getViewportSize();
+    if (w === W && h === H) return; // размер не изменился — не трогаем звёзды зря
+    W=cv.width=w; H=cv.height=h;
     const N=Math.min(S.maxCount, Math.round(W*H/3600*S.density));
     stars=Array.from({length:N},()=>({
       x:Math.random()*W, y:Math.random()*H,
@@ -1598,6 +1623,8 @@ requestAnimationFrame(frame);
       vx:(Math.random()-0.5)*S.drift, vy:(Math.random()-0.5)*S.drift
     }));
   }
+  let skyResizeT;
+  function debouncedInit(){ clearTimeout(skyResizeT); skyResizeT = setTimeout(init, 250); }
   function loop(now){
     const t=now/1000;
     const bg=ctx.createLinearGradient(0,0,W,H);
@@ -1612,7 +1639,11 @@ requestAnimationFrame(frame);
     }
     requestAnimationFrame(loop);
   }
-  addEventListener('resize',init); init(); requestAnimationFrame(loop);
+  addEventListener('resize', debouncedInit);
+  // orientationchange — та же задержка 400мс, что уже у звезды: поворот
+  // экрана на iOS отдаёт финальные размеры не сразу.
+  addEventListener('orientationchange', () => setTimeout(init, 400));
+  init(); requestAnimationFrame(loop);
 })();
 
 </script>
