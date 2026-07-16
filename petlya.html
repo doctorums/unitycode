@@ -451,24 +451,36 @@ const VOICE_WORKER_URL = 'https://unitycode-voice.sv2txxznjm.workers.dev';
 // Один активный голос за раз: пока звучит, новый вызов игнорируется
 // (то же правило, что задумано для Материи — голос это событие, не поток).
 let _ucVoiceBusy = false;
+// ФИКС 16.07: звук почти всегда молчал, хотя Яндекс синтез исправно
+// платно отрабатывал (деньги списывались — TTS реально генерировался).
+// Причина — `new Audio(blob).play()` подчиняется политике автоплея
+// браузера: к моменту вызова прошли ДВА последовательных сетевых ответа
+// (write-воркер → distill → voice-воркер → синтез) после клика, и на
+// Safari (iPad) «жест» к этому времени уже почти наверняка протух —
+// .play() тихо отклонялся, наш catch тихо гасил ошибку.
+//
+// Решение — играть через УЖЕ разблокированный Web Audio ctx из audio.js
+// (тот же канал, что держит fxSparks/fxExplode — они тоже играют без
+// свежего жеста, из автономного кода). AudioContext, once снятый с паузы
+// жестом (обычный тап по странице раньше — audio.js слушает click/touchend
+// на document), не требует нового жеста на каждый последующий звук.
+// Формат — ArrayBuffer, не Blob: ctx.decodeAudioData() ждёт именно его.
 function ucSpeakEssence(text) {
   try {
     const t = String(text || '').trim();
     if (!t || _ucVoiceBusy) return;
     if (!VOICE_WORKER_URL || VOICE_WORKER_URL.indexOf('ЗАМЕНИ') !== -1) return; // ещё не настроен
+    if (!window.UCAudio || !window.UCAudio.speak) return; // audio.js не загрузился — молча пропускаем
     _ucVoiceBusy = true;
     fetch(VOICE_WORKER_URL + '?text=' + encodeURIComponent(t.slice(0, 200)))
       .then(r => {
         const ct = r.headers.get('Content-Type') || '';
         if (!ct.includes('audio')) { _ucVoiceBusy = false; return null; }
-        return r.blob();
+        return r.arrayBuffer();
       })
-      .then(blob => {
-        if (!blob) return;
-        const a = new Audio(URL.createObjectURL(blob));
-        a.addEventListener('ended', () => { _ucVoiceBusy = false; });
-        a.addEventListener('error', () => { _ucVoiceBusy = false; });
-        a.play().catch(() => { _ucVoiceBusy = false; }); // автоплей мог не пройти — не держим замок
+      .then(buf => {
+        if (!buf) return;
+        window.UCAudio.speak(buf).finally(() => { _ucVoiceBusy = false; });
       })
       .catch(() => { _ucVoiceBusy = false; });
   } catch (e) { _ucVoiceBusy = false; }
