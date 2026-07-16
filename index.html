@@ -162,8 +162,10 @@ let cometT=null, cometParams={};
 
 // ── Init ──────────────────────────────────────────────────────────────────
 function init(){
-W=cv.width=cw.width=window.innerWidth;
-H=cv.height=cw.height=window.innerHeight;
+// ФИКС 16.07 (аудит): размер от body (dvh-корректный), не от innerWidth —
+// та же гонка с переходными размерами iOS, что чинили в petlya/materials.
+W=cv.width=cw.width=document.body.clientWidth;
+H=cv.height=cw.height=document.body.clientHeight;
 cols=Math.ceil(W/CELL)+2; rows=Math.ceil(H/CELL)+2;
 buf0=new Float32Array(cols*rows);
 buf1=new Float32Array(cols*rows);
@@ -495,10 +497,16 @@ lbl.addEventListener('mousemove',e=>onMove(e.clientX,e.clientY));
 lbl.addEventListener('touchmove',e=>onMove(e.touches[0].clientX,e.touches[0].clientY),{passive:true});
 })();
 
+let _mainRT; // debounce (аудит 16.07): init() пересоздаёт Float32Array-буферы
+// и кэш галактики — на переходных размерах iOS это и лишняя работа, и риск
+// застрять с неверным растром (см. тот же фикс в petlya/materials).
 window.addEventListener('resize',()=>{
+clearTimeout(_mainRT);
+_mainRT=setTimeout(()=>{
 galaxyCache=null;
 waveImg=null;
 init();
+},250);
 });
 
 init();
@@ -526,8 +534,9 @@ requestAnimationFrame(loop);
 (function(){
 var tc=document.getElementById('tunnel-canvas');
 var tctx=tc.getContext('2d');
-tc.width=window.innerWidth; tc.height=window.innerHeight;
-window.addEventListener('resize',function(){tc.width=window.innerWidth;tc.height=window.innerHeight;});
+tc.width=document.body.clientWidth; tc.height=document.body.clientHeight;
+var _tcRT; // debounce — не ловить переходные размеры iOS (аудит 16.07)
+window.addEventListener('resize',function(){clearTimeout(_tcRT);_tcRT=setTimeout(function(){tc.width=document.body.clientWidth;tc.height=document.body.clientHeight;},250);});
 var active=false, startTime=Infinity, DUR=2000;
 var aiQuestion=UC_I18N.t('index.choiceQ');
 var aiAlts=[ UC_I18N.t('index.aiAlts0') ];
