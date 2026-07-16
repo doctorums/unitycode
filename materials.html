@@ -83,24 +83,35 @@ const VOICE_WORKER_URL = 'https://unitycode-voice.sv2txxznjm.workers.dev';
 // ошибка (нет сети, сбой синтеза, автоплей заблокирован) молча гасит
 // замок — звук лишь украшение, ничего не ломает.
 let _ucMatBusy = false;
+// ФИКС 16.07: озвучка почти всегда молчала — ровно 3 раза за всё время,
+// хотя Яндекс синтез исправно платно отрабатывал. Причина: `new
+// Audio(blob).play()` вызывался из автономного цикла анимации (ни
+// единого пользовательского жеста рядом), и политика автоплея браузера
+// это отклоняла — те редкие 3 срабатывания были случайными допусками
+// эвристики браузера (Chrome media engagement index), не системой.
+//
+// Решение — тот же канал, что уже держит fxSparks/fxExplode/shipCapture
+// в этой же Материи (см. audio.js): Web Audio API поверх уже
+// разблокированного ctx, не отдельный <audio>-элемент. Раз разблокирован
+// жестом однажды (обычный тап по канвасу), дальше играть можно из любого
+// места, хоть из requestAnimationFrame — политика автоплея это не
+// затрагивает, это ровно то же, что уже работает для взрывов/искр.
 function ucMatSpeak(text){
   try{
     const t=String(text||'').trim();
     if(!t || _ucMatBusy) return;
     if(!VOICE_WORKER_URL || VOICE_WORKER_URL.indexOf('ЗАМЕНИ')!==-1) return; // ещё не настроен
+    if(!window.UCAudio || !window.UCAudio.speak) return; // audio.js не загрузился — молча пропускаем
     _ucMatBusy=true;
     fetch(VOICE_WORKER_URL+'?text='+encodeURIComponent(t.slice(0,200)))
       .then(r=>{
         const ct=r.headers.get('Content-Type')||'';
         if(!ct.includes('audio')){ _ucMatBusy=false; return null; }
-        return r.blob();
+        return r.arrayBuffer();
       })
-      .then(blob=>{
-        if(!blob) return;
-        const a=new Audio(URL.createObjectURL(blob));
-        a.addEventListener('ended',()=>{ _ucMatBusy=false; });
-        a.addEventListener('error',()=>{ _ucMatBusy=false; });
-        a.play().catch(()=>{ _ucMatBusy=false; }); // автоплей мог не пройти — не держим замок
+      .then(buf=>{
+        if(!buf) return;
+        window.UCAudio.speak(buf).finally(()=>{ _ucMatBusy=false; });
       })
       .catch(()=>{ _ucMatBusy=false; });
   }catch(e){ _ucMatBusy=false; }
