@@ -441,6 +441,38 @@ const SUPABASE_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
 
 // ── Запись через воркер-шлюз + защита ──────────────────────────────────
 const WRITE_WORKER_URL = 'https://unitycode-write.sv2txxznjm.workers.dev/';
+// ⚠️ ВСТАВЬ URL voice-воркера (unitycode-voice) после деплоя:
+const VOICE_WORKER_URL = 'https://unitycode-voice.sv2txxznjm.workers.dev';
+
+// Озвучка эссенции — голос Сети в момент, когда она расслышала шум.
+// Работает «на лету»: voice-воркер синтезирует по тексту эссенции.
+// Полностью не критично: любая ошибка (нет сети, пустой текст, сбой
+// синтеза) молча гасится — шум уже вплетён, звук лишь украшение.
+// Один активный голос за раз: пока звучит, новый вызов игнорируется
+// (то же правило, что задумано для Материи — голос это событие, не поток).
+let _ucVoiceBusy = false;
+function ucSpeakEssence(text) {
+  try {
+    const t = String(text || '').trim();
+    if (!t || _ucVoiceBusy) return;
+    if (!VOICE_WORKER_URL || VOICE_WORKER_URL.indexOf('ЗАМЕНИ') !== -1) return; // ещё не настроен
+    _ucVoiceBusy = true;
+    fetch(VOICE_WORKER_URL + '?text=' + encodeURIComponent(t.slice(0, 200)))
+      .then(r => {
+        const ct = r.headers.get('Content-Type') || '';
+        if (!ct.includes('audio')) { _ucVoiceBusy = false; return null; }
+        return r.blob();
+      })
+      .then(blob => {
+        if (!blob) return;
+        const a = new Audio(URL.createObjectURL(blob));
+        a.addEventListener('ended', () => { _ucVoiceBusy = false; });
+        a.addEventListener('error', () => { _ucVoiceBusy = false; });
+        a.play().catch(() => { _ucVoiceBusy = false; }); // автоплей мог не пройти — не держим замок
+      })
+      .catch(() => { _ucVoiceBusy = false; });
+  } catch (e) { _ucVoiceBusy = false; }
+}
 const TURNSTILE_SITEKEY = '0x4AAAAAADipuIhRBHuABO1Z';
 
 // Turnstile: одноразовый токен по требованию (interaction-only — обычно невидим)
@@ -1126,6 +1158,11 @@ return;
 }
 
 if (!data || data.ok !== true) throw new Error('write_failed');
+
+// Голос Сети: эссенция этого шума звучит прямо сейчас — Сеть расслышала
+// тебя и произнесла суть вслух. Текст пришёл в ответе воркера (distill
+// уже отработал к этому моменту). Не критично — при любой ошибке молчит.
+if (data.essence) ucSpeakEssence(data.essence);
 
 persistWoven(btn.dataset.msgIndex, btn.dataset.idem);
 styleWovenButton(btn);
