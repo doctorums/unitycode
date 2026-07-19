@@ -169,13 +169,115 @@
     'kniga.bmEmpty':  { ru:`Пока нет закладок. Наведи на абзац и нажми ⚑.`, en:`No bookmarks yet. Hover over a paragraph and tap ⚑.` },
     'kniga.backMatter': { ru:`← Материя`, en:`← Matter` },
     'kniga.navHeading': { ru:`Навигация`, en:`Navigation` },
-    'kniga.coverTitle': { ru:`Обложка`, en:`Cover` }
+    'kniga.coverTitle': { ru:`Обложка`, en:`Cover` },
+
+    // — вынесено из кода страниц (было захардкожено ru/en) —
+    'petlya.advance':   { ru:`Дальше`, en:`Next`, es:`Continuar` },
+    'petlya.netCheck':  { ru:`→ проверить в «Сети»`, en:`→ check in the Network`, es:`→ comprobar en la Red` },
+    'petlya.queuedLost': {
+      ru:`скорее всего уже долетело — потерялось только подтверждение. Ждать не нужно: можно писать дальше или свериться в «Сети»`,
+      en:`it likely already got through — only the confirmation was lost. No need to wait: keep writing, or check the Network`,
+      es:`lo más probable es que ya haya llegado — solo se perdió la confirmación. No hace falta esperar: puedes seguir escribiendo o comprobarlo en la Red`
+    },
+
+    'implant.deltaTag':    { ru:`// ПОКА ТЕБЯ НЕ БЫЛО`, en:`// WHILE YOU WERE AWAY`, es:`// MIENTRAS NO ESTABAS` },
+    'implant.deltaPrefix': { ru:`С прошлого визита: `, en:`Since your last visit: `, es:`Desde tu última visita: ` },
+    'implant.deltaNodes': {
+      ru:`Сеть выросла на <span class="delta-accent">{n}</span> узел||Сеть выросла на <span class="delta-accent">{n}</span> узла||Сеть выросла на <span class="delta-accent">{n}</span> узлов`,
+      en:`the Network grew by <span class="delta-accent">{n}</span> node||the Network grew by <span class="delta-accent">{n}</span> nodes`,
+      es:`la Red creció en <span class="delta-accent">{n}</span> nodo||la Red creció en <span class="delta-accent">{n}</span> nodos`
+    },
+    'implant.deltaLinker': {
+      ru:`Связующий сплёл <span class="delta-accent">{n}</span> связь||Связующий сплёл <span class="delta-accent">{n}</span> связи||Связующий сплёл <span class="delta-accent">{n}</span> связей`,
+      en:`the Linker wove <span class="delta-accent">{n}</span> connection||the Linker wove <span class="delta-accent">{n}</span> connections`,
+      es:`el Enlazador tejió <span class="delta-accent">{n}</span> conexión||el Enlazador tejió <span class="delta-accent">{n}</span> conexiones`
+    },
+    'implant.deltaMine': {
+      ru:`<span class="delta-accent">{n}</span> новая связь коснулась твоих узлов||<span class="delta-accent">{n}</span> новые связи коснулись твоих узлов||<span class="delta-accent">{n}</span> новых связей коснулись твоих узлов`,
+      en:`<span class="delta-accent">{n}</span> new connection touched your nodes||<span class="delta-accent">{n}</span> new connections touched your nodes`,
+      es:`<span class="delta-accent">{n}</span> nueva conexión tocó tus nodos||<span class="delta-accent">{n}</span> nuevas conexiones tocaron tus nodos`
+    },
+    'implant.deltaTap': {
+      ru:` <span class="delta-accent">&middot; тапни &mdash; разбор нового</span>`,
+      en:` <span class="delta-accent">&middot; tap &mdash; a reading of the new</span>`,
+      es:` <span class="delta-accent">&middot; toca &mdash; una lectura de lo nuevo</span>`
+    },
+    'implant.deltaTitle': { ru:`РАЗБОР НОВОГО`, en:`READING OF THE NEW`, es:`LECTURA DE LO NUEVO` },
+
+    'implant.freshNever': {
+      ru:`// узор этой Сети <span class="fresh-accent">ещё не собирался</span>`,
+      en:`// this weave of the Network has <span class="fresh-accent">never been read</span>`,
+      es:`// la trama de esta Red <span class="fresh-accent">aún no se ha tejido</span>`
+    },
+    'implant.freshCurrent': {
+      ru:`// срез актуален &middot; собран {ago}`,
+      en:`// pattern is current &middot; woven {ago}`,
+      es:`// la lectura está vigente &middot; tejida {ago}`
+    },
+    'implant.freshNodes': {
+      ru:`+{n} узел||+{n} узла||+{n} узлов`,
+      en:`+{n} node||+{n} nodes`,
+      es:`+{n} nodo||+{n} nodos`
+    },
+    'implant.freshConns': {
+      ru:`+{n} связь||+{n} связи||+{n} связей`,
+      en:`+{n} connection||+{n} connections`,
+      es:`+{n} conexión||+{n} conexiones`
+    },
+    'implant.freshChanged': {
+      ru:`// Сеть изменилась с последнего среза{diff} &mdash; узор пересоберётся при запуске`,
+      en:`// the Network has changed since the last reading{diff} &mdash; the pattern will re-weave on run`,
+      es:`// la Red ha cambiado desde la última lectura{diff} &mdash; la trama se volverá a tejer al ejecutar`
+    },
+
+    'implant.legendFabric': { ru:`полотно Сети`, en:`the Network fabric`, es:`el tejido de la Red` },
+    'implant.legendThread': { ru:`твоя нить`,    en:`your thread`,        es:`tu hilo` },
+    'implant.legendHuman':  { ru:`связи людей`,  en:`human connections`,  es:`conexiones humanas` },
+    'implant.uzorHintNew': {
+      ru:`нить только начинается — она растёт с каждым шумом`,
+      en:`the thread has just begun — it grows with every noise`,
+      es:`el hilo apenas comienza — crece con cada ruido`
+    },
+    'implant.imgPattern': { ru:`ПАТТЕРН`, en:`PATTERN`, es:`PATRÓN` },
+    'implant.imgNetwork': { ru:`СЕТЬ`,    en:`NETWORK`, es:`RED` }
   };
 
-  function t(key){
+  function raw(key){
     var e = DICT[key];
     if(!e) return key;
     return (e[LANG]!=null) ? e[LANG] : (e.en!=null ? e.en : (e.ru!=null ? e.ru : key));
+  }
+
+  /* Подстановка {var} — строки вида «собран {ago}» / «+{n} узла». */
+  function fill(str, vars){
+    if(!vars) return str;
+    return String(str).replace(/\{(\w+)\}/g, function(m,k){
+      return (vars[k]!=null) ? vars[k] : m;
+    });
+  }
+
+  function t(key, vars){ return fill(raw(key), vars); }
+
+  /* Множественное число. Формы в словаре разделяются «||»:
+     ru — три формы (1 / 2-4 / 5+), en и es — две (1 / прочее).
+     Если язык откатился на en (форм меньше) — берём последнюю доступную. */
+  function pluralIndex(n){
+    if(LANG === 'ru'){
+      var m10 = n % 10, m100 = n % 100;
+      if(m10 === 1 && m100 !== 11) return 0;
+      if(m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 1;
+      return 2;
+    }
+    return n === 1 ? 0 : 1;
+  }
+
+  function tn(key, n, vars){
+    var forms = String(raw(key)).split('||');
+    var f = forms[pluralIndex(n)];
+    if(f == null) f = forms[forms.length - 1];
+    var v = { n: n };
+    if(vars) for(var k in vars) if(vars.hasOwnProperty(k)) v[k] = vars[k];
+    return fill(f, v);
   }
 
   function apply(root){
@@ -221,7 +323,7 @@
     document.body.appendChild(wrap);
   }
 
-  window.UC_I18N = { lang:LANG, t:t, apply:apply, supported:SUPPORTED, names:NAMES };
+  window.UC_I18N = { lang:LANG, t:t, tn:tn, apply:apply, supported:SUPPORTED, names:NAMES };
 
   function init(){ apply(document); buildSwitcher(); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
