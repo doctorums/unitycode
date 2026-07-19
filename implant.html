@@ -1468,13 +1468,6 @@ async function ucCountSince(pathAndFilter) {
 }
 
 // Русские формы множественного числа: [один, два-четыре, много]
-function ucPlural(n, forms) {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return forms[0];
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return forms[1];
-  return forms[2];
-}
-
 async function loadDelta() {
   let since = null;
   try { since = localStorage.getItem(DELTA_KEY); } catch (e) {}
@@ -1521,31 +1514,22 @@ async function loadDelta() {
     const [newNodes, newLinker, touchedMine] = await Promise.all([nodesJob, linkerJob, mineJob]);
 
     if (newNodes > 0 || newLinker > 0 || touchedMine > 0) {
-      const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
       const parts = [];
-      if (en) {
-        if (newNodes)    parts.push(`the Network grew by <span class="delta-accent">${newNodes}</span> node${newNodes === 1 ? '' : 's'}`);
-        if (newLinker)   parts.push(`the Linker wove <span class="delta-accent">${newLinker}</span> connection${newLinker === 1 ? '' : 's'}`);
-        if (touchedMine) parts.push(`<span class="delta-accent">${touchedMine}</span> new connection${touchedMine === 1 ? '' : 's'} touched your nodes`);
-      } else {
-        if (newNodes)    parts.push(`Сеть выросла на <span class="delta-accent">${newNodes}</span> ${ucPlural(newNodes, ['узел', 'узла', 'узлов'])}`);
-        if (newLinker)   parts.push(`Связующий сплёл <span class="delta-accent">${newLinker}</span> ${ucPlural(newLinker, ['связь', 'связи', 'связей'])}`);
-        if (touchedMine) parts.push(`<span class="delta-accent">${touchedMine}</span> ${ucPlural(touchedMine, ['новая связь коснулась', 'новые связи коснулись', 'новых связей коснулись'])} твоих узлов`);
-      }
+      if (newNodes)    parts.push(UC_I18N.tn('implant.deltaNodes', newNodes));
+      if (newLinker)   parts.push(UC_I18N.tn('implant.deltaLinker', newLinker));
+      if (touchedMine) parts.push(UC_I18N.tn('implant.deltaMine', touchedMine));
       const box = document.getElementById('delta-section');
       const tag = document.getElementById('delta-tag');
       const txt = document.getElementById('delta-text');
       if (box && txt && parts.length) {
-        if (tag) tag.textContent = en ? '// WHILE YOU WERE AWAY' : '// ПОКА ТЕБЯ НЕ БЫЛО';
+        if (tag) tag.textContent = UC_I18N.t('implant.deltaTag');
         let suffix = '';
         if (Array.isArray(window._deltaNewIds) && window._deltaNewIds.length) {
-          suffix = en
-            ? ' <span class="delta-accent">&middot; tap &mdash; a reading of the new</span>'
-            : ' <span class="delta-accent">&middot; тапни &mdash; разбор нового</span>';
+          suffix = UC_I18N.t('implant.deltaTap');
           box.style.cursor = 'pointer';
           box.onclick = runDeltaAnalysis;
         }
-        txt.innerHTML = (en ? 'Since your last visit: ' : 'С прошлого визита: ') + parts.join('; ') + '.' + suffix;
+        txt.innerHTML = UC_I18N.t('implant.deltaPrefix') + parts.join('; ') + '.' + suffix;
         box.style.display = 'block';
       }
     }
@@ -1566,7 +1550,6 @@ async function loadFreshness() {
   if (!el) return;
   try {
     const lang = (window.UC_I18N ? UC_I18N.lang : 'ru');
-    const en = lang === 'en';
 
     const [liveNodes, liveConns, peekRes] = await Promise.all([
       ucCountSince(`nodes?select=id`),
@@ -1582,26 +1565,20 @@ async function loadFreshness() {
 
     let html = '';
     if (!peekRes.cached_at) {
-      html = en
-        ? '// this weave of the Network has <span class="fresh-accent">never been read</span>'
-        : '// узор этой Сети <span class="fresh-accent">ещё не собирался</span>';
+      html = UC_I18N.t('implant.freshNever');
     } else {
       const same = (peekRes.cache_node_count === liveNodes && peekRes.cache_conn_count === liveConns);
       const ago = timeAgo(peekRes.cached_at); // уже содержит «назад» / «ago»
       if (same) {
-        html = en
-          ? `// pattern is current &middot; woven ${ago}`
-          : `// срез актуален &middot; собран ${ago}`;
+        html = UC_I18N.t('implant.freshCurrent', { ago: ago });
       } else {
         const dN = liveNodes - peekRes.cache_node_count;
         const dC = liveConns - peekRes.cache_conn_count;
         const parts = [];
-        if (dN > 0) parts.push(en ? `+${dN} node${dN === 1 ? '' : 's'}` : `+${dN} ${ucPlural(dN, ['узел', 'узла', 'узлов'])}`);
-        if (dC > 0) parts.push(en ? `+${dC} connection${dC === 1 ? '' : 's'}` : `+${dC} ${ucPlural(dC, ['связь', 'связи', 'связей'])}`);
+        if (dN > 0) parts.push(UC_I18N.tn('implant.freshNodes', dN));
+        if (dC > 0) parts.push(UC_I18N.tn('implant.freshConns', dC));
         const diff = parts.length ? ` (<span class="fresh-accent">${parts.join(', ')}</span>)` : '';
-        html = en
-          ? `// the Network has changed since the last reading${diff} &mdash; the pattern will re-weave on run`
-          : `// Сеть изменилась с последнего среза${diff} &mdash; узор пересоберётся при запуске`;
+        html = UC_I18N.t('implant.freshChanged', { diff: diff });
       }
     }
     el.innerHTML = html;
@@ -1857,11 +1834,10 @@ function openUzorModal() {
   uzorModalOpen = true;
   uzorBigT0 = 0; // нить в модалке прорисовывается заново — эффект «раскрытия»
 
-  const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
   const lgBig = document.getElementById('uzor-legend-big');
-  if (lgBig) lgBig.innerHTML = en
-    ? '<span class="lg-fabric">the Network fabric</span><span class="lg-thread">your thread</span><span class="lg-human">human connections</span>'
-    : '<span class="lg-fabric">полотно Сети</span><span class="lg-thread">твоя нить</span><span class="lg-human">связи людей</span>';
+  if (lgBig) lgBig.innerHTML = '<span class="lg-fabric">' + UC_I18N.t('implant.legendFabric') + '</span>'
+    + '<span class="lg-thread">' + UC_I18N.t('implant.legendThread') + '</span>'
+    + '<span class="lg-human">'  + UC_I18N.t('implant.legendHuman')  + '</span>';
 
   const saveBtn = document.getElementById('uzor-save-btn');
   if (saveBtn) saveBtn.style.display = _uzor.mine.length ? 'block' : 'none';
@@ -1917,11 +1893,10 @@ async function loadUzor() {
 
     _uzor = { all, conns: Array.isArray(conns) ? conns : [], mine };
 
-    const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
     const lg = document.getElementById('uzor-legend');
-    if (lg) lg.innerHTML = en
-      ? '<span class="lg-fabric">the Network fabric</span><span class="lg-thread">your thread</span><span class="lg-human">human connections</span>'
-      : '<span class="lg-fabric">полотно Сети</span><span class="lg-thread">твоя нить</span><span class="lg-human">связи людей</span>';
+    if (lg) lg.innerHTML = '<span class="lg-fabric">' + UC_I18N.t('implant.legendFabric') + '</span>'
+    + '<span class="lg-thread">' + UC_I18N.t('implant.legendThread') + '</span>'
+    + '<span class="lg-human">'  + UC_I18N.t('implant.legendHuman')  + '</span>';
 
     document.getElementById('uzor-block').style.display = 'block';
 
@@ -1930,9 +1905,7 @@ async function loadUzor() {
     const hintEl = document.getElementById('uzor-hint');
     if (hintEl) {
       if (mine.length > 0 && mine.length < 3) {
-        hintEl.textContent = en
-          ? 'the thread has just begun — it grows with every noise'
-          : 'нить только начинается — она растёт с каждым шумом';
+        hintEl.textContent = UC_I18N.t('implant.uzorHintNew');
         hintEl.style.display = 'block';
       } else {
         hintEl.style.display = 'none';
@@ -2005,8 +1978,7 @@ async function runDeltaAnalysis() {
   const myNodes = window._myNodes || [];
   if (!newIds.length || !myNodes.length) { runPersonalAnalysis(); return; }
 
-  const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
-  openOracle(en ? 'READING OF THE NEW' : 'РАЗБОР НОВОГО');
+  openOracle(UC_I18N.t('implant.deltaTitle'));
   try {
     const res = await fetch(ANALYZE_URL, {
       method: 'POST',
@@ -2036,8 +2008,6 @@ async function runDeltaAnalysis() {
 function saveUzorImage() {
   const src = document.getElementById('uzor-canvas-big');
   if (!src || !src.width) return;
-  const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
-
   let quote = '';
   try { quote = localStorage.getItem('uc_last_personal_read') || ''; } catch (e) {}
 
@@ -2095,7 +2065,7 @@ function saveUzorImage() {
   // бренд-подпись внизу
   octx.font = `${9 * dpr}px 'Share Tech Mono', monospace`;
   octx.fillStyle = 'rgba(0,255,136,0.5)';
-  octx.fillText('UNITYCODE // ' + (en ? 'PATTERN' : 'ПАТТЕРН'), W / 2, H + capH - 14 * dpr);
+  octx.fillText('UNITYCODE // ' + UC_I18N.t('implant.imgPattern'), W / 2, H + capH - 14 * dpr);
 
   // Выдача: data-URL → blob синхронно (жест пользователя не теряем),
   // затем нативная шторка «Поделиться» (iOS/iPadOS — сохранение в Фото,
@@ -2180,7 +2150,6 @@ function buildNetworkAnalysisImage() {
   // сгенерирован под ним же (angle в ключе кэша воркера); узкая щель —
   // смена характера при живом кэше — художественно простительна.
   const mood = UC_MOODS[getCharacter()] || UC_MOODS[''];
-  const en = !!(window.UC_I18N && UC_I18N.lang === 'en');
   const dpr = window.devicePixelRatio || 1;
 
   // Логический размер картины — независим от экрана (не копируем canvas
@@ -2452,7 +2421,7 @@ function buildNetworkAnalysisImage() {
   // бренд-подпись
   ctx.font = `${9 * dpr}px 'Share Tech Mono', monospace`;
   ctx.fillStyle = 'rgba(0,255,136,0.5)';
-  ctx.fillText('UNITYCODE // ' + (en ? 'NETWORK' : 'СЕТЬ'), W / 2, H + capH - 14 * dpr);
+  ctx.fillText('UNITYCODE // ' + UC_I18N.t('implant.imgNetwork'), W / 2, H + capH - 14 * dpr);
 
   // Только сборка файла — никакой выдачи здесь.
   try {
