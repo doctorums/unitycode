@@ -1115,6 +1115,10 @@ if (lng !== null) payload.lng = lng;
 // человека), сейчас никак не используется. IANA-имя надёжнее смещения
 // в минутах: верно учитывает переход на летнее/зимнее время.
 try { payload.tz = Intl.DateTimeFormat().resolvedOptions().timeZone || undefined; } catch(e) { /* не критично */ }
+// Язык интерфейса в момент вплетения — на нём Привратник сформулирует
+// причину отказа. Едет и в очередь: запись может уйти через сутки, когда
+// человек уже переключил язык, а отказ должен звучать на языке вплетения.
+payload.lang = (window.UC_I18N && UC_I18N.lang) || 'ru';
 
 // Запоминаем попытку вплетения локально ДО сети — переживёт обрыв связи
 // и закрытие вкладки. client_id — ключ идемпотентности, повтор безопасен.
@@ -1127,6 +1131,7 @@ ucQueueUpsert({
   lat: payload.lat,
   lng: payload.lng,
   tz: payload.tz,
+  lang: payload.lang,
 });
 
 const ts = await getTurnstileToken();
@@ -1143,6 +1148,7 @@ ai_interpretation: payload.ai_interpretation,
 lat: payload.lat,
 lng: payload.lng,
 tz: payload.tz,
+lang: payload.lang,
 }),
 });
 
@@ -1298,6 +1304,7 @@ async function ucTrySyncQueue() {
           lat: item.lat,
           lng: item.lng,
           tz: item.tz,
+          lang: item.lang,
         }),
       });
       if (res.ok) {
