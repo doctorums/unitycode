@@ -1020,8 +1020,7 @@ function styleWovenButton(btn) {
 function transformToAdvance(btn) {
   if (!btn || !btn.parentNode || btn.dataset.advanceDone === '1') return;
   btn.dataset.advanceDone = '1';
-  const lang = (window.UC_I18N && UC_I18N.lang) || 'ru';
-  btn.textContent = lang === 'en' ? 'Next' : 'Дальше';
+  btn.textContent = UC_I18N.t('petlya.advance');
   // Класс убирает рамку/фон и добавляет треугольник справа (CSS-псевдоэлемент,
   // не символ) — просто текст со стрелкой, без формы кнопки.
   btn.classList.add('weave-advance');
@@ -1073,11 +1072,10 @@ function ucHideQueueToast(clientId) {
 function addNetworkCheckLink(btn, clientId) {
   if (!btn || !btn.parentNode || !clientId) return;
   if (btn.parentNode.querySelector(`[data-net-link="${clientId}"]`)) return;
-  const lang = (window.UC_I18N && UC_I18N.lang) || 'ru';
   const link = document.createElement('a');
   link.href = 'set.html';
   link.dataset.netLink = clientId;
-  link.textContent = lang === 'en' ? '→ check in the Network' : '→ проверить в «Сети»';
+  link.textContent = UC_I18N.t('petlya.netCheck');
   link.style.cssText = 'display:inline-block;margin-top:0.5rem;font-size:0.6rem;letter-spacing:0.05em;color:rgba(120,200,255,0.8);text-decoration:underline;font-family:\'Share Tech Mono\',monospace;';
   btn.parentNode.appendChild(link);
 }
@@ -1194,10 +1192,7 @@ styleWovenButton(btn);
 setTimeout(() => transformToAdvance(btn), 5000);
 } catch(e) {
 console.warn('Supabase error', e);
-const _lang = (window.UC_I18N && UC_I18N.lang) || 'ru';
-const _queuedMsg = _lang === 'en'
-  ? 'it likely already got through — only the confirmation was lost. No need to wait: keep writing, or check the Network'
-  : 'скорее всего уже долетело — потерялось только подтверждение. Ждать не нужно: можно писать дальше или свериться в «Сети»';
+const _queuedMsg = UC_I18N.t('petlya.queuedLost');
 btn.textContent = `[ ⏳ ${UC_I18N.t('petlya.waitWord')}... ]`;
 btn.style.color = 'var(--accent2)';
 // Пояснение показываем отдельным всплывающим окошком (не встраиваем в
@@ -1206,7 +1201,7 @@ btn.style.color = 'var(--accent2)';
 ucShowQueueToast(
   btn.dataset.idem,
   _queuedMsg,
-  _lang === 'en' ? '→ check in the Network' : '→ проверить в «Сети»'
+  UC_I18N.t('petlya.netCheck')
 );
 
 // ОБРАТНЫЙ ОТСЧЁТ 5 секунд — чисто визуальный, дальше повтор (если нужен)
