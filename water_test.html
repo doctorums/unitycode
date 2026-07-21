@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>UnityCode — прототип: письмо по воде</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root{
+  --black:#000;
+  --white:#e8f0fa;
+  --dim:rgba(180,200,225,0.45);
+  --accent:#00ff88;
+  --border:rgba(120,200,255,0.22);
+  --ink:rgba(200,225,255,0.92);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;background:var(--black);color:var(--white);
+  font-family:'Share Tech Mono',ui-monospace,monospace;-webkit-tap-highlight-color:transparent;}
+body{overflow:hidden}
+
+/* ═══ ОБЫЧНЫЙ РЕЖИМ (упрощённый макет Спирали) ═══ */
+.shell{height:100%;display:flex;flex-direction:column;justify-content:flex-end;
+  padding:1rem 2rem calc(1.5rem + env(safe-area-inset-bottom,0px));}
+.hint{font-size:0.6rem;color:var(--dim);letter-spacing:0.12em;line-height:1.9;margin-bottom:1.2rem}
+.hint b{color:var(--accent);font-weight:normal}
+.row{display:flex;gap:1rem;align-items:flex-end}
+textarea.plain{flex:1;min-width:0;background:rgba(255,255,255,0.03);border:1px solid var(--border);
+  color:var(--white);font-family:inherit;font-size:16px;padding:1rem;outline:none;resize:none;
+  min-height:60px;max-height:140px;line-height:1.6;border-radius:10px}
+textarea.plain::placeholder{color:var(--dim);text-align:center}
+.btn{padding:0.8rem 1.2rem;border:1px solid var(--accent);color:var(--accent);border-radius:10px;
+  background:transparent;font-family:inherit;font-size:0.7rem;letter-spacing:0.14em;
+  text-transform:uppercase;white-space:nowrap;cursor:pointer}
+.btn:active{background:var(--accent);color:var(--black)}
+.btn.ghost{border-color:var(--border);color:var(--dim)}
+
+/* Переключатель режима — скрыт, пока не увидели перо */
+#toWater{display:none;margin-bottom:0.9rem;align-self:flex-start}
+#toWater.avail{display:block}
+
+/* ═══ РЕЖИМ ВОДЫ ═══ */
+#water{position:fixed;inset:0;z-index:900;display:none;background:#00040a}
+#water.on{display:block}
+#waterCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+
+/* Полноэкранное поле — ФИЗИЧЕСКИ ТО ЖЕ НАЗНАЧЕНИЕ, что и обычное.
+   Прозрачное, без рамок: Scribble видит редактируемый элемент на весь экран. */
+#waterInput{
+  position:absolute;inset:0;width:100%;height:100%;
+  background:transparent;border:none;outline:none;resize:none;
+  color:var(--ink);font-family:inherit;
+  font-size:clamp(20px,3.4vw,34px);line-height:1.75;letter-spacing:0.02em;
+  text-align:center;padding:22vh 8vw calc(18vh + env(safe-area-inset-bottom,0px));
+  caret-color:var(--accent);
+  text-shadow:0 0 18px rgba(90,170,255,0.35),0 0 4px rgba(200,230,255,0.25);
+}
+#waterInput::placeholder{color:rgba(150,190,230,0.28)}
+
+/* Верхняя панель — кнопки вверху, чтобы панель Scribble снизу их не перекрыла */
+.wbar{position:absolute;top:0;left:0;right:0;z-index:2;
+  padding:calc(0.9rem + env(safe-area-inset-top,0px)) 1.2rem 0.9rem;
+  display:flex;justify-content:space-between;align-items:center;gap:0.8rem;pointer-events:none}
+.wbar > *{pointer-events:auto}
+.wcount{font-size:0.55rem;color:var(--dim);letter-spacing:0.1em}
+
+/* Нижняя кнопка отправки — по центру, приподнята над панелью Scribble */
+.wsend{position:absolute;left:50%;transform:translateX(-50%);z-index:2;
+  bottom:calc(5.5rem + env(safe-area-inset-bottom,0px))}
+
+/* Отладка (devtools на iPad нет) */
+#dbg{position:absolute;left:0;right:0;bottom:0;z-index:3;
+  padding:0.4rem 0.8rem calc(0.4rem + env(safe-area-inset-bottom,0px));
+  font-size:0.5rem;line-height:1.6;color:rgba(140,180,220,0.5);
+  background:rgba(0,0,0,0.45);display:none;white-space:pre-wrap}
+#dbg.on{display:block}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ ОБЫЧНЫЙ РЕЖИМ ═══════════ -->
+<div class="shell">
+  <div class="hint">
+    ПРОТОТИП. Возьми <b>Apple Pencil</b> и коснись экрана — появится кнопка перехода в режим воды.<br>
+    Без пера режим намеренно скрыт.
+  </div>
+  <button class="btn" id="toWater">[ ПИСАТЬ ПО ВОДЕ ]</button>
+  <div class="row">
+    <textarea class="plain" id="plainInput" maxlength="2000"
+      placeholder="Введи свои обрывки мыслей, страхи или вопросы..."></textarea>
+    <button class="btn" onclick="fakeSend(document.getElementById('plainInput').value)">[ ОТПРАВИТЬ ]</button>
+  </div>
+</div>
+
+<!-- ═══════════ РЕЖИМ ВОДЫ ═══════════ -->
+<div id="water">
+  <canvas id="waterCanvas"></canvas>
+  <textarea id="waterInput" maxlength="2000" placeholder="пиши"></textarea>
+  <div class="wbar">
+    <button class="btn ghost" id="exitWater">← выйти</button>
+    <span class="wcount"><span id="wCount">0</span> / 2000</span>
+  </div>
+  <button class="btn wsend" id="wSend">[ ОТПРАВИТЬ ]</button>
+  <div id="dbg"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ═══════════════════════════════════════════════
+// ОПРЕДЕЛЕНИЕ ПЕРА (прогрессивное усиление)
+// Никакого сниффинга устройств: ждём фактический pointerType==='pen'.
+// Факт запоминаем — второй раз кнопка доступна сразу.
+// ═══════════════════════════════════════════════
+var PEN_KEY='uc_pen_seen';
+var toWater=document.getElementById('toWater');
+var penSeen=false;
+try{ penSeen = localStorage.getItem(PEN_KEY)==='1'; }catch(e){}
+if(penSeen) toWater.classList.add('avail');
+
+function notePen(e){
+  if(!e || e.pointerType!=='pen') return;
+  lastPen.x=e.clientX; lastPen.y=e.clientY; lastPen.t=performance.now();
+  if(penSeen) return;
+  penSeen=true;
+  toWater.classList.add('avail');
+  try{ localStorage.setItem(PEN_KEY,'1'); }catch(e2){}
+}
+document.addEventListener('pointerdown',notePen,{passive:true});
+document.addEventListener('pointermove',notePen,{passive:true});
+
+// ═══════════════════════════════════════════════
+// ХОЛСТ ВОДЫ
+// ═══════════════════════════════════════════════
+var water=document.getElementById('water');
+var cv=document.getElementById('waterCanvas');
+var cx=cv.getContext('2d');
+var W=0,H=0,DPR=1;
+var ripples=[];          // круги от письма
+var RIPPLE_MAX=26;       // жёсткий потолок — старые iPad
+var running=false;
+var lastPen={x:0,y:0,t:-1e9};
+var t0=0;
+
+// Размеры: clientWidth/clientHeight, не innerWidth — иначе на iOS
+// прыгает при появлении панелей. DPR ограничен 2: на 3x старые
+// устройства заливкой всего кадра захлёбываются.
+function sizeCanvas(){
+  DPR=Math.min(window.devicePixelRatio||1,2);
+  W=document.body.clientWidth; H=document.body.clientHeight;
+  cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR);
+  cx.setTransform(DPR,0,0,DPR,0,0);
+  cx.fillStyle='#00040a'; cx.fillRect(0,0,W,H);
+}
+var rzT=null;
+function onResize(){ clearTimeout(rzT); rzT=setTimeout(sizeCanvas,250); }
+window.addEventListener('resize',onResize);
+window.addEventListener('orientationchange',function(){ clearTimeout(rzT); rzT=setTimeout(sizeCanvas,400); });
+
+function addRipple(x,y,strength){
+  if(ripples.length>=RIPPLE_MAX) ripples.shift();
+  ripples.push({x:x,y:y,r:2,max:60+Math.random()*90,
+                v:0.55+Math.random()*0.5, a:strength||0.5, rings:2+(Math.random()*2|0)});
+}
+
+// Точка рождения ряби: кончик пера, если он свежий.
+// Scribble может не отдавать pointermove — тогда деградируем
+// к точке около центра поля, а не ломаемся.
+function inkPoint(){
+  if(performance.now()-lastPen.t < 1600) return {x:lastPen.x,y:lastPen.y};
+  return {x:W*(0.35+Math.random()*0.3), y:H*(0.42+Math.random()*0.16)};
+}
+
+function frame(ts){
+  if(!running) return;
+  if(!t0) t0=ts;
+  var tt=(ts-t0)/1000;
+
+  // Затухающая заливка вместо clearRect — оставляет мягкий след,
+  // это и читается как вода, и дешевле полного перерисовывания фона.
+  cx.fillStyle='rgba(0,4,10,0.13)';
+  cx.fillRect(0,0,W,H);
+
+  // Медленное «дыхание» глубины — три синусоидальные полосы.
+  cx.lineWidth=1;
+  for(var b=0;b<3;b++){
+    var yb=H*(0.3+b*0.2);
+    cx.strokeStyle='rgba(70,140,210,0.05)';
+    cx.beginPath();
+    for(var x=0;x<=W;x+=14){
+      var y=yb+Math.sin(x*0.006 + tt*0.35 + b*1.7)*(10+b*5);
+      if(x===0) cx.moveTo(x,y); else cx.lineTo(x,y);
+    }
+    cx.stroke();
+  }
+
+  // Рябь
+  for(var i=ripples.length-1;i>=0;i--){
+    var r=ripples[i];
+    r.r+=r.v; r.v*=0.995;
+    var p=r.r/r.max;
+    if(p>=1){ ripples.splice(i,1); continue; }
+    var a=r.a*(1-p)*(1-p);
+    for(var k=0;k<r.rings;k++){
+      var rr=r.r-k*9;
+      if(rr<=0) continue;
+      cx.strokeStyle='rgba(140,205,255,'+(a*(1-k*0.32)).toFixed(3)+')';
+      cx.lineWidth=1.3-k*0.3;
+      cx.beginPath(); cx.arc(r.x,r.y,rr,0,6.2832); cx.stroke();
+    }
+  }
+
+  if(dbgOn) drawDbg();
+  requestAnimationFrame(frame);
+}
+
+// Фоновые редкие капли — вода «живёт» и в паузах
+var idleTimer=null;
+function idleLoop(){
+  if(!running) return;
+  addRipple(Math.random()*W, H*(0.2+Math.random()*0.6), 0.13);
+  idleTimer=setTimeout(idleLoop, 2600+Math.random()*3500);
+}
+
+// ═══════════════════════════════════════════════
+// ВХОД / ВЫХОД
+// ═══════════════════════════════════════════════
+var wInput=document.getElementById('waterInput');
+var plain=document.getElementById('plainInput');
+var wCount=document.getElementById('wCount');
+
+function enterWater(){
+  wInput.value=plain.value;            // текст переносится между режимами
+  wCount.textContent=wInput.value.length;
+  water.classList.add('on');
+  sizeCanvas();
+  running=true; t0=0;
+  requestAnimationFrame(frame);
+  idleLoop();
+  setTimeout(function(){ try{ wInput.focus(); }catch(e){} },60);
+}
+function exitWater(){
+  running=false;
+  clearTimeout(idleTimer);
+  ripples.length=0;
+  plain.value=wInput.value;            // и обратно
+  water.classList.remove('on');
+  try{ wInput.blur(); }catch(e){}
+}
+toWater.addEventListener('click',enterWater);
+document.getElementById('exitWater').addEventListener('click',exitWater);
+
+// ═══════════════════════════════════════════════
+// РЕАКЦИЯ ПОВЕРХНОСТИ
+// Только 'input'. Клавиатурные события Scribble НЕ генерирует —
+// на keydown/keypress здесь опираться нельзя.
+// ═══════════════════════════════════════════════
+var prevLen=0;
+wInput.addEventListener('input',function(){
+  var len=wInput.value.length;
+  var delta=len-prevLen;
+  prevLen=len;
+  wCount.textContent=len;
+  var p=inkPoint();
+  // Scribble вставляет распознанное слово пачкой — сила ряби
+  // пропорциональна размеру вставки, поэтому слово = всплеск.
+  var s=Math.min(0.85, 0.28 + Math.abs(delta)*0.06);
+  addRipple(p.x,p.y,s);
+  if(Math.abs(delta)>3){
+    setTimeout(function(){ addRipple(p.x+(Math.random()*40-20), p.y+(Math.random()*30-15), s*0.5); },90);
+  }
+  inputEvents++;
+});
+
+document.getElementById('wSend').addEventListener('click',function(){
+  var v=wInput.value;
+  // Всплеск на отправку
+  for(var i=0;i<7;i++){
+    setTimeout(function(){ addRipple(W/2+(Math.random()*160-80), H*0.5+(Math.random()*120-60), 0.7); }, i*70);
+  }
+  setTimeout(function(){ exitWater(); fakeSend(v); },700);
+});
+
+// ═══════════════════════════════════════════════
+// ОТЛАДКА (devtools на iPad нет)
+// Тройной тап по верхней панели включает/выключает.
+// ═══════════════════════════════════════════════
+var dbg=document.getElementById('dbg'), dbgOn=false, inputEvents=0, taps=[], lastType='—';
+document.addEventListener('pointerdown',function(e){ lastType=e.pointerType||'—'; },{passive:true});
+document.querySelector('.wbar').addEventListener('click',function(){
+  var now=Date.now(); taps.push(now); taps=taps.filter(function(t){return now-t<900;});
+  if(taps.length>=3){ taps=[]; dbgOn=!dbgOn; dbg.classList.toggle('on',dbgOn); }
+});
+function drawDbg(){
+  dbg.textContent=
+    'pointerType: '+lastType+'   penSeen: '+penSeen+'\n'+
+    'input-событий: '+inputEvents+'   рябь: '+ripples.length+'\n'+
+    'перо свежее: '+((performance.now()-lastPen.t<1600)?'да ('+(lastPen.x|0)+','+(lastPen.y|0)+')':'нет → запасная точка')+'\n'+
+    'canvas: '+W+'×'+H+' @'+DPR+'x   длина: '+wInput.value.length;
+}
+
+// Заглушка отправки — боевой sendMessage() здесь намеренно не трогаем
+window.fakeSend=function(v){
+  alert('Ушло бы в Спираль ('+v.length+' симв.):\n\n'+(v.slice(0,300)||'(пусто)'));
+};
+
+sizeCanvas();
+})();
+</script>
+</body>
+</html>
