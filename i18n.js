@@ -47,6 +47,29 @@
     'index.btnSpiral': { ru:`[ Спираль ]`, en:`[ Spiral ]` , es:`[ Espiral ]`, fr:`[ Spirale ]`, zh:`[ 螺旋 ]`},
     // — навигация в шапке набирается из nav.* (выше) —
 
+    // — прихожая для внешних ссылок (vhod.html) —
+    'vhod.title':   { ru:`UnityCode — живая сеть мыслей`, en:`UnityCode — a living network of thoughts`, es:`UnityCode — una red viva de pensamientos`, fr:`UnityCode — un réseau vivant de pensées`, zh:`UnityCode — 一个活的思想网络`},
+    'vhod.eyebrow': { ru:`UNITYCODE`, en:`UNITYCODE`, es:`UNITYCODE`, fr:`UNITYCODE`, zh:`UNITYCODE`},
+    'vhod.lead':    { ru:`Ты пишешь то, что тебя волнует. ИИ ищет в этом скрытые связи. Твоя мысль становится узлом — и вплетается в общую ткань смыслов вместе с мыслями других людей.`,
+                      en:`You write what's on your mind. AI looks for hidden connections in it. Your thought becomes a node — woven into a shared fabric of meaning alongside the thoughts of others.`,
+                      es:`Escribes lo que te inquieta. La IA busca en ello conexiones ocultas. Tu pensamiento se convierte en un nodo — entretejido en un tejido común de sentido junto a los pensamientos de otras personas.`,
+                      fr:`Vous écrivez ce qui vous préoccupe. L'IA y cherche des liens cachés. Votre pensée devient un nœud — tissé dans une même étoffe de sens avec les pensées d'autrui.`,
+                      zh:`你写下心中所念。AI 从中寻找隐藏的联系。你的念头会成为一个节点——与他人的念头一同，织入共同的意义之网。`},
+    'vhod.step1':   { ru:`Напиши шум — то, что крутится в голове — в разделе «Спираль».`, en:`Write your noise — whatever's spinning in your head — in the «Spiral» section.`, es:`Escribe tu ruido — lo que te da vueltas en la cabeza — en la sección «Espiral».`, fr:`Écrivez votre bruit — ce qui tourne dans votre tête — dans la section «Spirale».`, zh:`在「螺旋」里写下你的噪声——脑中盘旋的一切。`},
+    'vhod.step2':   { ru:`Получи отклик ИИ: не совет, а взгляд со стороны на то, что ты написал.`, en:`Get an AI response: not advice, but an outside look at what you wrote.`, es:`Recibe una respuesta de la IA: no un consejo, sino una mirada externa a lo que escribiste.`, fr:`Recevez une réponse de l'IA : pas un conseil, mais un regard extérieur sur ce que vous avez écrit.`, zh:`获得 AI 的回应：不是建议，而是对你所写内容的一种外部视角。`},
+    'vhod.step3':   { ru:`Смотри, как твоя мысль соединяется с мыслями других людей в разделе «Сеть».`, en:`Watch your thought connect with the thoughts of others in the «Network» section.`, es:`Observa cómo tu pensamiento se conecta con los pensamientos de otras personas en la sección «Red».`, fr:`Regardez votre pensée se relier aux pensées d'autrui dans la section «Réseau».`, zh:`在「网络」中，看着你的念头与他人的念头相连。`},
+    'vhod.liveOne': { ru:` человек уже оставил след в Сети`, en:` person has already left a trace in the Network`, es:` persona ya dejó una huella en la Red`, fr:` personne a déjà laissé une trace dans le Réseau`, zh:` 人已在网络中留下痕迹`},
+    'vhod.liveMany':{ ru:` человек уже оставили след в Сети`, en:` people have already left a trace in the Network`, es:` personas ya dejaron una huella en la Red`, fr:` personnes ont déjà laissé une trace dans le Réseau`, zh:` 人已在网络中留下痕迹`},
+    'vhod.liveFallback': { ru:`Сеть уже растёт — узлы появляются каждую неделю.`, en:`The Network is already growing — nodes appear every week.`, es:`La Red ya está creciendo — aparecen nodos cada semana.`, fr:`Le Réseau grandit déjà — des nœuds apparaissent chaque semaine.`, zh:`网络正在生长——每周都有新节点出现。`},
+    'vhod.cta':     { ru:`Написать первый шум →`, en:`Write your first noise →`, es:`Escribe tu primer ruido →`, fr:`Écrire votre premier bruit →`, zh:`写下你的第一个噪声 →`},
+    'vhod.secondary':{ ru:`Хочешь сначала посмотреть на портал целиком → `, en:`Prefer to see the whole portal first → `, es:`¿Prefieres ver primero todo el portal → `, fr:`Préférez-vous d'abord voir tout le portail → `, zh:`想先看看整个门户 → `},
+    'vhod.secondaryLink': { ru:`вход`, en:`enter`, es:`entrar`, fr:`entrer`, zh:`入口`},
+    'vhod.disc':    { ru:`Некоммерческий научно-художественный эксперимент.<br>Мы не собираем персональные данные. Только сигнал.<br>Сгенерированный контент не претендует на объективную истинность.`,
+                      en:`A non-commercial science-art experiment.<br>We don't collect personal data. Signal only.<br>Generated content makes no claim to objective truth.`,
+                      es:`Experimento científico-artístico sin ánimo de lucro.<br>No recopilamos datos personales. Solo señal.<br>El contenido generado no pretende ser verdad objetiva.`,
+                      fr:`Expérience science-art à but non lucratif.<br>Nous ne collectons aucune donnée personnelle. Rien que du signal.<br>Le contenu généré ne prétend pas à une vérité objective.`,
+                      zh:`非营利的科学艺术实验。<br>我们不收集个人数据。只有信号。<br>生成的内容不声称是客观真理。`},
+
     // — Сеть (set.html) —
     'set.title':    { ru:`UNITYCODE — Сеть`,   en:`UNITYCODE — Network` , es:`UNITYCODE — Red`, fr:`UNITYCODE — Réseau`, zh:`UNITYCODE — 网络`},
     'set.logo':     { ru:`UNITYCODE // СЕТЬ`,  en:`UNITYCODE // NETWORK` , es:`UNITYCODE // RED`, fr:`UNITYCODE // RÉSEAU`, zh:`UNITYCODE // 网络`},
