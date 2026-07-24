@@ -96,7 +96,7 @@ button.refresh:active { border-color: var(--accent); color: var(--accent); }
 <div class="card" id="card-net">
   <h2>Вся Сеть</h2>
   <div id="net-body" class="loading">считаю...</div>
-  <div class="hint">Общая картина независимо от токена на этом устройстве. Если ваш шум дошёл — он есть в этих цифрах, даже когда «Мои шумы» пусты из-за чистки браузера.</div>
+  <div class="hint">Общая картина независимо от токена на этом устройстве. Если ваш шум дошёл — он есть в этих цифрах, даже когда «Мои шумы» пусты из-за чистки браузера. Гостевой сеанс — токен без ключевой фразы: один человек, зашедший так несколько раз, может считаться здесь как несколько «сознаний».</div>
 </div>
 
 <div class="card" id="card-lookup">
@@ -119,6 +119,11 @@ function fmtTime(iso){
   try { const d = new Date(iso); return d.toLocaleString(); } catch(e){ return iso; }
 }
 function short(s, n){ s = String(s||''); return s.length>n ? s.slice(0,n)+'…' : s; }
+// Токен из ключевой фразы — SHA-256, всегда 64 hex-символа. Всё остальное
+// (UUID со скипа окна, фолбэк без crypto.subtle) — гостевой сеанс: не
+// закреплён фразой, при чистке localStorage/новом устройстве появится
+// новый. Один и тот же человек без фразы может дать несколько «гостей».
+function isGuestToken(tok){ return !/^[0-9a-f]{64}$/i.test(String(tok||'')); }
 
 // ── 1. Обстановка ────────────────────────────────────────
 async function checkEnv(){
@@ -130,7 +135,7 @@ async function checkEnv(){
   let tokenNote;
   if (!token) tokenNote = '<span class="bad">нет — шумы будут анонимно-разрозненные</span>';
   else if (/^[0-9a-f]{64}$/i.test(token)) tokenNote = '<span class="ok">есть (из ключевой фразы)</span>';
-  else tokenNote = '<span class="warn">есть, но случайный (фраза не вводилась на этом устройстве)</span>';
+  else tokenNote = '<span class="warn">гостевой сеанс — фраза не вводилась на этом устройстве</span>';
   rows.push(['Токен', tokenNote]);
   if (token) rows.push(['Токен (тап — копировать)', '<span style="cursor:pointer;text-decoration:underline dotted" data-copy-token>' + esc(token.slice(0,10)) + '…' + esc(token.slice(-6)) + '</span>']);
 
@@ -299,12 +304,14 @@ async function checkNet(){
     const nodes = await nr.json();
     const conns = await cr.json();
     const tokens = new Set(nodes.map(n => n.user_token).filter(Boolean));
+    const guestTokens = [...tokens].filter(isGuestToken).length;
     const noPlace = nodes.filter(n => n.lat == null).length;
     const byLinker = conns.filter(c => c.created_by === 'linker').length;
     const last = nodes[0];
     el.innerHTML =
       '<div class="row"><span class="k">Всего шумов</span><span class="v">' + nodes.length + '</span></div>' +
       '<div class="row"><span class="k">Разных сознаний (токенов)</span><span class="v">' + tokens.size + '</span></div>' +
+      '<div class="row"><span class="k">— из них гостевых сеансов</span><span class="v">' + (guestTokens ? '<span class="warn">' + guestTokens + '</span>' : '0') + ' из ' + tokens.size + '</span></div>' +
       '<div class="row"><span class="k">Шумов без места</span><span class="v">' + (noPlace ? '<span class="warn">' + noPlace + '</span>' : '0') + '</span></div>' +
       '<div class="row"><span class="k">Связей принято</span><span class="v">' + conns.length + ' (Связующий: ' + byLinker + ')</span></div>' +
       '<div class="row"><span class="k">Последнее вплетение</span><span class="v">' + (last ? fmtTime(last.created_at) : '—') + '</span></div>';
@@ -345,14 +352,21 @@ async function lookup(){
       } catch(e){ /* crypto.subtle недоступен — пропускаем */ }
     }
     if (!rows.length) { el.innerHTML = '<span class="warn">ничего не найдено — ни как client_id, ни как токен, ни как фраза</span>'; return; }
-    el.innerHTML = '<div class="hint" style="margin:0 0 0.4rem">найдено как ' + mode + ': ' + rows.length + '</div>'
+    // метка сеанса: для «токен» смотрим сам ввод, для client_id — user_token
+    // из строки; «ключевая фраза» по построению всегда даёт keyphrase-токен.
+    let modeNote = '';
+    if (mode === 'токен') modeNote = isGuestToken(q) ? ' — <span class="warn">гостевой сеанс</span>' : ' — <span class="ok">из ключевой фразы</span>';
+    el.innerHTML = '<div class="hint" style="margin:0 0 0.4rem">найдено как ' + mode + ': ' + rows.length + modeNote + '</div>'
       + rows.map(n => {
         const place = (n.lat != null && n.lng != null) ? '<span class="ok">записано</span>' : '<span class="warn">без места</span>';
+        const sessionNote = (mode === 'client_id' && n.user_token)
+          ? '<br>сеанс: ' + (isGuestToken(n.user_token) ? '<span class="warn">гостевой</span>' : '<span class="ok">из ключевой фразы</span>')
+          : '';
         return '<div class="noise-item">'
           + '<div class="noise-text">«' + esc(short(n.raw_noise, 120)) + '»</div>'
           + '<div class="noise-meta">'
           + 'вплетён: <span class="ok">' + fmtTime(n.created_at) + '</span><br>'
-          + 'место: ' + place + (n.tz ? ' (' + esc(n.tz) + ')' : '') + '<br>'
+          + 'место: ' + place + (n.tz ? ' (' + esc(n.tz) + ')' : '') + sessionNote + '<br>'
           + 'client_id: ' + esc(short(n.client_id, 20))
           + '</div></div>';
       }).join('');
