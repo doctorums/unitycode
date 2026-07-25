@@ -800,10 +800,13 @@ d.style.color='';
   var BASE_COLOR  = 'rgba(170,215,255,0.42)';
   var BASE_SHADOW = '0 0 10px rgba(160,210,255,0.22)';
 
-  // внешний слой — позиция и дрейф; внутренний — волна (transform занят ею)
+  // три слоя, у каждого свой transform — иначе они затирают друг друга:
+  // outer — позиция и дрейф; scaler — рост перед уходом; word — волна
   var outer = document.createElement('div');
   outer.id = 'vyhod';
   outer.style.cssText = 'position:fixed;left:'+bx.toFixed(1)+'vw;top:'+by.toFixed(1)+'vh;z-index:15;opacity:0;transition:opacity 2.8s ease;pointer-events:none;cursor:pointer;padding:14px;margin:-14px;';
+  var scaler = document.createElement('span');
+  scaler.style.cssText = 'display:inline-block;transform-origin:50% 50%;will-change:transform;';
   var word = document.createElement('span');
   word.style.cssText = 'display:inline-block;font-family:"Share Tech Mono",monospace;font-size:0.74rem;letter-spacing:0.35em;color:'+BASE_COLOR+';text-shadow:'+BASE_SHADOW+';will-change:transform;';
   var letters = [];
@@ -814,7 +817,8 @@ d.style.color='';
     word.appendChild(s);
     letters.push(s);
   });
-  outer.appendChild(word);
+  scaler.appendChild(word);
+  outer.appendChild(scaler);
   document.body.appendChild(outer);
 
   // вплетение: тот же контракт, что у строк заголовка
@@ -828,6 +832,8 @@ d.style.color='';
   function surface(){
     if (leaving) return;
     newPlace();
+    scaler.style.transition = 'none';   // всплывает всегда в исходном размере
+    scaler.style.transform = 'scale(1)';
     outer.style.transition = 'opacity 2.8s ease';
     outer.style.opacity = '1';
     outer.style.pointerEvents = 'all';
@@ -850,15 +856,21 @@ d.style.color='';
   function sink(){
     if (leaving || !visible) return;
     var doFlash = srnd(1) < 0.5;
-    if (doFlash) flash();
+    // логарифмический набор: рывком берёт почти весь размер и замирает
+    scaler.style.transition = 'transform 1.7s cubic-bezier(0.05,0.9,0.15,1)';
+    scaler.style.transform = 'scale(1.25)';
     setTimeout(function(){
       if (leaving) return;
-      visible = false;
-      outer.style.transition = 'opacity 2.4s ease';
-      outer.style.opacity = '0';
-      outer.style.pointerEvents = 'none';
-      setTimeout(surface, 2400 + 8000 + srnd(7000)); // под водой ~10–17 с
-    }, doFlash ? 950 : 0);
+      if (doFlash) flash();
+      setTimeout(function(){
+        if (leaving) return;
+        visible = false;
+        outer.style.transition = 'opacity 2.4s ease';
+        outer.style.opacity = '0';
+        outer.style.pointerEvents = 'none';
+        setTimeout(surface, 2400 + 8000 + srnd(7000)); // под водой ~10–17 с
+      }, doFlash ? 950 : 0);
+    }, 1700);
   }
 
   setTimeout(surface, force ? 700 : 3200 + srnd(2600)); // первое всплытие ~3.2–5.8 с
