@@ -113,6 +113,7 @@ pointer-events:none;
 </div>
 </div>
 <script src="i18n.js"></script>
+<script src="analytics.js" defer></script>
 <script src="audio.js" defer></script>
 <script>
 /* при возврате «назад» Safari отдаёт страницу из bfcache без перезапуска —
@@ -739,6 +740,175 @@ d.style.transform='';
 d.style.color='';
 }
 },{passive:true});
+})();
+</script>
+<script>
+// ═══════════════════════════════════════════════════════
+// ВЫХОД — слово, вплетённое в воду.
+// Принцип: если есть «войти в сеть», должен быть и выход.
+// Слово живёт в толще сцены: качается на той же волне, что
+// и текст (через waveLines/waveAt), медленно дрейфует, буквы
+// дышат. Видит его только вернувшийся — тот, у кого в
+// localStorage остался след (токен или прошлые визиты).
+// Чистый клиент: ноль сети, физика воды не изменена — слово
+// только читает буфер волны, как строки заголовка.
+// Ничего не стирается: уход — жест, а не удаление.
+// Отладка: ?vyhod=now — показать сразу, даже без следа.
+// ═══════════════════════════════════════════════════════
+(function(){
+  var force = false;
+  try { force = new URLSearchParams(location.search).get('vyhod') === 'now'; } catch(e){}
+
+  var visits = 0;
+  try {
+    visits = parseInt(localStorage.getItem('uc_visits')||'0',10)||0;
+    localStorage.setItem('uc_visits', String(visits+1));
+  } catch(e){}
+  var hasTrace = false;
+  try { hasTrace = !!localStorage.getItem('uc_token') || visits > 0; } catch(e){}
+  if (!hasTrace && !force) return; // новичку выходить не из чего
+
+  // сид от номера визита — каждый раз чуть другое
+  var seed = ((visits + 1) * 2654435761) >>> 0;
+  function srnd(n){ seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return (seed >>> 8) / 16777216 * n; }
+
+  // зоны появления — в стороне от заголовка и disclaimer
+  var zones = [
+    {x:[8,24],  y:[62,76]},
+    {x:[70,86], y:[58,72]},
+    {x:[10,26], y:[38,50]},
+    {x:[68,84], y:[34,48]},
+    {x:[30,48], y:[70,80]},
+    {x:[52,68], y:[16,26]},
+    {x:[14,28], y:[18,28]},
+    {x:[74,88], y:[74,82]}
+  ];
+  var bx = 50, by = 60, dph = 0, driftT0 = performance.now(), lastZone = -1;
+  // всплывает каждый раз в новом месте — но никогда дважды подряд в том же
+  function newPlace(){
+    var zi = Math.floor(srnd(zones.length));
+    if (zones.length > 1 && zi === lastZone) zi = (zi + 1 + Math.floor(srnd(zones.length-1))) % zones.length;
+    lastZone = zi;
+    var z = zones[zi];
+    bx = z.x[0] + srnd(z.x[1]-z.x[0]);
+    by = z.y[0] + srnd(z.y[1]-z.y[0]);
+    dph = srnd(6.28);
+    driftT0 = performance.now();
+  }
+  newPlace();
+
+  var BASE_COLOR  = 'rgba(170,215,255,0.42)';
+  var BASE_SHADOW = '0 0 10px rgba(160,210,255,0.22)';
+
+  // внешний слой — позиция и дрейф; внутренний — волна (transform занят ею)
+  var outer = document.createElement('div');
+  outer.id = 'vyhod';
+  outer.style.cssText = 'position:fixed;left:'+bx.toFixed(1)+'vw;top:'+by.toFixed(1)+'vh;z-index:15;opacity:0;transition:opacity 2.8s ease;pointer-events:none;cursor:pointer;padding:14px;margin:-14px;';
+  var word = document.createElement('span');
+  word.style.cssText = 'display:inline-block;font-family:"Share Tech Mono",monospace;font-size:0.74rem;letter-spacing:0.35em;color:'+BASE_COLOR+';text-shadow:'+BASE_SHADOW+';will-change:transform;';
+  var letters = [];
+  String(UC_I18N.t('index.exit')).split('').forEach(function(ch){
+    var s = document.createElement('span');
+    s.style.display = 'inline-block';
+    s.textContent = ch;
+    word.appendChild(s);
+    letters.push(s);
+  });
+  outer.appendChild(word);
+  document.body.appendChild(outer);
+
+  // вплетение: тот же контракт, что у строк заголовка
+  var entry = {el:word, phase:srnd(6.28), freq:0.28+srnd(0.14), amp:0.5, cx:0, cy:0, letters:letters};
+  waveLines.push(entry);
+
+  // ── цикл: всплывает → плывёт → иногда вспыхивает → уходит под воду
+  // → всплывает снова в другом месте. Слово не висит, оно живёт.
+  var visible = false;
+
+  function surface(){
+    if (leaving) return;
+    newPlace();
+    outer.style.transition = 'opacity 2.8s ease';
+    outer.style.opacity = '1';
+    outer.style.pointerEvents = 'all';
+    visible = true;
+    setTimeout(sink, 19000 + srnd(10000)); // держится ~19–29 с
+  }
+
+  // вспышка — не каждый раз: слово словно вспоминает о себе перед уходом
+  function flash(){
+    word.style.transition = 'color 0.22s ease, text-shadow 0.22s ease';
+    word.style.color = 'rgba(220,242,255,0.95)';
+    word.style.textShadow = '0 0 14px rgba(190,228,255,0.8), 0 0 34px rgba(140,200,255,0.45)';
+    setTimeout(function(){
+      word.style.transition = 'color 0.8s ease, text-shadow 0.8s ease';
+      word.style.color = BASE_COLOR;
+      word.style.textShadow = BASE_SHADOW;
+    }, 250);
+  }
+
+  function sink(){
+    if (leaving || !visible) return;
+    var doFlash = srnd(1) < 0.5;
+    if (doFlash) flash();
+    setTimeout(function(){
+      if (leaving) return;
+      visible = false;
+      outer.style.transition = 'opacity 2.4s ease';
+      outer.style.opacity = '0';
+      outer.style.pointerEvents = 'none';
+      setTimeout(surface, 2400 + 8000 + srnd(7000)); // под водой ~10–17 с
+    }, doFlash ? 950 : 0);
+  }
+
+  setTimeout(surface, force ? 700 : 3200 + srnd(2600)); // первое всплытие ~3.2–5.8 с
+
+  // собственный дрейф — заметный ход по сцене, поверх волновой качки
+  (function driftLoop(now){
+    var t = (now - driftT0)/1000;
+    var dx = 52*Math.sin(t*0.075 + dph) + 20*Math.sin(t*0.031 + dph*1.7);
+    var dy = 34*Math.sin(t*0.052 + dph*0.6) + 16*Math.cos(t*0.041 + dph);
+    outer.style.left = 'calc(' + bx.toFixed(1) + 'vw + ' + dx.toFixed(1) + 'px)';
+    outer.style.top  = 'calc(' + by.toFixed(1) + 'vh + ' + dy.toFixed(1) + 'px)';
+    requestAnimationFrame(driftLoop);
+  })(performance.now());
+
+  // ── ритуал ухода: ничего не стирается, сцена гаснет в тишину
+  var leaving = false;
+  function leave(e){
+    if (e) e.preventDefault();
+    if (leaving) return;
+    // туннель уже начался — уход не перебивает переход в Спираль
+    var tc = document.getElementById('tunnel-canvas');
+    if (tc && tc.style.display === 'block') return;
+    leaving = true;
+    try { if (window.UCAudio && UCAudio.fx) UCAudio.fx('page'); } catch(_e){}
+    // слово роняет последнюю каплю в воду
+    try { drop(entry.cx, entry.cy, 6, 3, 20); } catch(_e){}
+    // вуаль ловит касания — во время ухода портал не отвечает на «войти»
+    var veil = document.createElement('div');
+    veil.style.cssText = 'position:fixed;inset:0;z-index:150;background:#02060c;opacity:0;transition:opacity 5s ease;';
+    document.body.appendChild(veil);
+    requestAnimationFrame(function(){ veil.style.opacity = '1'; });
+    ['.ui','.version','nav','#uc-lang'].forEach(function(sel){
+      var el2 = document.querySelector(sel);
+      if (el2){ el2.style.transition = 'opacity 4s ease'; el2.style.opacity = '0'; }
+    });
+    outer.style.transition = 'opacity 3s ease';
+    outer.style.opacity = '0';
+    setTimeout(function(){
+      var line = document.createElement('div');
+      line.style.cssText = 'position:fixed;inset:0;z-index:151;display:flex;align-items:center;justify-content:center;font-family:"Share Tech Mono",monospace;font-size:0.7rem;letter-spacing:0.3em;color:rgba(200,215,235,0.28);opacity:0;transition:opacity 4s ease;cursor:pointer;';
+      line.textContent = UC_I18N.t('index.exitDoor');
+      document.body.appendChild(line);
+      requestAnimationFrame(function(){ line.style.opacity = '1'; });
+      // дверь можно открыть снова — портал возвращается
+      line.addEventListener('click', function(){ location.reload(); });
+      line.addEventListener('touchend', function(ev){ ev.preventDefault(); location.reload(); });
+    }, 5200);
+  }
+  outer.addEventListener('click', leave);
+  outer.addEventListener('touchend', leave);
 })();
 </script>
 </body>
