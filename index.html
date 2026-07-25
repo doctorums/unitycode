@@ -742,5 +742,124 @@ d.style.color='';
 },{passive:true});
 })();
 </script>
+<script>
+// ═══════════════════════════════════════════════════════
+// ВЫХОД — слово, вплетённое в воду.
+// Принцип: если есть «войти в сеть», должен быть и выход.
+// Слово живёт в толще сцены: качается на той же волне, что
+// и текст (через waveLines/waveAt), медленно дрейфует, буквы
+// дышат. Видит его только вернувшийся — тот, у кого в
+// localStorage остался след (токен или прошлые визиты).
+// Чистый клиент: ноль сети, физика воды не изменена — слово
+// только читает буфер волны, как строки заголовка.
+// Ничего не стирается: уход — жест, а не удаление.
+// Отладка: ?vyhod=now — показать сразу, даже без следа.
+// ═══════════════════════════════════════════════════════
+(function(){
+  var force = false;
+  try { force = new URLSearchParams(location.search).get('vyhod') === 'now'; } catch(e){}
+
+  var visits = 0;
+  try {
+    visits = parseInt(localStorage.getItem('uc_visits')||'0',10)||0;
+    localStorage.setItem('uc_visits', String(visits+1));
+  } catch(e){}
+  var hasTrace = false;
+  try { hasTrace = !!localStorage.getItem('uc_token') || visits > 0; } catch(e){}
+  if (!hasTrace && !force) return; // новичку выходить не из чего
+
+  // сид от номера визита — каждый раз чуть другое
+  var seed = ((visits + 1) * 2654435761) >>> 0;
+  function srnd(n){ seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return (seed >>> 8) / 16777216 * n; }
+
+  // зоны появления — в стороне от заголовка и disclaimer
+  var zones = [
+    {x:[8,24],  y:[62,76]},
+    {x:[70,86], y:[58,72]},
+    {x:[10,26], y:[38,50]},
+    {x:[68,84], y:[34,48]}
+  ];
+  var z = zones[Math.floor(srnd(zones.length))];
+  var bx = z.x[0] + srnd(z.x[1]-z.x[0]);
+  var by = z.y[0] + srnd(z.y[1]-z.y[0]);
+
+  // внешний слой — позиция и дрейф; внутренний — волна (transform занят ею)
+  var outer = document.createElement('div');
+  outer.id = 'vyhod';
+  outer.style.cssText = 'position:fixed;left:'+bx.toFixed(1)+'vw;top:'+by.toFixed(1)+'vh;z-index:15;opacity:0;transition:opacity 6s ease;pointer-events:none;cursor:pointer;padding:14px;margin:-14px;';
+  var word = document.createElement('span');
+  word.style.cssText = 'display:inline-block;font-family:"Share Tech Mono",monospace;font-size:0.74rem;letter-spacing:0.35em;color:rgba(170,215,255,0.42);text-shadow:0 0 10px rgba(160,210,255,0.22);will-change:transform;';
+  var letters = [];
+  String(UC_I18N.t('index.exit')).split('').forEach(function(ch){
+    var s = document.createElement('span');
+    s.style.display = 'inline-block';
+    s.textContent = ch;
+    word.appendChild(s);
+    letters.push(s);
+  });
+  outer.appendChild(word);
+  document.body.appendChild(outer);
+
+  // вплетение: тот же контракт, что у строк заголовка
+  var entry = {el:word, phase:srnd(6.28), freq:0.28+srnd(0.14), amp:0.5, cx:0, cy:0, letters:letters};
+  waveLines.push(entry);
+
+  // проявление после полного вдоха узла (цикл пульса 22 с);
+  // момент тоже плывёт от визита к визиту
+  var delay = force ? 800 : 22000 + srnd(9000);
+  setTimeout(function(){
+    outer.style.opacity = '1';
+    outer.style.pointerEvents = 'all';
+  }, delay);
+
+  // собственный дрейф — медленнее ветровых полос, амплитуда в пиксели
+  var t0 = performance.now(), dph = srnd(6.28);
+  (function driftLoop(now){
+    var t = (now - t0)/1000;
+    var dx = 14*Math.sin(t*0.017 + dph) + 6*Math.sin(t*0.043 + dph*1.7);
+    var dy = 10*Math.sin(t*0.023 + dph*0.6) + 5*Math.cos(t*0.037 + dph);
+    outer.style.left = 'calc(' + bx.toFixed(1) + 'vw + ' + dx.toFixed(1) + 'px)';
+    outer.style.top  = 'calc(' + by.toFixed(1) + 'vh + ' + dy.toFixed(1) + 'px)';
+    requestAnimationFrame(driftLoop);
+  })(t0);
+
+  // ── ритуал ухода: ничего не стирается, сцена гаснет в тишину
+  var leaving = false;
+  function leave(e){
+    if (e) e.preventDefault();
+    if (leaving) return;
+    // туннель уже начался — уход не перебивает переход в Спираль
+    var tc = document.getElementById('tunnel-canvas');
+    if (tc && tc.style.display === 'block') return;
+    leaving = true;
+    try { if (window.UCAudio && UCAudio.fx) UCAudio.fx('page'); } catch(_e){}
+    // слово роняет последнюю каплю в воду
+    try { drop(entry.cx, entry.cy, 6, 3, 20); } catch(_e){}
+    // вуаль ловит касания — во время ухода портал не отвечает на «войти»
+    var veil = document.createElement('div');
+    veil.style.cssText = 'position:fixed;inset:0;z-index:150;background:#02060c;opacity:0;transition:opacity 5s ease;';
+    document.body.appendChild(veil);
+    requestAnimationFrame(function(){ veil.style.opacity = '1'; });
+    ['.ui','.version','nav','#uc-lang'].forEach(function(sel){
+      var el2 = document.querySelector(sel);
+      if (el2){ el2.style.transition = 'opacity 4s ease'; el2.style.opacity = '0'; }
+    });
+    outer.style.transition = 'opacity 3s ease';
+    outer.style.opacity = '0';
+    setTimeout(function(){
+      var line = document.createElement('div');
+      line.style.cssText = 'position:fixed;inset:0;z-index:151;display:flex;align-items:center;justify-content:center;font-family:"Share Tech Mono",monospace;font-size:0.7rem;letter-spacing:0.3em;color:rgba(200,215,235,0.28);opacity:0;transition:opacity 4s ease;cursor:pointer;';
+      line.textContent = UC_I18N.t('index.exitDoor');
+      document.body.appendChild(line);
+      requestAnimationFrame(function(){ line.style.opacity = '1'; });
+      // дверь можно открыть снова — портал возвращается
+      line.addEventListener('click', function(){ location.reload(); });
+      line.addEventListener('touchend', function(ev){ ev.preventDefault(); location.reload(); });
+    }, 5200);
+  }
+  outer.addEventListener('click', leave);
+  outer.addEventListener('touchend', leave);
+})();
+</script>
 </body>
 </html>
