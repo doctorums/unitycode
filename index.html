@@ -777,18 +777,35 @@ d.style.color='';
     {x:[8,24],  y:[62,76]},
     {x:[70,86], y:[58,72]},
     {x:[10,26], y:[38,50]},
-    {x:[68,84], y:[34,48]}
+    {x:[68,84], y:[34,48]},
+    {x:[30,48], y:[70,80]},
+    {x:[52,68], y:[16,26]},
+    {x:[14,28], y:[18,28]},
+    {x:[74,88], y:[74,82]}
   ];
-  var z = zones[Math.floor(srnd(zones.length))];
-  var bx = z.x[0] + srnd(z.x[1]-z.x[0]);
-  var by = z.y[0] + srnd(z.y[1]-z.y[0]);
+  var bx = 50, by = 60, dph = 0, driftT0 = performance.now(), lastZone = -1;
+  // всплывает каждый раз в новом месте — но никогда дважды подряд в том же
+  function newPlace(){
+    var zi = Math.floor(srnd(zones.length));
+    if (zones.length > 1 && zi === lastZone) zi = (zi + 1 + Math.floor(srnd(zones.length-1))) % zones.length;
+    lastZone = zi;
+    var z = zones[zi];
+    bx = z.x[0] + srnd(z.x[1]-z.x[0]);
+    by = z.y[0] + srnd(z.y[1]-z.y[0]);
+    dph = srnd(6.28);
+    driftT0 = performance.now();
+  }
+  newPlace();
+
+  var BASE_COLOR  = 'rgba(170,215,255,0.42)';
+  var BASE_SHADOW = '0 0 10px rgba(160,210,255,0.22)';
 
   // внешний слой — позиция и дрейф; внутренний — волна (transform занят ею)
   var outer = document.createElement('div');
   outer.id = 'vyhod';
-  outer.style.cssText = 'position:fixed;left:'+bx.toFixed(1)+'vw;top:'+by.toFixed(1)+'vh;z-index:15;opacity:0;transition:opacity 6s ease;pointer-events:none;cursor:pointer;padding:14px;margin:-14px;';
+  outer.style.cssText = 'position:fixed;left:'+bx.toFixed(1)+'vw;top:'+by.toFixed(1)+'vh;z-index:15;opacity:0;transition:opacity 2.8s ease;pointer-events:none;cursor:pointer;padding:14px;margin:-14px;';
   var word = document.createElement('span');
-  word.style.cssText = 'display:inline-block;font-family:"Share Tech Mono",monospace;font-size:0.74rem;letter-spacing:0.35em;color:rgba(170,215,255,0.42);text-shadow:0 0 10px rgba(160,210,255,0.22);will-change:transform;';
+  word.style.cssText = 'display:inline-block;font-family:"Share Tech Mono",monospace;font-size:0.74rem;letter-spacing:0.35em;color:'+BASE_COLOR+';text-shadow:'+BASE_SHADOW+';will-change:transform;';
   var letters = [];
   String(UC_I18N.t('index.exit')).split('').forEach(function(ch){
     var s = document.createElement('span');
@@ -804,24 +821,57 @@ d.style.color='';
   var entry = {el:word, phase:srnd(6.28), freq:0.28+srnd(0.14), amp:0.5, cx:0, cy:0, letters:letters};
   waveLines.push(entry);
 
-  // проявление после полного вдоха узла (цикл пульса 22 с);
-  // момент тоже плывёт от визита к визиту
-  var delay = force ? 800 : 22000 + srnd(9000);
-  setTimeout(function(){
+  // ── цикл: всплывает → плывёт → иногда вспыхивает → уходит под воду
+  // → всплывает снова в другом месте. Слово не висит, оно живёт.
+  var visible = false;
+
+  function surface(){
+    if (leaving) return;
+    newPlace();
+    outer.style.transition = 'opacity 2.8s ease';
     outer.style.opacity = '1';
     outer.style.pointerEvents = 'all';
-  }, delay);
+    visible = true;
+    setTimeout(sink, 19000 + srnd(10000)); // держится ~19–29 с
+  }
 
-  // собственный дрейф — медленнее ветровых полос, амплитуда в пиксели
-  var t0 = performance.now(), dph = srnd(6.28);
+  // вспышка — не каждый раз: слово словно вспоминает о себе перед уходом
+  function flash(){
+    word.style.transition = 'color 0.22s ease, text-shadow 0.22s ease';
+    word.style.color = 'rgba(220,242,255,0.95)';
+    word.style.textShadow = '0 0 14px rgba(190,228,255,0.8), 0 0 34px rgba(140,200,255,0.45)';
+    setTimeout(function(){
+      word.style.transition = 'color 0.8s ease, text-shadow 0.8s ease';
+      word.style.color = BASE_COLOR;
+      word.style.textShadow = BASE_SHADOW;
+    }, 250);
+  }
+
+  function sink(){
+    if (leaving || !visible) return;
+    var doFlash = srnd(1) < 0.5;
+    if (doFlash) flash();
+    setTimeout(function(){
+      if (leaving) return;
+      visible = false;
+      outer.style.transition = 'opacity 2.4s ease';
+      outer.style.opacity = '0';
+      outer.style.pointerEvents = 'none';
+      setTimeout(surface, 2400 + 8000 + srnd(7000)); // под водой ~10–17 с
+    }, doFlash ? 950 : 0);
+  }
+
+  setTimeout(surface, force ? 700 : 3200 + srnd(2600)); // первое всплытие ~3.2–5.8 с
+
+  // собственный дрейф — заметный ход по сцене, поверх волновой качки
   (function driftLoop(now){
-    var t = (now - t0)/1000;
-    var dx = 14*Math.sin(t*0.017 + dph) + 6*Math.sin(t*0.043 + dph*1.7);
-    var dy = 10*Math.sin(t*0.023 + dph*0.6) + 5*Math.cos(t*0.037 + dph);
+    var t = (now - driftT0)/1000;
+    var dx = 52*Math.sin(t*0.075 + dph) + 20*Math.sin(t*0.031 + dph*1.7);
+    var dy = 34*Math.sin(t*0.052 + dph*0.6) + 16*Math.cos(t*0.041 + dph);
     outer.style.left = 'calc(' + bx.toFixed(1) + 'vw + ' + dx.toFixed(1) + 'px)';
     outer.style.top  = 'calc(' + by.toFixed(1) + 'vh + ' + dy.toFixed(1) + 'px)';
     requestAnimationFrame(driftLoop);
-  })(t0);
+  })(performance.now());
 
   // ── ритуал ухода: ничего не стирается, сцена гаснет в тишину
   var leaving = false;
