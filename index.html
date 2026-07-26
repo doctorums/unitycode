@@ -772,30 +772,76 @@ d.style.color='';
   var seed = ((visits + 1) * 2654435761) >>> 0;
   function srnd(n){ seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return (seed >>> 8) / 16777216 * n; }
 
-  // зоны появления — в стороне от заголовка и disclaimer
-  var zones = [
-    {x:[8,24],  y:[62,76]},
-    {x:[70,86], y:[58,72]},
-    {x:[10,26], y:[38,50]},
-    {x:[68,84], y:[34,48]},
-    {x:[30,48], y:[70,80]},
-    {x:[52,68], y:[16,26]},
-    {x:[14,28], y:[18,28]},
-    {x:[74,88], y:[74,82]}
-  ];
-  var bx = 50, by = 60, dph = 0, driftT0 = performance.now(), lastZone = -1;
-  // всплывает каждый раз в новом месте — но никогда дважды подряд в том же
+  var bx = 0, by = 0, dph = 0, driftT0 = performance.now(), DA = 1;
+
+  // Размер экрана берём у body, а не у window.innerWidth/innerHeight: на iOS
+  // они отдают значение до схлопывания адресной строки — та же причина, по
+  // которой это уже исправлено у канвасов (см. правки 16.07). По ней же место
+  // считается в пикселях, а не в vw/vh: 100vh на iOS больше видимой части.
+  function viewport(){ return { w: document.body.clientWidth, h: document.body.clientHeight }; }
+
+  // вырезы экрана (чёлка, домашняя полоса) — читаем env() через пробный узел
+  function insets(){
+    var d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;'
+      + 'padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);'
+      + 'padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px);';
+    document.body.appendChild(d);
+    var cs = getComputedStyle(d);
+    var o = { t:parseFloat(cs.paddingTop)||0, b:parseFloat(cs.paddingBottom)||0,
+              l:parseFloat(cs.paddingLeft)||0, r:parseFloat(cs.paddingRight)||0 };
+    if (d.parentNode) d.parentNode.removeChild(d);
+    return o;
+  }
+
+  // что сейчас занято текстом — считаем по живым прямоугольникам, а не по
+  // долям экрана: на узком телефоне блок текста занимает почти всю ширину
+  function occupied(){
+    var out = [];
+    document.querySelectorAll('.center h1, .center #btn, .center .disclaimer, .node, nav, .version, #uc-lang')
+      .forEach(function(el){
+        if (el === outer || (outer && outer.contains(el))) return;
+        var r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) out.push(r);
+      });
+    return out;
+  }
+
+  function findSpot(padX, padY){
+    var vp = viewport(), ins = insets(), rects = occupied(), m = 10;
+    var minX = ins.l + m, maxX = vp.w - ins.r - BW - m;
+    var minY = ins.t + m, maxY = vp.h - ins.b - BH - m;
+    if (maxX <= minX || maxY <= minY) return null;
+    for (var i = 0; i < 70; i++){
+      var x = minX + srnd(maxX - minX), y = minY + srnd(maxY - minY);
+      var free = true;
+      for (var j = 0; j < rects.length; j++){
+        var r = rects[j];
+        if (x < r.right + padX && x + BW > r.left - padX &&
+            y < r.bottom + padY && y + BH > r.top  - padY){ free = false; break; }
+      }
+      if (free) return {x:x, y:y};
+    }
+    return null;
+  }
+
+  // всплывает каждый раз в новом месте; запас считается с учётом дрейфа,
+  // чтобы слово не заплыло в текст уже после появления
   function newPlace(){
-    var zi = Math.floor(srnd(zones.length));
-    if (zones.length > 1 && zi === lastZone) zi = (zi + 1 + Math.floor(srnd(zones.length-1))) % zones.length;
-    lastZone = zi;
-    var z = zones[zi];
-    bx = z.x[0] + srnd(z.x[1]-z.x[0]);
-    by = z.y[0] + srnd(z.y[1]-z.y[0]);
+    var vp = viewport();
+    var base = Math.max(0.34, Math.min(1, vp.w / 900)); // на узком экране ходит меньше
+    DA = base;
+    var spot = findSpot(72*DA + 12, 50*DA + 12);
+    if (!spot){                       // тесно — тогда почти стоит на месте
+      DA = base * 0.28;
+      spot = findSpot(72*DA + 10, 50*DA + 10);
+    }
+    if (!spot) return false;          // места нет вовсе — переждём
+    bx = spot.x; by = spot.y;
     dph = srnd(6.28);
     driftT0 = performance.now();
+    return true;
   }
-  newPlace();
 
   var BASE_COLOR  = 'rgba(170,215,255,0.42)';
   var BASE_SHADOW = '0 0 10px rgba(160,210,255,0.22)';
@@ -804,7 +850,9 @@ d.style.color='';
   // outer — позиция и дрейф; scaler — рост перед уходом; word — волна
   var outer = document.createElement('div');
   outer.id = 'vyhod';
-  outer.style.cssText = 'position:fixed;left:'+bx.toFixed(1)+'vw;top:'+by.toFixed(1)+'vh;z-index:15;opacity:0;transition:opacity 2.8s ease;pointer-events:none;cursor:pointer;padding:14px;margin:-14px;';
+  // padding/margin — невидимый запас под палец: 16 px с каждой стороны
+  // доводят область касания примерно до 44 px, как просит iOS
+  outer.style.cssText = 'position:fixed;left:0;top:0;z-index:15;opacity:0;transition:opacity 2.8s ease;pointer-events:none;cursor:pointer;padding:16px;margin:-16px;';
   var scaler = document.createElement('span');
   scaler.style.cssText = 'display:inline-block;transform-origin:50% 50%;will-change:transform;';
   var word = document.createElement('span');
@@ -821,6 +869,10 @@ d.style.color='';
   outer.appendChild(scaler);
   document.body.appendChild(outer);
 
+  // размер слова меряем один раз в полную величину — по нему ищется место
+  var wbox = word.getBoundingClientRect();
+  var BW = Math.ceil(wbox.width) || 60, BH = Math.ceil(wbox.height) || 16;
+
   // вплетение: тот же контракт, что у строк заголовка
   var entry = {el:word, phase:srnd(6.28), freq:0.28+srnd(0.14), amp:0.5, cx:0, cy:0, letters:letters};
   waveLines.push(entry);
@@ -831,7 +883,7 @@ d.style.color='';
 
   function surface(){
     if (leaving) return;
-    newPlace();
+    if (!newPlace()) { setTimeout(surface, 5000); return; } // всё занято текстом — ждём
     scaler.style.transition = 'none';   // всплывает всегда в исходном размере
     scaler.style.transform = 'scale(1)';
     outer.style.transition = 'opacity 2.8s ease';
@@ -903,13 +955,15 @@ d.style.color='';
 
   setTimeout(surface, force ? 700 : 3200 + srnd(2600)); // первое всплытие ~3.2–5.8 с
 
-  // собственный дрейф — заметный ход по сцене, поверх волновой качки
+  // собственный дрейф — заметный ход по сцене, поверх волновой качки.
+  // Амплитуда масштабируется под ширину экрана (DA): на телефоне слово
+  // ходит меньше, иначе уплывает в текст, которому там тесно.
   (function driftLoop(now){
     var t = (now - driftT0)/1000;
-    var dx = 52*Math.sin(t*0.075 + dph) + 20*Math.sin(t*0.031 + dph*1.7);
-    var dy = 34*Math.sin(t*0.052 + dph*0.6) + 16*Math.cos(t*0.041 + dph);
-    outer.style.left = 'calc(' + bx.toFixed(1) + 'vw + ' + dx.toFixed(1) + 'px)';
-    outer.style.top  = 'calc(' + by.toFixed(1) + 'vh + ' + dy.toFixed(1) + 'px)';
+    var dx = (52*Math.sin(t*0.075 + dph) + 20*Math.sin(t*0.031 + dph*1.7)) * DA;
+    var dy = (34*Math.sin(t*0.052 + dph*0.6) + 16*Math.cos(t*0.041 + dph)) * DA;
+    outer.style.left = (bx + dx).toFixed(1) + 'px';
+    outer.style.top  = (by + dy).toFixed(1) + 'px';
     requestAnimationFrame(driftLoop);
   })(performance.now());
 
