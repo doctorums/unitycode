@@ -1688,12 +1688,27 @@ requestAnimationFrame(frame);
   outer.style.cssText = 'position:fixed;left:0;top:0;z-index:40;opacity:0;pointer-events:none;cursor:pointer;';
   var inner = document.createElement('span');
   // размер и типографика — как у кнопок страницы (.weave-btn), цвет свой
-  inner.style.cssText = 'display:inline-block;padding:0.2rem 0.5rem;'
-    + 'border:1px solid rgba(170,215,255,0.28);color:'+BASE_COLOR+';'
+  inner.style.cssText = 'display:inline-block;padding:0.2rem 0.75rem;border-radius:999px;'
+    + 'border:1px solid rgba(170,215,255,0.15);color:'+BASE_COLOR+';'
     + 'font-family:"Share Tech Mono",monospace;font-size:0.6rem;letter-spacing:0.15em;'
     + 'text-transform:uppercase;background:transparent;white-space:nowrap;'
     + 'transform-origin:50% 50%;will-change:transform,opacity;';
-  inner.textContent = UC_I18N.t('index.exit');
+  // текст живёт отдельным слоем: рамка стоит, а он шевелится внутри неё
+  var wig = document.createElement('style');
+  wig.textContent = '@keyframes uc-vyhod-wiggle{'
+    + '0%{transform:translate(0,0) rotate(0deg);}'
+    + '17%{transform:translate(2.4px,-0.6px) rotate(0.5deg);}'
+    + '34%{transform:translate(-1.6px,0.7px) rotate(-0.45deg);}'
+    + '51%{transform:translate(2px,0.5px) rotate(0.25deg);}'
+    + '68%{transform:translate(-2.3px,-0.4px) rotate(-0.6deg);}'
+    + '85%{transform:translate(1.1px,0.6px) rotate(0.3deg);}'
+    + '100%{transform:translate(0,0) rotate(0deg);}}';
+  document.head.appendChild(wig);
+  var label = document.createElement('span');
+  label.style.cssText = 'display:inline-block;will-change:transform;'
+    + 'animation:uc-vyhod-wiggle 6.5s ease-in-out infinite;';
+  label.textContent = UC_I18N.t('index.exit');
+  inner.appendChild(label);
   outer.appendChild(inner);
   document.body.appendChild(outer);
 
@@ -1799,7 +1814,23 @@ requestAnimationFrame(frame);
     if (visible && !flying && !leaving && busy()) flyAway();
   }, 800);
 
-  setTimeout(surface, force ? 700 : 4000 + Math.random()*3000);
+  // первое появление ждёт, пока договорит вступление: слово выходит через
+  // пару секунд после того, как улетела последняя строка (в этот момент
+  // #introMsg убирают из DOM). Если вступления нет — обычная задержка.
+  (function firstSurface(){
+    if (force) { setTimeout(surface, 700); return; }
+    if (!document.getElementById('introMsg')) {
+      setTimeout(surface, 4000 + Math.random()*3000);
+      return;
+    }
+    var iv = setInterval(function(){
+      if (leaving) { clearInterval(iv); return; }
+      if (!document.getElementById('introMsg')) {
+        clearInterval(iv);
+        setTimeout(surface, 2000 + Math.random()*900);
+      }
+    }, 300);
+  })();
 
   // ── уход: ничего не стирается, диалог переживёт возвращение
   function leave(e){
