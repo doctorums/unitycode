@@ -1685,7 +1685,9 @@ requestAnimationFrame(frame);
 
   var outer = document.createElement('div');
   outer.id = 'vyhod';
-  outer.style.cssText = 'position:fixed;left:0;top:0;z-index:40;opacity:0;pointer-events:none;cursor:pointer;';
+  // padding/margin — невидимый запас под палец: сама пилюля ~19 px высотой,
+  // с запасом область касания выходит за 44 px, как просит iOS
+  outer.style.cssText = 'position:fixed;left:0;top:0;z-index:40;opacity:0;pointer-events:none;cursor:pointer;padding:14px;margin:-14px;';
   var inner = document.createElement('span');
   // размер и типографика — как у кнопок страницы (.weave-btn), цвет свой
   inner.style.cssText = 'display:inline-block;padding:0.2rem 0.75rem;border-radius:999px;'
@@ -1724,19 +1726,39 @@ requestAnimationFrame(frame);
       .forEach(function(el){
         if (el === outer || outer.contains(el)) return;
         var r = el.getBoundingClientRect();
-        if (r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight) out.push(r);
+        if (r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < viewport().h) out.push(r);
       });
     return out;
   }
 
+  // Размер экрана — у body, а не у window.innerWidth/innerHeight: на iOS они
+  // отдают значение до схлопывания адресной строки. Ровно та же причина
+  // разобрана выше в комментарии к канвасу звёзд.
+  function viewport(){ return { w: document.body.clientWidth, h: document.body.clientHeight }; }
+
+  // вырезы экрана (чёлка, домашняя полоса)
+  function insets(){
+    var d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;'
+      + 'padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);'
+      + 'padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px);';
+    document.body.appendChild(d);
+    var cs = getComputedStyle(d);
+    var o = { t:parseFloat(cs.paddingTop)||0, b:parseFloat(cs.paddingBottom)||0,
+              l:parseFloat(cs.paddingLeft)||0, r:parseFloat(cs.paddingRight)||0 };
+    if (d.parentNode) d.parentNode.removeChild(d);
+    return o;
+  }
+
   // хаотично — но мимо текста; если свободного места нет, переждём
-  function findSpot(){
-    var rects = occupied(), pad = 18, m = 18;
-    var maxX = Math.max(m, window.innerWidth  - BW - m);
-    var maxY = Math.max(m, window.innerHeight - BH - m);
+  function findSpot(pad){
+    var rects = occupied(), m = 18, vp = viewport(), ins = insets();
+    var minX = ins.l + m, minY = ins.t + m;
+    var maxX = Math.max(minX, vp.w - ins.r - BW - m);
+    var maxY = Math.max(minY, vp.h - ins.b - BH - m);
     for (var i = 0; i < 60; i++){
-      var x = m + Math.random()*(maxX - m);
-      var y = m + Math.random()*(maxY - m);
+      var x = minX + Math.random()*(maxX - minX);
+      var y = minY + Math.random()*(maxY - minY);
       var free = true;
       for (var j = 0; j < rects.length; j++){
         var r = rects[j];
@@ -1753,16 +1775,33 @@ requestAnimationFrame(frame);
     try {
       var ta = document.getElementById('userInput');
       if (ta && ta.value.trim()) return true;
+      // поле в фокусе — на телефоне поднята клавиатура и экран уже другой
+      if (ta && document.activeElement === ta) return true;
     } catch(e){}
     try { if (isLoading) return true; } catch(e){}
+    return false;
+  }
+
+  // место выбиралось под ту картину, что была на экране. Диалог прокрутили,
+  // пришёл отклик, повернули телефон — под словом мог оказаться текст.
+  function overlapsNow(){
+    var a = inner.getBoundingClientRect();
+    if (!a.width) return false;
+    var rects = occupied();
+    for (var i = 0; i < rects.length; i++){
+      var r = rects[i];
+      if (a.left < r.right && a.right > r.left && a.top < r.bottom && a.bottom > r.top) return true;
+    }
     return false;
   }
 
   function surface(){
     if (leaving) return;
     if (busy()) { setTimeout(surface, 4000); return; }
-    var spot = findSpot();
-    if (!spot) { setTimeout(surface, 5000); return; } // всё занято текстом — ждём
+    // сперва с просторным запасом; если диалог заполнил экран — соглашаемся
+    // на щель между сообщениями, но поверх текста не встаём никогда
+    var spot = findSpot(18) || findSpot(5);
+    if (!spot) { setTimeout(surface, 5000); return; } // места нет вовсе — ждём
     outer.style.left = spot.x.toFixed(1) + 'px';
     outer.style.top  = spot.y.toFixed(1) + 'px';
     // вырастает из точки — медленно, с замедлением к концу
@@ -1809,9 +1848,9 @@ requestAnimationFrame(frame);
     requestAnimationFrame(step);
   }
 
-  // если человек начал писать, пока слово висит — оно тихо уходит
+  // если человек начал писать или текст наехал на слово — оно тихо уходит
   setInterval(function(){
-    if (visible && !flying && !leaving && busy()) flyAway();
+    if (visible && !flying && !leaving && (busy() || overlapsNow())) flyAway();
   }, 800);
 
   // первое появление ждёт, пока договорит вступление: слово выходит через
