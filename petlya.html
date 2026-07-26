@@ -1819,12 +1819,51 @@ requestAnimationFrame(frame);
     setTimeout(function(){ if (visible && !flying) flyAway(); }, 2400 + 12000 + Math.random()*6000);
   }
 
+  // Куда уходить. Просто «вверх» на забитом текстом телефоне означает
+  // «сквозь текст», поэтому щупаем стороны: в каждую отмеряем, докуда
+  // можно уйти, не задев занятое, и выбираем самую свободную. Небольшая
+  // прибавка вверх сохраняет прежний характер, когда сверху есть простор.
+  function freeWay(){
+    var a = inner.getBoundingClientRect();
+    var cx = a.left + a.width/2, cy = a.top + a.height/2;
+    var rects = occupied(), vp = viewport(), ins = insets();
+    var ways = [], N = 16, MAXD = 190;
+    // ведём не точку, а саму рамку слова — иначе оно задевает текст краями.
+    // Слово по пути сжимается, поэтому меряем ужатой на треть коробкой.
+    var hw = a.width*0.34, hh = a.height*0.34;
+    for (var k = 0; k < N; k++){
+      var ang = (k / N) * Math.PI * 2;
+      var ux = Math.cos(ang), uy = Math.sin(ang), d = 0;
+      for (var s = 8; s <= MAXD; s += 8){
+        var px = cx + ux*s, py = cy + uy*s;
+        var l = px-hw, rr = px+hw, t = py-hh, bo = py+hh;
+        if (l < ins.l || rr > vp.w - ins.r || t < ins.t || bo > vp.h - ins.b){ d = s; break; }
+        var blocked = false;
+        for (var j = 0; j < rects.length; j++){
+          var r = rects[j];
+          if (l < r.right && rr > r.left && t < r.bottom && bo > r.top){ blocked = true; break; }
+        }
+        if (blocked) break;
+        d = s;
+      }
+      ways.push({ ux:ux, uy:uy, d:d, score: d + (uy < 0 ? 15 : 0) });
+    }
+    ways.sort(function(p, q2){ return q2.score - p.score; });
+    // из трёх самых свободных — случайная, чтобы улёт не стал предсказуемым
+    var pick = ways[Math.floor(Math.random() * Math.min(3, ways.length))];
+    // дальше найденного простора не толкаем: если щель узкая, слово просто
+    // растворится в ней, не полезет сквозь текст
+    return { ux: pick.ux, uy: pick.uy, dist: Math.max(30, Math.min(150, pick.d)) };
+  }
+
   // улетает вдаль, покачиваясь и разворачиваясь — движение строк вступления
   function flyAway(){
     if (leaving || flying) return;
     flying = true;
     outer.style.pointerEvents = 'none';
     var DURR = 2600, s0 = null, dir = Math.random() < 0.5 ? -1 : 1;
+    var way = freeWay();
+    var fadeAt = way.dist < 70 ? 0.12 : 0.6;
     inner.style.transition = 'none';
     function step(ts){
       if (leaving) return;
@@ -1832,11 +1871,13 @@ requestAnimationFrame(frame);
       var q = Math.min((ts - s0)/DURR, 1);
       var ease = 1 - Math.pow(1 - q, 2);
       var scale = Math.max(0.001, 1 - 0.88*ease);        // уходит в точку
-      var lift  = -95*ease;                               // уплывает вверх
+      var tx = way.ux * way.dist * ease;                  // уплывает туда, где просторно
+      var ty = way.uy * way.dist * ease;
       var sway  = Math.sin(q*Math.PI*4) * 9 * (1-q);      // качание затухает
       var spin  = dir * 26 * ease;                        // и разворачивается
-      var op    = q < 0.6 ? 1 : Math.max(0, 1 - (q-0.6)/0.4);
-      inner.style.transform = 'translateY('+lift.toFixed(1)+'px) scale('+scale.toFixed(3)+') rotate('+(sway+spin).toFixed(2)+'deg)';
+      // в тесноте гаснет раньше — успевает уйти, пока не дошёл до текста
+      var op    = q < fadeAt ? 1 : Math.max(0, 1 - (q-fadeAt)/(1-fadeAt));
+      inner.style.transform = 'translate('+tx.toFixed(1)+'px,'+ty.toFixed(1)+'px) scale('+scale.toFixed(3)+') rotate('+(sway+spin).toFixed(2)+'deg)';
       inner.style.opacity = op.toFixed(3);
       if (q < 1) requestAnimationFrame(step);
       else {
