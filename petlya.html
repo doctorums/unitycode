@@ -384,6 +384,7 @@ autocomplete="off"
 
 <script src="nav.js"></script>
 <script src="i18n.js"></script>
+<script src="analytics.js" defer></script>
 <script src="js/uc-data.js"></script>
 <script src="audio.js" defer></script>
 <script>
@@ -1652,5 +1653,185 @@ requestAnimationFrame(frame);
 </script>
 <div id="ts-box" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:4000;"></div>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onloadTurnstileCallback&render=explicit" async defer></script>
+<script>
+// ═══════════════════════════════════════════════════════
+// ВЫХОД на Спирали — слово среди звёзд.
+// Тот же принцип, что на лендинге: если есть «войти», должен
+// быть и выход; видит его только вернувшийся.
+// Здесь свой сценарий под эту страницу:
+//   — место каждый раз случайное, но никогда поверх текста:
+//     диалог растёт по ходу разговора, поэтому занятые места
+//     пересчитываются перед каждым всплытием;
+//   — вырастает из точки, размером с кнопки страницы;
+//   — повисев, улетает вдаль, покачиваясь и разворачиваясь —
+//     тем же движением, что строки вступления (recedeAway);
+//   — уступает шуму: пока в поле есть текст или идёт отправка,
+//     не показывается, а если человек начал писать — уходит сам.
+// Ничего не стирается: диалог переживает уход (sessionStorage).
+// Отладка: ?vyhod=now.
+// ═══════════════════════════════════════════════════════
+(function(){
+  var force = false;
+  try { force = new URLSearchParams(location.search).get('vyhod') === 'now'; } catch(e){}
+  var hasTrace = false;
+  try {
+    hasTrace = !!localStorage.getItem('uc_token')
+            || (parseInt(localStorage.getItem('uc_visits')||'0',10)||0) > 0;
+  } catch(e){}
+  if (!hasTrace && !force) return;
+
+  var BASE_COLOR = 'rgba(170,215,255,0.5)';
+  var leaving = false, visible = false, flying = false;
+
+  var outer = document.createElement('div');
+  outer.id = 'vyhod';
+  outer.style.cssText = 'position:fixed;left:0;top:0;z-index:40;opacity:0;pointer-events:none;cursor:pointer;';
+  var inner = document.createElement('span');
+  // размер и типографика — как у кнопок страницы (.weave-btn), цвет свой
+  inner.style.cssText = 'display:inline-block;padding:0.2rem 0.5rem;'
+    + 'border:1px solid rgba(170,215,255,0.28);color:'+BASE_COLOR+';'
+    + 'font-family:"Share Tech Mono",monospace;font-size:0.6rem;letter-spacing:0.15em;'
+    + 'text-transform:uppercase;background:transparent;white-space:nowrap;'
+    + 'transform-origin:50% 50%;will-change:transform,opacity;';
+  inner.textContent = UC_I18N.t('index.exit');
+  outer.appendChild(inner);
+  document.body.appendChild(outer);
+
+  // размер меряем один раз в полную величину — по нему ищем свободное место
+  var box = inner.getBoundingClientRect();
+  var BW = Math.ceil(box.width) || 70, BH = Math.ceil(box.height) || 20;
+  inner.style.transform = 'scale(0.02)';
+
+  // занятые места: шапка, поле ввода и всё, что сейчас написано на экране
+  function occupied(){
+    var out = [];
+    document.querySelectorAll('header, .input-area, .sys-msg, .message, .weave-btn, #ts-box, .toast')
+      .forEach(function(el){
+        if (el === outer || outer.contains(el)) return;
+        var r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight) out.push(r);
+      });
+    return out;
+  }
+
+  // хаотично — но мимо текста; если свободного места нет, переждём
+  function findSpot(){
+    var rects = occupied(), pad = 18, m = 18;
+    var maxX = Math.max(m, window.innerWidth  - BW - m);
+    var maxY = Math.max(m, window.innerHeight - BH - m);
+    for (var i = 0; i < 60; i++){
+      var x = m + Math.random()*(maxX - m);
+      var y = m + Math.random()*(maxY - m);
+      var free = true;
+      for (var j = 0; j < rects.length; j++){
+        var r = rects[j];
+        if (x < r.right + pad && x + BW > r.left - pad &&
+            y < r.bottom + pad && y + BH > r.top  - pad){ free = false; break; }
+      }
+      if (free) return {x:x, y:y};
+    }
+    return null;
+  }
+
+  // пока человек пишет или ждёт отклик — выхода нет, шум важнее
+  function busy(){
+    try {
+      var ta = document.getElementById('userInput');
+      if (ta && ta.value.trim()) return true;
+    } catch(e){}
+    try { if (isLoading) return true; } catch(e){}
+    return false;
+  }
+
+  function surface(){
+    if (leaving) return;
+    if (busy()) { setTimeout(surface, 4000); return; }
+    var spot = findSpot();
+    if (!spot) { setTimeout(surface, 5000); return; } // всё занято текстом — ждём
+    outer.style.left = spot.x.toFixed(1) + 'px';
+    outer.style.top  = spot.y.toFixed(1) + 'px';
+    // вырастает из точки — медленно, с замедлением к концу
+    inner.style.transition = 'none';
+    inner.style.transform = 'scale(0.02)';
+    inner.style.opacity = '0';
+    outer.style.opacity = '1';
+    requestAnimationFrame(function(){
+      inner.style.transition = 'transform 2.4s cubic-bezier(0.16,0.84,0.3,1), opacity 1.6s ease';
+      inner.style.transform = 'scale(1)';
+      inner.style.opacity = '1';
+    });
+    visible = true; flying = false;
+    setTimeout(function(){ outer.style.pointerEvents = 'all'; }, 2400);
+    setTimeout(function(){ if (visible && !flying) flyAway(); }, 2400 + 12000 + Math.random()*6000);
+  }
+
+  // улетает вдаль, покачиваясь и разворачиваясь — движение строк вступления
+  function flyAway(){
+    if (leaving || flying) return;
+    flying = true;
+    outer.style.pointerEvents = 'none';
+    var DURR = 2600, s0 = null, dir = Math.random() < 0.5 ? -1 : 1;
+    inner.style.transition = 'none';
+    function step(ts){
+      if (leaving) return;
+      if (!s0) s0 = ts;
+      var q = Math.min((ts - s0)/DURR, 1);
+      var ease = 1 - Math.pow(1 - q, 2);
+      var scale = Math.max(0.001, 1 - 0.88*ease);        // уходит в точку
+      var lift  = -95*ease;                               // уплывает вверх
+      var sway  = Math.sin(q*Math.PI*4) * 9 * (1-q);      // качание затухает
+      var spin  = dir * 26 * ease;                        // и разворачивается
+      var op    = q < 0.6 ? 1 : Math.max(0, 1 - (q-0.6)/0.4);
+      inner.style.transform = 'translateY('+lift.toFixed(1)+'px) scale('+scale.toFixed(3)+') rotate('+(sway+spin).toFixed(2)+'deg)';
+      inner.style.opacity = op.toFixed(3);
+      if (q < 1) requestAnimationFrame(step);
+      else {
+        visible = false;
+        outer.style.opacity = '0';
+        setTimeout(surface, 9000 + Math.random()*8000); // вне поля зрения ~9–17 с
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
+  // если человек начал писать, пока слово висит — оно тихо уходит
+  setInterval(function(){
+    if (visible && !flying && !leaving && busy()) flyAway();
+  }, 800);
+
+  setTimeout(surface, force ? 700 : 4000 + Math.random()*3000);
+
+  // ── уход: ничего не стирается, диалог переживёт возвращение
+  function leave(e){
+    if (e) e.preventDefault();
+    if (leaving) return;
+    leaving = true;
+    try { if (window.UCAudio && UCAudio.fx) UCAudio.fx('page'); } catch(_e){}
+    var veil = document.createElement('div');
+    veil.style.cssText = 'position:fixed;inset:0;z-index:9000;background:#02060c;opacity:0;transition:opacity 5s ease;';
+    document.body.appendChild(veil);
+    requestAnimationFrame(function(){ veil.style.opacity = '1'; });
+    ['header','.chat-container','.input-area'].forEach(function(sel){
+      var el2 = document.querySelector(sel);
+      if (el2){ el2.style.transition = 'opacity 4s ease'; el2.style.opacity = '0'; }
+    });
+    inner.style.transition = 'opacity 3s ease, transform 3s ease';
+    inner.style.opacity = '0';
+    setTimeout(function(){
+      var line = document.createElement('div');
+      line.style.cssText = 'position:fixed;inset:0;z-index:9001;display:flex;align-items:center;justify-content:center;'
+        + 'font-family:"Share Tech Mono",monospace;font-size:0.7rem;letter-spacing:0.3em;'
+        + 'color:rgba(200,215,235,0.28);opacity:0;transition:opacity 4s ease;cursor:pointer;';
+      line.textContent = UC_I18N.t('index.exitDoor');
+      document.body.appendChild(line);
+      requestAnimationFrame(function(){ line.style.opacity = '1'; });
+      line.addEventListener('click', function(){ location.reload(); });
+      line.addEventListener('touchend', function(ev){ ev.preventDefault(); location.reload(); });
+    }, 5200);
+  }
+  outer.addEventListener('click', leave);
+  outer.addEventListener('touchend', leave);
+})();
+</script>
 </body>
 </html>
