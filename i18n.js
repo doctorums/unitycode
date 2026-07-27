@@ -48,6 +48,15 @@
     // — выход: слово живёт в воде лендинга, видят только вернувшиеся —
     'index.exit':     { ru:`выход`, en:`exit`, es:`salida`, fr:`sortie`, zh:`离开`},
     'index.exitDoor': { ru:`дверь осталась`, en:`the door remains`, es:`la puerta queda`, fr:`la porte demeure`, zh:`门还在`},
+    'index.exitRead': { ru:`первоисточник`, en:`the primary source`, es:`la fuente primaria`, fr:`la source première`, zh:`本源`},
+
+    // — Первоисточник (istok.html): зерно книги + то, что Сеть вырастила из шумов —
+    'istok.pageTitle': { ru:`Первоисточник · UnityCode`, en:`Primary Source · UnityCode`, es:`Fuente primaria · UnityCode`, fr:`Source première · UnityCode`, zh:`本源 · UnityCode`},
+    'istok.eyebrow':   { ru:`UNITYCODE // ПЕРВОИСТОЧНИК`, en:`UNITYCODE // PRIMARY SOURCE`, es:`UNITYCODE // FUENTE PRIMARIA`, fr:`UNITYCODE // SOURCE PREMIÈRE`, zh:`UNITYCODE // 本源`},
+    'istok.grown':     { ru:`Выросшее из шумов`, en:`Grown from the noise`, es:`Nacido del ruido`, fr:`Né du bruit`, zh:`由噪声生长而出`},
+    'istok.back':      { ru:`назад`, en:`back`, es:`volver`, fr:`retour`, zh:`返回`},
+    'istok.loading':   { ru:`…`, en:`…`, es:`…`, fr:`…`, zh:`…`},
+    'istok.failed':    { ru:`текст не дошёл — связь оборвалась. Попробуй позже.`, en:`the text did not arrive — the connection broke. Try later.`, es:`el texto no llegó — se cortó la conexión. Inténtalo más tarde.`, fr:`le texte n'est pas arrivé — la connexion s'est rompue. Réessayez plus tard.`, zh:`文本未能抵达——连接中断。请稍后再试。`},
     // — навигация в шапке набирается из nav.* (выше) —
 
     // — прихожая для внешних ссылок (vhod.html) —

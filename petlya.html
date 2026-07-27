@@ -386,6 +386,7 @@ autocomplete="off"
 <script src="i18n.js"></script>
 <script src="analytics.js" defer></script>
 <script src="js/uc-data.js"></script>
+<script src="js/uc-door.js"></script>
 <script src="audio.js" defer></script>
 <script>
 // ═══════════════════════════════════════════════════════
@@ -1928,17 +1929,7 @@ requestAnimationFrame(frame);
     });
     inner.style.transition = 'opacity 3s ease, transform 3s ease';
     inner.style.opacity = '0';
-    setTimeout(function(){
-      var line = document.createElement('div');
-      line.style.cssText = 'position:fixed;inset:0;z-index:9001;display:flex;align-items:center;justify-content:center;'
-        + 'font-family:"Share Tech Mono",monospace;font-size:0.7rem;letter-spacing:0.3em;'
-        + 'color:rgba(200,215,235,0.28);opacity:0;transition:opacity 4s ease;cursor:pointer;';
-      line.textContent = UC_I18N.t('index.exitDoor');
-      document.body.appendChild(line);
-      requestAnimationFrame(function(){ line.style.opacity = '1'; });
-      line.addEventListener('click', function(){ location.reload(); });
-      line.addEventListener('touchend', function(ev){ ev.preventDefault(); location.reload(); });
-    }, 5200);
+    setTimeout(function(){ if (window.UCDoor) UCDoor.open(); }, 5200);
   }
   outer.addEventListener('click', leave);
   outer.addEventListener('touchend', leave);
