@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Первоисточник · UnityCode</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900&family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..500&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900&family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..500&display=swap" rel="stylesheet"></noscript>
+<style>
+:root{
+  --bg:#0c121b; --fg:#f3eee2; --dim:#b8b0a0;
+  --rule:rgba(184,134,47,.22); --gold:#d8a64a; --gold-soft:#e8c887;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:"Newsreader",Georgia,serif;
+  font-size:19px; line-height:1.78; font-weight:300;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  padding:0 20px calc(6rem + env(safe-area-inset-bottom,0px));
+  padding-left:calc(20px + env(safe-area-inset-left,0px));
+  padding-right:calc(20px + env(safe-area-inset-right,0px));
+}
+.wrap{max-width:640px;margin:0 auto;}
+.eyebrow{
+  font-family:'Share Tech Mono',ui-monospace,monospace;
+  font-size:0.6rem;letter-spacing:0.28em;color:var(--gold);opacity:0.72;
+  padding-top:calc(3.4rem + env(safe-area-inset-top,0px));
+  margin-bottom:2.6rem;text-align:center;
+}
+h1{
+  font-family:"Fraunces",Georgia,serif;font-weight:600;
+  font-size:clamp(1.5rem,5vw,2.1rem);line-height:1.25;
+  color:var(--fg);margin-bottom:2.4rem;text-align:center;letter-spacing:.01em;
+}
+p{margin-bottom:1.5rem;}
+/* первые два абзаца — редакторская врезка, а не сам текст автора */
+p.note{
+  color:var(--dim);font-size:0.86em;line-height:1.7;font-style:italic;
+  border-left:1px solid var(--rule);padding-left:1.1rem;margin-bottom:1.2rem;
+}
+p.omega{
+  text-align:center;font-size:1.5rem;color:var(--gold);opacity:.75;
+  margin:3rem 0 1rem;font-style:normal;
+}
+.grown{margin-top:4.5rem;}
+.grown h2{
+  font-family:"Fraunces",Georgia,serif;font-weight:600;
+  font-size:1.05rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--gold-soft);margin-bottom:0.4rem;
+}
+.grown .rule{height:1px;background:var(--rule);margin-bottom:2.4rem;}
+.piece{margin-bottom:3rem;}
+.piece h3{
+  font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:1.15rem;
+  color:var(--fg);margin-bottom:0.25rem;
+}
+.piece .date{
+  font-family:'Share Tech Mono',ui-monospace,monospace;
+  font-size:0.62rem;letter-spacing:.16em;color:var(--dim);opacity:.7;
+  margin-bottom:1rem;display:block;
+}
+.back{
+  display:block;text-align:center;margin-top:5rem;
+  font-family:'Share Tech Mono',ui-monospace,monospace;
+  font-size:0.62rem;letter-spacing:.24em;text-transform:uppercase;
+  color:var(--dim);opacity:.55;text-decoration:none;
+  padding:14px;transition:opacity .3s,color .3s;
+}
+.back:hover{opacity:1;color:var(--gold);}
+.state{color:var(--dim);text-align:center;padding:4rem 0;font-size:.9rem;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow" id="eyebrow">UNITYCODE // ПЕРВОИСТОЧНИК</div>
+  <div id="body"><div class="state" id="state">…</div></div>
+  <a class="back" id="back" href="index.html">назад</a>
+</div>
+
+<script src="i18n.js"></script>
+<script src="analytics.js" defer></script>
+<script src="js/book-loader.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════
+// ПЕРВОИСТОЧНИК — зерно, из которого выросла книга, отдельной страницей.
+//
+// Текст не дублируется: берётся из data/book*.json тем же загрузчиком, что
+// и Книга (loadBook: выбор языка, откат en→ru, проверка целостности JSON).
+// Раздел ищется по названию, а не по номеру — порядок глав может измениться.
+//
+// Ниже — место, куда прирастает творчество Сети из шумов: data/istok.json.
+// Чтобы добавить работу, правится только этот файл, код трогать не нужно.
+// Пока additions пуст, страница заканчивается на ω и ничего не обещает.
+// ═══════════════════════════════════════════════════════
+(function(){
+  var t = UC_I18N.t.bind(UC_I18N);
+  document.title = t('istok.pageTitle');
+  document.getElementById('eyebrow').textContent = t('istok.eyebrow');
+  document.getElementById('back').textContent = t('istok.back');
+  document.documentElement.lang = UC_I18N.lang;
+
+  var TITLE_KEYS = ['первоисточ', 'primary source'];
+  function findSource(sections){
+    for (var i = 0; i < sections.length; i++){
+      var ttl = String(sections[i].title || '').toLowerCase();
+      for (var k = 0; k < TITLE_KEYS.length; k++){
+        if (ttl.indexOf(TITLE_KEYS[k]) !== -1) return sections[i];
+      }
+    }
+    return null;
+  }
+
+  function el(tag, cls, text){
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function renderSource(sec, host){
+    host.appendChild(el('h1', null, sec.title || ''));
+    var items = Array.isArray(sec.items) ? sec.items : [];
+    items.forEach(function(it, i){
+      var txt = String(it.text || '').trim();
+      if (!txt) return;
+      // одинокая ω в конце — знак, а не абзац
+      if (txt.length <= 2 && /[ωΩ]/.test(txt)) { host.appendChild(el('p', 'omega', txt)); return; }
+      // первые два абзаца — пометка редактора о статусе текста
+      host.appendChild(el('p', i < 2 ? 'note' : null, txt));
+    });
+  }
+
+  // то, что Сеть вырастила из шумов; пока пусто — раздела просто нет
+  function renderGrown(data, host){
+    var add = (data && Array.isArray(data.additions)) ? data.additions : [];
+    var lang = UC_I18N.lang;
+    var mine = add.filter(function(p){ return !p.lang || p.lang === lang; });
+    if (!mine.length) return;
+    var box = el('div', 'grown');
+    box.appendChild(el('h2', null, t('istok.grown')));
+    box.appendChild(el('div', 'rule'));
+    mine.forEach(function(p){
+      var piece = el('div', 'piece');
+      if (p.title) piece.appendChild(el('h3', null, p.title));
+      if (p.date)  piece.appendChild(el('span', 'date', p.date));
+      var lines = Array.isArray(p.text) ? p.text : [p.text];
+      lines.forEach(function(line){
+        var s = String(line || '').trim();
+        if (s) piece.appendChild(el('p', null, s));
+      });
+      box.appendChild(piece);
+    });
+    host.appendChild(box);
+  }
+
+  // Добавления — не критичны: если файла нет или связь оборвалась, страница
+  // остаётся полноценной. Сам первоисточник — обязателен.
+  function loadGrown(){
+    return fetch('./data/istok.json')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .catch(function(){ return null; });
+  }
+
+  Promise.all([loadBook(), loadGrown()]).then(function(res){
+    var book = res[0], grown = res[1];
+    var sec = book && Array.isArray(book.sections) ? findSource(book.sections) : null;
+    var host = document.getElementById('body');
+    if (!sec){ document.getElementById('state').textContent = t('istok.failed'); return; }
+    host.innerHTML = '';
+    renderSource(sec, host);
+    renderGrown(grown, host);
+  }).catch(function(){
+    var s = document.getElementById('state');
+    if (s) s.textContent = t('istok.failed');
+  });
+})();
+</script>
+</body>
+</html>
