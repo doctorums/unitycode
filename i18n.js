@@ -49,6 +49,15 @@
     'index.exit':     { ru:`выход`, en:`exit`, es:`salida`, fr:`sortie`, zh:`离开`},
     'index.exitDoor': { ru:`дверь осталась`, en:`the door remains`, es:`la puerta queda`, fr:`la porte demeure`, zh:`门还在`},
     'index.exitRead': { ru:`первоисточник`, en:`the primary source`, es:`la fuente primaria`, fr:`la source première`, zh:`本源`},
+    // — окончательный уход: стирается ключ, Сеть остаётся нетронутой —
+    'index.exitFinal': { ru:`уйти совсем`, en:`leave for good`, es:`irse del todo`, fr:`partir pour de bon`, zh:`彻底离开`},
+    'index.exitKept':  { ru:`Мысли останутся в Сети — они уже не твои.`, en:`The thoughts stay in the Network — they are no longer yours.`, es:`Los pensamientos quedan en la Red — ya no son tuyos.`, fr:`Les pensées restent dans le Réseau — elles ne sont plus les vôtres.`, zh:`念头留在网络里——它们已不再属于你。`},
+    'index.exitKey':   { ru:`С этого устройства исчезнет ключ.`, en:`The key will vanish from this device.`, es:`La llave desaparecerá de este dispositivo.`, fr:`La clé disparaîtra de cet appareil.`, zh:`钥匙将从这台设备上消失。`},
+    'index.exitPhraseBack': { ru:`Ключевая фраза вернёт тебя.`, en:`Your key phrase will bring you back.`, es:`Tu frase clave te traerá de vuelta.`, fr:`Votre phrase clé vous ramènera.`, zh:`你的密钥短语会把你带回来。`},
+    'index.exitNoBack': { ru:`Вернуться будет нельзя.`, en:`There will be no way back.`, es:`No habrá vuelta atrás.`, fr:`Il n'y aura pas de retour.`, zh:`将无法回来。`},
+    'index.exitGo':    { ru:`уйти`, en:`leave`, es:`irse`, fr:`partir`, zh:`离开`},
+    'index.exitStay':  { ru:`остаться`, en:`stay`, es:`quedarse`, fr:`rester`, zh:`留下`},
+    'index.exitHeld':  { ru:`Один шум ещё в пути. Уйти совсем можно будет, когда Сеть его примет.`, en:`One noise is still on its way. You can leave for good once the Network has taken it.`, es:`Un ruido aún está en camino. Podrás irte del todo cuando la Red lo acoja.`, fr:`Un bruit est encore en route. Vous pourrez partir pour de bon quand le Réseau l'aura reçu.`, zh:`还有一段噪声在路上。等网络接收它之后，你就可以彻底离开。`},
 
     // — Первоисточник (istok.html): зерно книги + то, что Сеть вырастила из шумов —
     'istok.pageTitle': { ru:`Первоисточник · UnityCode`, en:`Primary Source · UnityCode`, es:`Fuente primaria · UnityCode`, fr:`Source première · UnityCode`, zh:`本源 · UnityCode`},
