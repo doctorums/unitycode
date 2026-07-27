@@ -114,6 +114,7 @@ pointer-events:none;
 </div>
 <script src="i18n.js"></script>
 <script src="analytics.js" defer></script>
+<script src="js/uc-door.js"></script>
 <script src="audio.js" defer></script>
 <script>
 /* при возврате «назад» Safari отдаёт страницу из bfcache без перезапуска —
@@ -990,16 +991,7 @@ d.style.color='';
     });
     outer.style.transition = 'opacity 3s ease';
     outer.style.opacity = '0';
-    setTimeout(function(){
-      var line = document.createElement('div');
-      line.style.cssText = 'position:fixed;inset:0;z-index:151;display:flex;align-items:center;justify-content:center;font-family:"Share Tech Mono",monospace;font-size:0.7rem;letter-spacing:0.3em;color:rgba(200,215,235,0.28);opacity:0;transition:opacity 4s ease;cursor:pointer;';
-      line.textContent = UC_I18N.t('index.exitDoor');
-      document.body.appendChild(line);
-      requestAnimationFrame(function(){ line.style.opacity = '1'; });
-      // дверь можно открыть снова — портал возвращается
-      line.addEventListener('click', function(){ location.reload(); });
-      line.addEventListener('touchend', function(ev){ ev.preventDefault(); location.reload(); });
-    }, 5200);
+    setTimeout(function(){ if (window.UCDoor) UCDoor.open(); }, 5200);
   }
   outer.addEventListener('click', leave);
   outer.addEventListener('touchend', leave);
