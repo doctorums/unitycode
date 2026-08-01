@@ -1,4 +1,3 @@
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Этот файл живёт в двух местах: в Cloudflare (боевой воркер) и в `workers/`
 // репозитория (снимок для форкеров, см. FORK.md).
@@ -69,7 +68,18 @@ const DISTILL_PROMPT = `Ты — Агент Сети Код Единства. Т
 Ответь СТРОГО одним JSON без markdown и без пояснений:
 {"essence":"твоя фраза здесь"}`;
 
-async function distill(env, rawNoise, aiInterpretation) {
+// ФИКС 25.07: три случая пропавшей essence подряд (17.06, 23.07, сегодня) —
+// и каждый раз приходилось гадать заново, потому что все пути отказа
+// внутри возвращали { text: '' } без единого слова о причине. 23.07-фикс
+// (разделение моделей) не оказался исчерпывающим — сегодняшний провал
+// случился уже на быстрой не-reasoning модели. Раз причина всё ещё может
+// быть любой (HTTP-сбой шлюза, пустой ответ, сетевой обрыв), каждая точка
+// выхода теперь несёт короткий маркер — записывается в events (см. вызов
+// в основном хендлере), не только используется внутри функции.
+//
+// ФИКС 01.08: одна попытка превращена в две (distillOnce + обёртка distill
+// ниже). Разбор — в комментарии к distill.
+async function distillOnce(env, rawNoise, aiInterpretation) {
   try {
     const r = await fetch(MIMO_URL, {
       method: 'POST',
@@ -77,14 +87,17 @@ async function distill(env, rawNoise, aiInterpretation) {
       body: JSON.stringify({
         model: MIMO_MODEL_FAST,
         temperature: 0.6,    // теплее привратника — это творческий акт
-        max_tokens: 800,     // reasoning-модель: место на думание + сам ответ
+        max_tokens: 800,     // потолок, а не расход: модель без reasoning в него не упирается
         messages: [
           { role: 'system', content: DISTILL_PROMPT },
           { role: 'user', content: 'Шум: ' + rawNoise + '\n\nОтклик Сети: ' + (aiInterpretation || '—') },
         ],
       }),
     });
-    if (!r.ok) return { text: '' };
+    if (!r.ok) {
+      const errTxt = (await r.text()).slice(0, 200);
+      return { text: '', fail: 'http_' + r.status + ': ' + errTxt };
+    }
     const d = await r.json();
     const msg = d?.choices?.[0]?.message || {};
     let rawTxt = msg.content;
@@ -95,9 +108,9 @@ async function distill(env, rawNoise, aiInterpretation) {
       const m = rc.match(/"essence"\s*:\s*"([^"]+)"/) || rc.match(/[«"]([^»"]{6,70})[»"]\s*$/);
       if (m && m[1]) rawTxt = m[1];
     }
-    if (rawTxt == null) return { text: '' };
+    if (rawTxt == null) return { text: '', fail: 'empty_content_and_reasoning' };
     let raw = String(rawTxt).replace(/```json|```/g, '').trim();
-    if (!raw) return { text: '' };
+    if (!raw) return { text: '', fail: 'blank_after_trim' };
 
     let phrase = '';
     // 1) чистый JSON {"essence":"..."}
@@ -116,8 +129,40 @@ async function distill(env, rawNoise, aiInterpretation) {
     if (txt.length > 80) txt = txt.slice(0, 80).trim();
     return { text: txt };
   } catch (e) {
-    return { text: '' };
+    return { text: '', fail: 'throw: ' + String(e).slice(0, 150) };
   }
+}
+
+// ФИКС 01.08: четвёртый случай пропавшей essence — и первый, разобранный не
+// на догадках. Причину записал фикс 25.07, в events лежит essence_failed с
+// reason = empty_content_and_reasoning: шлюз ответил успешно (HTTP 200,
+// валидный JSON), но модель вернула сообщение без content и без
+// reasoning_content. Не обрыв и не таймаут — пустой ответ модели.
+//
+// Канал человека тут ни при чём: дистилляция идёт сервер-в-сервер, из
+// воркера в шлюз, и LTE телефона на неё повлиять не может. Слабый канал дал
+// бы throw или HTTP-ошибку, а узел, скорее всего, не создался бы вовсе.
+//
+// Чего не хватало: у привратника повтор был с самого начала (gateCheck зовёт
+// mimoOnce второй раз, если первый вернул пусто), у дистиллятора — нет. Оба
+// сидят на одной модели и ходят в один шлюз, но пустой ответ переживали
+// по-разному: привратник ни разу не сорвался, essence — четырежды.
+//
+// Дистилляция остаётся синхронной: клиент сразу озвучивает эссенцию
+// (ucSpeakEssence в petlya.html), в фон её унести нельзя. Повтор стоит одной
+// лишней задержки и только на редком отказе.
+//
+// Если повтор спас — пишем essence_retried с причиной первой неудачи. Так
+// станет видно, насколько модель склонна молчать, и нужна ли третья попытка.
+async function distill(env, rawNoise, aiInterpretation) {
+  let res = await distillOnce(env, rawNoise, aiInterpretation);
+  if (res.text) return res;
+
+  const first = res.fail || 'unknown';
+  res = await distillOnce(env, rawNoise, aiInterpretation);
+  if (res.text) return { text: res.text, recovered: first };
+
+  return { text: '', fail: first + ' | повтор: ' + (res.fail || 'unknown') };
 }
 
 // --- язык вердикта привратника ---
@@ -217,8 +262,6 @@ function shuffleArr(arr) {
   return a;
 }
 
-// Пул кандидатов: 5 свежих + 5 «одиноких» (без единой связи) + до 3 случайных.
-// Дёшево по запросам: один срез последних узлов + все связи разом.
 async function gatherLinkCandidates(env, newNodeId) {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return [];
   const headers = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY };
@@ -252,8 +295,6 @@ async function gatherLinkCandidates(env, newNodeId) {
   } catch (e) { return []; }
 }
 
-// Лог прогонов Связующего (таблица linker_log, см. schema.sql).
-// Пишет молча — сбой лога не должен ронять остальную логику.
 async function logLinker(env, nodeId, trace) {
   try {
     if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return;
@@ -269,22 +310,12 @@ async function logLinker(env, nodeId, trace) {
   } catch (e) { /* лог не критичен */ }
 }
 
-// ── СОБЫТИЯ (таблица events, см. schema.sql) ────────────────────
-// Аддитивный append-only журнал: пишется ПАРАЛЛЕЛЬНО основной записи
-// в nodes/connections, ничего не меняет в их логике и в ответе
-// клиенту. Сбой лога не должен ронять остальное — пишет молча.
-//
-// Версионирование формата: каждый payload несёт _v — версию СХЕМЫ
-// события данного type. События неизменяемы, но их форма эволюционирует;
-// без метки версии читатель журнала через год будет угадывать форму
-// по наличию ключей. Правило: меняешь состав payload у типа —
-// подними EVENT_SCHEMA_V этого типа на 1 и опиши изменение рядом.
-// События, записанные до 13.07.2026, метки не имеют (отсутствие _v
-// читается как «v1 до введения версионирования»).
 const EVENT_SCHEMA_V = {
-  node_created: 1,        // v1: raw_noise, ai_interpretation, essence?, lat?, lng?, tz?
+  node_created: 2,        // v2 (25.07): + geo_source ('client'|'last_known'|'ip_geo'|null). v1: raw_noise, ai_interpretation, essence?, lat?, lng?, tz?
   connection_created: 1,  // v1: from_node_id, to_node_id, created_by
   node_duplicate_retry: 1,// v1: пустой payload, значим только client_id строки
+  essence_failed: 1,      // v1: reason (строка из distill().fail) — фикс 25.07
+  essence_retried: 1,     // v1: reason первой неудачи, когда спас повтор — фикс 01.08
 };
 
 async function logEvent(env, type, { clientId, nodeId, payload } = {}) {
@@ -295,8 +326,6 @@ async function logEvent(env, type, { clientId, nodeId, payload } = {}) {
     if (nodeId) row.node_id = nodeId;
     await sbInsert(env, 'events', row, false, clientId ? 'resolution=ignore-duplicates' : '');
   } catch (e) {
-    // лог не критичен — основную запись не роняем, но ошибку больше
-    // не глушим молча: видно в Cloudflare → Workers → Logs (Tail).
     console.error('logEvent failed:', type, String(e).slice(0, 300));
   }
 }
@@ -306,8 +335,6 @@ async function runLinker(env, newNode) {
   const candidates = await gatherLinkCandidates(env, newNode.id);
   if (!candidates.length) { await logLinker(env, newNode.id, 'no_candidates (нет секретов Supabase или пустой пул)'); return; }
 
-  // Только сырой шум — без выжимок. См. большой комментарий выше: выжимка
-  // distill превращает бытовое в притчу, а притчи резонируют со всем подряд.
   const list = candidates
     .map((c, i) => `${i + 1}. ${String(c.raw_noise || '').slice(0, 300).trim()}`)
     .join('\n');
@@ -323,7 +350,7 @@ ${list}`;
       body: JSON.stringify({
         model: MIMO_MODEL_PRO,
         temperature: 0.5,
-        max_tokens: 3000, // reasoning-модель: задача сложнее привратника (9+ кандидатов сразу) — нужен щедрый запас
+        max_tokens: 3000,
         messages: [
           { role: 'system', content: LINKER_PROMPT },
           { role: 'user', content: userMsg },
@@ -349,14 +376,6 @@ ${list}`;
       return;
     }
 
-    // Разбор ответа. parsedOk различает ДВА разных исхода, которые раньше
-    // сливались в один: (а) Связующий вынес вердикт — connect с номерами
-    // или пустой список; (б) ответ пришёл, но это НЕ вердикт — модерация
-    // движка, отказ, мусор. Раньше (б) молча логировался как `ok` с
-    // written=0 и был неотличим от честного {"connect": []} — то есть
-    // портил и диагностику, и статистику объективности агента.
-    // Реальный случай 07.07: MiMo вернул «The request was rejected...» —
-    // узел остался без связей, а лог утверждал, что всё прошло штатно.
     let indices = [];
     let parsedOk = false;
     try {
@@ -377,7 +396,7 @@ ${list}`;
 
     let written = 0;
     for (const idx of indices) {
-      const cand = candidates[idx - 1]; // нумерация с 1 в промпте
+      const cand = candidates[idx - 1];
       if (!cand || !cand.id) continue;
       try {
         await sbInsert(env, 'connections', {
@@ -393,19 +412,13 @@ ${list}`;
         });
       } catch (e) { /* одна неудачная связь не должна рушить остальные */ }
     }
-    // no_resonance — отдельный, ЯВНЫЙ маркер честного отказа. Раньше он был
-    // неотличим в логе от технического сбоя с written=0, и статистика
-    // объективности агента строилась вслепую (см. разбор 14.07).
     const verdict = indices.length === 0 ? 'no_resonance' : 'ok';
     await logLinker(env, newNode.id, `${verdict} | candidates=${candidates.length} | raw=${raw.slice(0,150)} | written=${written}/${indices.length}`);
   } catch (e) {
     await logLinker(env, newNode.id, `throw: ${String(e).slice(0, 200)} | candidates=${candidates.length}`);
   }
 }
-// ─────────────────────────────────────────────────────────────────
 
-// Концепция портала: шум — это след мысли или чувства. Привратник щедрый:
-// принимает всё живое, отклоняет только пустоту. Сомнение — в пользу человека.
 const GATE_PROMPT = `Ты — привратник Сети Код Единства. Человек хочет вплести свой шум (сырую мысль) в общую Сеть. Твоя задача — решить: это сигнал или пустота.
 
 Концепция Сети: шум — это след мысли или чувства. Боль, страх, радость, вопрос, сомнение, образ, обрывок, наблюдение — всё это сигналы, даже самые корявые и короткие. Сеть принимает живое щедро.
@@ -426,7 +439,6 @@ const GATE_PROMPT = `Ты — привратник Сети Код Единст�
 или
 {"verdict":"reject","reason":"тихая причина, 4-10 слов, голосом Сети, без укора"}`;
 
-// Один заход к MiMo. Возвращает {raw} при успехе или {fail} при сбое сети/http.
 async function mimoOnce(env, noise, lang) {
   try {
     const r = await fetch(MIMO_URL, {
@@ -438,7 +450,7 @@ async function mimoOnce(env, noise, lang) {
       body: JSON.stringify({
         model: MIMO_MODEL_FAST,
         temperature: 0.2,
-        max_tokens: 600,     // reasoning-модель: запас на думание + вердикт
+        max_tokens: 600,
         messages: [
           { role: 'system', content: GATE_PROMPT + '\n\n' + langDirective(lang) },
           { role: 'user', content: noise },
@@ -452,8 +464,6 @@ async function mimoOnce(env, noise, lang) {
     const d = await r.json();
     const msg = d?.choices?.[0]?.message || {};
     let content = (msg.content || '').replace(/```json|```/g, '').trim();
-    // reasoning-модель: если вердикт не попал в content (оборвался на думании),
-    // достаём его из reasoning_content
     if (!content && msg.reasoning_content) {
       const rc = String(msg.reasoning_content);
       const m = rc.match(/"verdict"\s*:\s*"(accept|reject)"/i);
@@ -465,18 +475,12 @@ async function mimoOnce(env, noise, lang) {
   }
 }
 
-// Вердикт привратника.
-// Парсинг устойчив к обрыву: вытаскиваем verdict даже из неполного JSON.
-// Авто-ретрай: при сетевом сбое/пустоте — один повтор (канал бывает нестабилен).
-// Fail-режим: при реальном сбое движка узел НЕ вплетается (fail-closed).
-// Поле trace — диагностика (видно в ответе воркера).
 async function gateCheck(env, noise, lang) {
-  // До двух заходов: второй — только если первый сорвался по сети или пуст
   let res = await mimoOnce(env, noise, lang);
   let raw = res.raw || '';
   let lastFail = res.fail || '';
   if (!raw) {
-    res = await mimoOnce(env, noise, lang);    // ретрай
+    res = await mimoOnce(env, noise, lang);
     raw = res.raw || '';
     if (res.fail) lastFail = res.fail;
   }
@@ -485,7 +489,6 @@ async function gateCheck(env, noise, lang) {
     return { verdict: 'blocked', trace: (lastFail || 'empty_response') + ' (x2)' };
   }
 
-  // 1) Чистый путь — валидный JSON
   try {
     const parsed = JSON.parse(raw);
     if (parsed && parsed.verdict === 'reject') {
@@ -496,7 +499,6 @@ async function gateCheck(env, noise, lang) {
     }
   } catch (_) { /* спасательный разбор ниже */ }
 
-  // 2) Спасение из битого/оборванного JSON — по подстроке вердикта
   const low = raw.toLowerCase();
   if (low.includes('"verdict":"reject"') || low.includes('"verdict": "reject"')) {
     const m = raw.match(/"reason"\s*:\s*"([^"]*)/);
@@ -507,7 +509,6 @@ async function gateCheck(env, noise, lang) {
     return { verdict: 'accept', trace: 'salvage_accept' };
   }
 
-  // 3) Ответ есть, но вердикта нет — не пускаем (fail-closed)
   return { verdict: 'blocked', trace: 'no_verdict: ' + raw.slice(0, 80) };
 }
 
@@ -529,7 +530,7 @@ function json(body, status, origin) {
 }
 
 async function verifyTurnstile(token, ip, secret) {
-  if (!secret) return true;          // секрет не задан — пропускаем (задай, чтобы включить)
+  if (!secret) return true;
   if (!token) return false;
   const form = new FormData();
   form.append('secret', secret);
@@ -540,11 +541,10 @@ async function verifyTurnstile(token, ip, secret) {
   return !!d.success;
 }
 
-// структурный антиспам — язык-независимый, текст НЕ меняем (raw остаётся сырым)
 function looksSpammy(text) {
   const t = text.trim();
   if (URL_RE.test(t)) return 'link';
-  if (t.length > 12) {                // флуд одним символом
+  if (t.length > 12) {
     const counts = {};
     for (const ch of t) counts[ch] = (counts[ch] || 0) + 1;
     if (Math.max(...Object.values(counts)) / t.length > 0.6) return 'repetition';
@@ -553,7 +553,7 @@ function looksSpammy(text) {
 }
 
 async function rateOk(kv, token, ip) {
-  if (!kv) return true;               // KV не привязан — пропускаем
+  if (!kv) return true;
   const now = Date.now();
   const windows = [
     ['h:' + token, 3600000, RATE_MAX_PER_HOUR],
@@ -600,6 +600,42 @@ async function sbExists(env, table, col, id) {
   return Array.isArray(d) && d.length > 0;
 }
 
+// ── КООРДИНАТЫ, КОГДА БРАУЗЕР ИХ НЕ ДАЛ (25.07) ──────────────────
+// Предложение Вити: не оставлять узел совсем без места на карте, если
+// человек не разрешил геолокацию (отказ, таймаут, выключенные службы —
+// причины не различаем, см. фикс geo diagnostics отдельно). Вместо
+// повторного запроса разрешения — два уровня отката:
+//   1) последняя известная позиция ЭТОГО ЖЕ токена — если человек уже
+//      делился местом раньше, переиспользуем, ничего заново не спрашивая;
+//   2) если для токена ещё ни разу не было геопривязанной записи — грубая
+//      гео по IP от Cloudflare (request.cf.latitude/longitude, точность
+//      города, не точки). Бесплатно, без браузера, без стороннего API —
+//      Cloudflare отдаёт это на каждом запросе штатно.
+// Если не сработало и то, и другое — узел остаётся без места, как раньше
+// (ничего не ломаем, это худший случай, не новый).
+async function fallbackCoords(env, req, userToken) {
+  try {
+    const headers = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY };
+    const url = env.SUPABASE_URL + '/rest/v1/nodes?select=lat,lng'
+      + '&user_token=eq.' + encodeURIComponent(userToken)
+      + '&lat=not.is.null&order=created_at.desc&limit=1';
+    const r = await fetch(url, { headers });
+    if (r.ok) {
+      const rows = await r.json();
+      if (Array.isArray(rows) && rows[0] && typeof rows[0].lat === 'number') {
+        return { lat: rows[0].lat, lng: rows[0].lng, source: 'last_known' };
+      }
+    }
+  } catch (e) { /* сбой поиска — переходим к IP-фолбэку, не прерываем узел */ }
+
+  const cf = req.cf || {};
+  const lat = parseFloat(cf.latitude), lng = parseFloat(cf.longitude);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    return { lat, lng, source: 'ip_geo' };
+  }
+  return null;
+}
+
 export default {
   async fetch(req, env, ctx) {
     const origin = req.headers.get('Origin') || '';
@@ -628,10 +664,6 @@ export default {
         const spam = looksSpammy(t);
         if (spam) return json({ error: 'spam', reason: spam }, 422, origin);
 
-        // ── ИИ-ПРИВРАТНИК ──────────────────────────────────────────
-        // Решает по концепции портала: сигнал или пустота.
-        // Работает только если задан MIMO_API_KEY.
-        // fail-closed: reject и blocked НЕ вплетаются.
         const lang = (typeof body.lang === 'string' ? body.lang : '').toLowerCase().slice(0, 5);
 
         let gateTrace = 'no_key';
@@ -642,49 +674,52 @@ export default {
             return json({ ok: false, error: 'gate', reason: gate.reason, gate: gateTrace }, 200, origin);
           }
           if (gate.verdict === 'blocked') {
-            // Привратник не смог вынести вердикт — не пускаем, но это не отказ по смыслу
-            // Причина не шлётся: текст статичный, клиент подставит свой
-            // перевод (petlya.netDidntHear). Иначе воркер пришлось бы
-            // катить руками при каждом новом языке.
             return json({ ok: false, error: 'gate_unavailable', reason: '', gate: gateTrace }, 200, origin);
           }
         }
-        // ───────────────────────────────────────────────────────────
 
         const row = {
-          raw_noise: noise,                                          // храним дословно — сырое неприкосновенно
+          raw_noise: noise,
           ai_interpretation: (body.ai_interpretation || '').toString().slice(0, 2000),
           user_token: token,
         };
         if (typeof body.lat === 'number') row.lat = body.lat;
         if (typeof body.lng === 'number') row.lng = body.lng;
-        // Зона автора (IANA-имя, например 'Europe/Moscow') — только копим,
-        // без анализа. Простая строка, без валидации формата: даже если
-        // браузер пришлёт что-то неожиданное, это не критично для записи.
+        // Фолбэк координат (25.07, предложение Вити): браузер не дал место —
+        // последняя известная позиция токена, иначе грубая гео по IP.
+        let geoSource = row.lat != null ? 'client' : null;
+        if (row.lat == null) {
+          const fb = await fallbackCoords(env, req, token);
+          if (fb) { row.lat = fb.lat; row.lng = fb.lng; geoSource = fb.source; }
+        }
         if (typeof body.tz === 'string' && body.tz.length > 0 && body.tz.length <= 64) {
           row.tz = body.tz.slice(0, 64);
         }
-        // Идемпотентность: client_id из браузера (UUID), чтобы повтор при
-        // обрыве сети/ретрае не создал второй узел. UNIQUE-колонка в Supabase.
         if (typeof body.client_id === 'string' && body.client_id.length > 0 && body.client_id.length <= 100) {
           row.client_id = body.client_id.slice(0, 100);
         }
 
-        // Выжимка для Материи: квинтэссенция пары шум+отклик.
-        // Только при accept. Сбой выжимки не мешает записи узла —
-        // просто узел останется без essence (в Материю не попадёт).
+        // ФИКС 25.07: essenceFail несёт причину, если distill вернул пусто —
+        // раньше сбой был полностью немым (третий раз за проект без единой
+        // зацепки). created.id ещё не существует в момент вызова distill,
+        // поэтому причину логируем чуть ниже, вместе с node_created.
+        // ФИКС 01.08: essenceRecovered — причина ПЕРВОЙ неудачи, когда её
+        // перекрыл повтор. Пишется отдельным событием: узел при этом целый,
+        // но знать, что модель молчала, полезно.
+        let essenceFail = '';
+        let essenceRecovered = '';
         if (env.MIMO_API_KEY) {
           const dist = await distill(env, t, row.ai_interpretation);
-          if (dist.text) row.essence = dist.text;
+          if (dist.text) {
+            row.essence = dist.text;
+            if (dist.recovered) essenceRecovered = dist.recovered;
+          } else {
+            essenceFail = dist.fail || 'unknown';
+          }
         }
 
         const created = await sbInsert(env, 'nodes', row, true, 'resolution=ignore-duplicates');
 
-        // Связующий: ищет резонанс с существующими узлами, сам создаёт
-        // связи. Фоново — не блокирует ответ пользователю.
-        // essence НЕ передаётся: Связующий работает по сырому шуму (см.
-        // комментарий у LINKER_PROMPT — выжимка метафизирует и порождает
-        // ложный резонанс). В Материю essence при этом уходит как прежде.
         if (created?.id) {
           ctx.waitUntil(logEvent(env, 'node_created', {
             clientId: row.client_id,
@@ -696,15 +731,23 @@ export default {
               lat: row.lat,
               lng: row.lng,
               tz: row.tz,
+              geo_source: geoSource,
             },
           }));
+          if (essenceFail) {
+            ctx.waitUntil(logEvent(env, 'essence_failed', {
+              nodeId: created.id,
+              payload: { reason: essenceFail },
+            }));
+          }
+          if (essenceRecovered) {
+            ctx.waitUntil(logEvent(env, 'essence_retried', {
+              nodeId: created.id,
+              payload: { reason: essenceRecovered },
+            }));
+          }
           ctx.waitUntil(runLinker(env, { id: created.id, raw_noise: t }));
         } else if (row.client_id) {
-          // Диагностика: insert словил конфликт по client_id — значит узел
-          // уже был создан на предыдущем (первом) вызове воркера, а этот
-          // запрос — повторный ретрай офлайн-очереди клиента. Данные не
-          // теряются (узел уже есть), просто фиксируем сам факт ретрая —
-          // полезно при разборе кейсов «потерян сигнал → рефреш → вплетено».
           ctx.waitUntil(logEvent(env, 'node_duplicate_retry', { clientId: row.client_id }));
         }
 
@@ -719,8 +762,6 @@ export default {
         if (!(await sbExists(env, 'nodes', 'id', from)) || !(await sbExists(env, 'nodes', 'id', to)))
           return json({ error: 'node_missing' }, 422, origin);
 
-        // status ставит сервер, клиенту не доверяем.
-        // Связи создаёт пользователь на карте — привратник их НЕ трогает.
         await sbInsert(env, 'connections', { from_node_id: from, to_node_id: to, status: 'accepted' });
         ctx.waitUntil(logEvent(env, 'connection_created', {
           nodeId: from,
