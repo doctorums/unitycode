@@ -645,6 +645,30 @@ async function sbExists(env, table, col, id) {
 //      Cloudflare отдаёт это на каждом запросе штатно.
 // Если не сработало и то, и другое — узел остаётся без места, как раньше
 // (ничего не ломаем, это худший случай, не новый).
+// ── РАЗБРОС ОТКАТА (07.08) ───────────────────────────────────────
+// Когда 07.08 у клиента убрали запрос геолокации, откат стал основным
+// путём — и вылезло: last_known возвращает ТЕ ЖЕ координаты до шестого
+// знака, поэтому все узлы одного человека вставали в одну точку.
+// MarkerCluster схлопывал их в один кружок, и карта переставала
+// показывать, что мыслей много. Раньше этого не было видно только
+// потому, что GPS каждый раз давал чуть другое число.
+//
+// Разброс — не подделка точности, а отказ от ложной: и last_known, и
+// гео по IP приблизительны по своей природе, и утверждать, что шесть
+// мыслей случились на одном и том же метре, — большее враньё, чем
+// честно показать «где-то здесь». Настоящий GPS (geo_source='client')
+// не трогаем: там точность реальная.
+const FALLBACK_SPREAD_M = 150;
+
+function spreadCoords(lat, lng, metres) {
+  const r = metres * Math.sqrt(Math.random());     // равномерно по площади круга
+  const a = Math.random() * Math.PI * 2;
+  const dLat = (r * Math.cos(a)) / 111320;
+  const cosLat = Math.cos(lat * Math.PI / 180) || 1e-6;
+  const dLng = (r * Math.sin(a)) / (111320 * cosLat);
+  return { lat: lat + dLat, lng: lng + dLng };
+}
+
 async function fallbackCoords(env, req, userToken) {
   try {
     const headers = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY };
@@ -655,7 +679,8 @@ async function fallbackCoords(env, req, userToken) {
     if (r.ok) {
       const rows = await r.json();
       if (Array.isArray(rows) && rows[0] && typeof rows[0].lat === 'number') {
-        return { lat: rows[0].lat, lng: rows[0].lng, source: 'last_known' };
+        const s = spreadCoords(rows[0].lat, rows[0].lng, FALLBACK_SPREAD_M);
+        return { lat: s.lat, lng: s.lng, source: 'last_known' };
       }
     }
   } catch (e) { /* сбой поиска — переходим к IP-фолбэку, не прерываем узел */ }
@@ -663,7 +688,8 @@ async function fallbackCoords(env, req, userToken) {
   const cf = req.cf || {};
   const lat = parseFloat(cf.latitude), lng = parseFloat(cf.longitude);
   if (Number.isFinite(lat) && Number.isFinite(lng)) {
-    return { lat, lng, source: 'ip_geo' };
+    const s = spreadCoords(lat, lng, FALLBACK_SPREAD_M);
+    return { lat: s.lat, lng: s.lng, source: 'ip_geo' };
   }
   return null;
 }
