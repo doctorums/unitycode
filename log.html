@@ -81,6 +81,12 @@ button.refresh:active { border-color: var(--accent); color: var(--accent); }
   <div id="env-body" class="loading">проверяю...</div>
 </div>
 
+<div class="card" id="card-voice">
+  <h2>Голос эссенций</h2>
+  <div id="voice-body" class="loading">читаю...</div>
+  <div class="hint">Что случилось с озвучкой в последний раз на этом устройстве. Воркер при сбое SpeechKit отвечает JSON с кодом 200, и раньше голос пропадал молча — теперь причина остаётся здесь. Проверить сам воркер: открыть его адрес с ?text=проверка — должен отдать звук, а не JSON.</div>
+</div>
+
 <div class="card" id="card-queue">
   <h2>Очередь на устройстве</h2>
   <div id="queue-body" class="loading">читаю...</div>
@@ -201,6 +207,28 @@ async function checkEnv(){
       g.className = '';
     } catch(e){ g.innerHTML = '<span class="warn">статус неизвестен</span>'; g.className=''; }
   })();
+}
+
+// ── 1б. Голос эссенций ───────────────────────────────────
+// Читаем след, оставленный ucSpeakEssence в petlya.html. Ничего не
+// спрашиваем у сети: голос — украшение, но его немой отказ уже стоил
+// нескольких раундов гадания, как и пропавшая essence.
+function checkVoice(){
+  const el = document.getElementById('voice-body');
+  let rec = null;
+  try { rec = JSON.parse(localStorage.getItem('uc_voice_last') || 'null'); } catch(e){}
+  if (!rec) {
+    el.innerHTML = '<span class="warn">следа пока нет — на этом устройстве эссенцию ещё не озвучивали</span>';
+    return;
+  }
+  const rows = [['Последняя попытка', fmtTime(new Date(rec.at).toISOString())]];
+  if (rec.ok) {
+    rows.push(['Итог', '<span class="ok">прозвучала</span>']);
+  } else {
+    rows.push(['Итог', '<span class="bad">молча не прозвучала</span>']);
+    rows.push(['Причина', '<span class="warn">' + esc(rec.reason || '—') + '</span>']);
+  }
+  el.innerHTML = rows.map(r => '<div class="row"><span class="k">'+r[0]+'</span><span class="v">'+r[1]+'</span></div>').join('');
 }
 
 // ── 2. Локальная очередь ─────────────────────────────────
@@ -377,10 +405,11 @@ async function lookup(){
 
 function runAll(){
   document.getElementById('env-body').innerHTML = '<span class="loading">проверяю...</span>';
+  document.getElementById('voice-body').innerHTML = '<span class="loading">читаю...</span>';
   document.getElementById('queue-body').innerHTML = '<span class="loading">читаю...</span>';
   document.getElementById('server-body').innerHTML = '<span class="loading">спрашиваю базу...</span>';
   document.getElementById('net-body').innerHTML = '<span class="loading">считаю...</span>';
-  checkEnv(); checkQueue(); checkServer(); checkNet(); checkUCData();
+  checkEnv(); checkVoice(); checkQueue(); checkServer(); checkNet(); checkUCData();
 }
 
 // ── 0. Слой данных (js/uc-data.js) ───────────────────────

@@ -489,15 +489,40 @@ function ucSpeakEssence(text) {
     fetch(VOICE_WORKER_URL + '?text=' + encodeURIComponent(t.slice(0, 200)))
       .then(r => {
         const ct = r.headers.get('Content-Type') || '';
-        if (!ct.includes('audio')) { _ucVoiceBusy = false; return null; }
+        if (!ct.includes('audio')) {
+          // Голос отваливался НЕМО: воркер при сбое SpeechKit отвечает JSON
+          // с кодом 200, а здесь всё не-аудио просто выбрасывалось. Тот же
+          // класс, что у пропавшей essence (фикс 25.07) — сбой без причины
+          // стоит потом нескольких раундов гадания. Теперь причина остаётся.
+          _ucVoiceBusy = false;
+          r.text().then(body => ucVoiceFail('not_audio: ' + ct + ' | ' + body.slice(0, 200)))
+                  .catch(() => ucVoiceFail('not_audio: ' + ct));
+          return null;
+        }
         return r.arrayBuffer();
       })
       .then(buf => {
         if (!buf) return;
-        window.UCAudio.speak(buf).finally(() => { _ucVoiceBusy = false; });
+        window.UCAudio.speak(buf).then(played => {
+          if (!played) ucVoiceFail('speak_returned_false (звук выключен, не разблокирован или битый буфер)');
+          else ucVoiceOk();
+        }).finally(() => { _ucVoiceBusy = false; });
       })
-      .catch(() => { _ucVoiceBusy = false; });
-  } catch (e) { _ucVoiceBusy = false; }
+      .catch(e => { _ucVoiceBusy = false; ucVoiceFail('fetch: ' + String(e).slice(0, 150)); });
+  } catch (e) { _ucVoiceBusy = false; ucVoiceFail('throw: ' + String(e).slice(0, 150)); }
+}
+
+// Последняя судьба голоса — в localStorage, чтобы её было видно в Журнале
+// (log.html) с того же устройства. В сеть ничего не шлём: это диагностика
+// на устройстве, а не данные о человеке.
+function ucVoiceFail(reason) {
+  try {
+    console.warn('UnityCode voice:', reason);
+    localStorage.setItem('uc_voice_last', JSON.stringify({ ok: false, at: Date.now(), reason: String(reason).slice(0, 300) }));
+  } catch (e) {}
+}
+function ucVoiceOk() {
+  try { localStorage.setItem('uc_voice_last', JSON.stringify({ ok: true, at: Date.now() })); } catch (e) {}
 }
 const TURNSTILE_SITEKEY = '0x4AAAAAADipuIhRBHuABO1Z';
 
