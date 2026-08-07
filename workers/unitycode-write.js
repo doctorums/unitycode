@@ -397,26 +397,53 @@ ${list}`;
       return;
     }
 
-    let written = 0;
-    for (const idx of indices) {
-      const cand = candidates[idx - 1];
-      if (!cand || !cand.id) continue;
-      try {
-        await sbInsert(env, 'connections', {
+    // ── ФИКС 07.08: СНАЧАЛА СКАЗАТЬ, ПОТОМ СДЕЛАТЬ ─────────────────
+    // Трасса писалась в самом конце, после всех вставок. Бюджет waitUntil —
+    // 30 секунд на ВСЕ фоновые задачи запроса вместе (док Cloudflare), и
+    // когда он исчерпывался на вставках, прогон убивали ровно между
+    // созданием связи и записью о ней: 07.08 связь появилась в Сети без
+    // единого слова о том, кто и почему её создал.
+    //
+    // Прозрачность — второе условие автономии Связующего (CONCEPT.md,
+    // «Атрибутированная автономия»), и она не может зависеть от того,
+    // доживёт ли прогон до конца. Поэтому решение фиксируется до того,
+    // как хоть что-то попадёт в граф.
+    const planned = indices.map(i => candidates[i - 1]).filter(c => c && c.id);
+    const verdict = planned.length === 0 ? 'no_resonance' : 'ok';
+    await logLinker(env, newNode.id,
+      `${verdict} | candidates=${candidates.length} | raw=${raw.slice(0, 150)} | planned=${planned.length}`);
+    if (!planned.length) return;
+
+    // Связи и события — двумя вставками вместо двух на каждую связь:
+    // PostgREST принимает массив строк. Форма payload не меняется (v1),
+    // меняется только длина хвоста, который и не помещался в бюджет.
+    const connRow = c => ({
+      from_node_id: newNode.id, to_node_id: c.id,
+      status: 'accepted', created_by: 'linker',
+    });
+    try {
+      await sbInsert(env, 'connections', planned.map(connRow));
+      await sbInsert(env, 'events', planned.map(c => ({
+        type: 'connection_created',
+        node_id: newNode.id,
+        payload: {
+          _v: EVENT_SCHEMA_V.connection_created,
           from_node_id: newNode.id,
-          to_node_id: cand.id,
-          status: 'accepted',
+          to_node_id: c.id,
           created_by: 'linker',
-        });
-        written++;
-        await logEvent(env, 'connection_created', {
-          nodeId: newNode.id,
-          payload: { from_node_id: newNode.id, to_node_id: cand.id, created_by: 'linker' },
-        });
-      } catch (e) { /* одна неудачная связь не должна рушить остальные */ }
+        },
+      })));
+    } catch (e) {
+      // Массив не прошёл — не теряем связи, пишем поштучно, как было раньше.
+      // Медленнее и может не уложиться в бюджет, но решение уже в журнале,
+      // а связь важнее скорости. Вторая строка в журнале — судьба записи.
+      let written = 0;
+      for (const c of planned) {
+        try { await sbInsert(env, 'connections', connRow(c)); written++; } catch (_) {}
+      }
+      await logLinker(env, newNode.id,
+        `batch_failed | ${String(e).slice(0, 150)} | поштучно ${written}/${planned.length}`);
     }
-    const verdict = indices.length === 0 ? 'no_resonance' : 'ok';
-    await logLinker(env, newNode.id, `${verdict} | candidates=${candidates.length} | raw=${raw.slice(0,150)} | written=${written}/${indices.length}`);
   } catch (e) {
     await logLinker(env, newNode.id, `throw: ${String(e).slice(0, 200)} | candidates=${candidates.length}`);
   }
