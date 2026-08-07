@@ -504,8 +504,11 @@ function ucSpeakEssence(text) {
       .then(buf => {
         if (!buf) return;
         window.UCAudio.speak(buf).then(played => {
-          if (!played) ucVoiceFail('speak_returned_false (звук выключен, не разблокирован или битый буфер)');
-          else ucVoiceOk();
+          if (played) ucVoiceOk();
+          else {
+            const why = (window.UCAudio.speakFail && window.UCAudio.speakFail()) || 'причина не названа';
+            ucVoiceFail('не прозвучало: ' + why);
+          }
         }).finally(() => { _ucVoiceBusy = false; });
       })
       .catch(e => { _ucVoiceBusy = false; ucVoiceFail('fetch: ' + String(e).slice(0, 150)); });

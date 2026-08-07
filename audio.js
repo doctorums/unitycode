@@ -375,10 +375,19 @@
   // Вход — ArrayBuffer (не Blob!) с синтезированным TTS (oggopus от
   // unitycode-voice). Возвращает Promise<boolean> — true если реально
   // заиграло, false если тихо пропущено (не начат/muted/сбой декодирования).
+  // Причина последнего отказа — читается снаружи (UCAudio.speakFail).
+  // Голос украшение и падать не должен громко, но и пропадать безымянно
+  // ему больше нельзя: немой отказ уже стоил разбора 07.08. Различаем
+  // «контекста нет», «заглушено» и «не декодировалось» — последнее самое
+  // вероятное на Safari, где Web Audio плохо берёт oggopus.
+  let lastSpeakFail = '';
   function speak(arrayBuffer) {
+    lastSpeakFail = '';
     if (!started) { start(); }
-    if (!ctx || muted) return Promise.resolve(false);
+    if (!ctx) { lastSpeakFail = 'no_ctx (звук не запущен — не было жеста?)'; return Promise.resolve(false); }
+    if (muted) { lastSpeakFail = 'muted'; return Promise.resolve(false); }
     if (ctx.state === 'suspended') ctx.resume();
+    const bytes = (arrayBuffer && arrayBuffer.byteLength) || 0;
     return ctx.decodeAudioData(arrayBuffer.slice(0)).then(buf => {
       const src = ctx.createBufferSource();
       const g = ctx.createGain();
@@ -387,7 +396,12 @@
       src.connect(g); g.connect(masterGain);
       src.start();
       return true;
-    }).catch(() => false); // битый буфер/неподдерживаемый формат — молча пропускаем, голос лишь украшение
+    }).catch(e => {
+      // битый буфер или формат, который движок не берёт — голос лишь украшение,
+      // поэтому тихо, но с именем причины
+      lastSpeakFail = 'decode_failed (' + bytes + ' Б, ctx=' + ctx.state + '): ' + String(e).slice(0, 120);
+      return false;
+    });
   }
 
   function fxSubmit() {
@@ -961,6 +975,7 @@
   window.UCAudio = {
     fx: fx,
     speak: speak, // голос эссенций — через уже разблокированный ctx, см. фикс 16.07
+    speakFail: () => lastSpeakFail, // причина последнего молчания, для Журнала
     toggleMute: toggleMute,
     isMuted: () => muted,
     start: start,
