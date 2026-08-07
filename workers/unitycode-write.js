@@ -669,22 +669,14 @@ function spreadCoords(lat, lng, metres) {
   return { lat: lat + dLat, lng: lng + dLng };
 }
 
-async function fallbackCoords(env, req, userToken) {
-  try {
-    const headers = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY };
-    const url = env.SUPABASE_URL + '/rest/v1/nodes?select=lat,lng'
-      + '&user_token=eq.' + encodeURIComponent(userToken)
-      + '&lat=not.is.null&order=created_at.desc&limit=1';
-    const r = await fetch(url, { headers });
-    if (r.ok) {
-      const rows = await r.json();
-      if (Array.isArray(rows) && rows[0] && typeof rows[0].lat === 'number') {
-        const s = spreadCoords(rows[0].lat, rows[0].lng, FALLBACK_SPREAD_M);
-        return { lat: s.lat, lng: s.lng, source: 'last_known' };
-      }
-    }
-  } catch (e) { /* сбой поиска — переходим к IP-фолбэку, не прерываем узел */ }
-
+async function fallbackCoords(env, req) {
+  // ОТКАТ last_known УБРАН (07.08). Он брал координаты последнего
+  // геопривязанного узла этого токена — то есть место, где человек был в
+  // ПРОШЛЫЙ раз. Пока браузер спрашивали, это не всплывало; когда запрос
+  // убрали и откат стал основным путём, узлы встали в четырёх километрах
+  // от настоящего места, и с точностью до шестого знака. Точная неправда
+  // хуже честной неточности, поэтому остаётся только гео по IP: грубо,
+  // до города, зато про сегодня.
   const cf = req.cf || {};
   const lat = parseFloat(cf.latitude), lng = parseFloat(cf.longitude);
   if (Number.isFinite(lat) && Number.isFinite(lng)) {
@@ -771,7 +763,7 @@ export default {
         // последняя известная позиция токена, иначе грубая гео по IP.
         let geoSource = row.lat != null ? 'client' : null;
         if (row.lat == null) {
-          const fb = await fallbackCoords(env, req, token);
+          const fb = await fallbackCoords(env, req);
           if (fb) { row.lat = fb.lat; row.lng = fb.lng; geoSource = fb.source; }
         }
         if (typeof body.tz === 'string' && body.tz.length > 0 && body.tz.length <= 64) {
