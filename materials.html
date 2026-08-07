@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════════════════════════
+     UNITYCODE · МАТЕРИАЛЫ (хаб)  —  ПАМЯТКА ФОРКЕРУ
+     Раздел-контейнер со звёздным фоном (независим от index.html).
+
+     ✏️  ВСЁ НАСТРАИВАЕТСЯ В ОДНОМ МЕСТЕ — блок CONFIG в начале скрипта ниже.
+         Прозрачность подложки, цвета неба, звёзды, галактики, меню — там.
+         Меняй значения в CONFIG, в остальной код лезть не нужно.
+     ⚙️  ВПИШИ СВОЁ при форке: CONFIG.repoUrl — ссылка на твой GitHub-репозиторий.
+     ➕  ДОБАВИТЬ материал — массив CONFIG.materials.
+     ⛔️ НЕ ТРОГАЙ: четыре пункта верхнего меню и имена файлов разделов.
+════════════════════════════════════════════════════════════════════════ -->
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title data-i18n="materials.title">UNITYCODE — Материя</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400;700&family=Caveat:wght@500&family=Marck+Script&family=Pacifico&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400;700&family=Caveat:wght@500&family=Marck+Script&family=Pacifico&display=swap" rel="stylesheet"></noscript>
+<link rel="stylesheet" href="shared.css">
+<style>
+  html,body { height:100%; }
+  body { min-height:100vh; min-height:100dvh; display:flex; flex-direction:column; overflow:hidden; overscroll-behavior:none; }
+  #sky { position:fixed; inset:0; z-index:0; display:block; pointer-events:none; touch-action:none; }
+  header { position:relative; z-index:3; }
+  main { position:relative; z-index:2; flex:1; width:100%; max-width:820px;
+         margin:0 auto; padding:2.5rem 9rem 4rem 1.4rem; overflow-y:auto; }
+
+  /* Компактное меню материалов (позиция/размер задаются из CONFIG.menu) */
+  .mat-menu { position:fixed; z-index:10; display:flex; flex-direction:column; gap:0.5rem;
+              pointer-events:auto; transform:translateZ(0); -webkit-transform:translateZ(0);
+              will-change:transform; }
+  .mat-item { font-family:'Share Tech Mono',monospace; letter-spacing:0.1em; text-transform:uppercase;
+              cursor:pointer; text-decoration:none; transition:color 0.2s,border-color 0.2s,background 0.2s;
+              pointer-events:auto; -webkit-tap-highlight-color:rgba(255,255,255,0.1);
+              display:inline-block; }
+  .mat-item.cur { color:var(--accent); border-color:var(--accent); }
+  @media (hover: hover) { .mat-item:hover { color:var(--accent); border-color:var(--accent); } }
+
+  /* Подложка контента — параметры из CONFIG.panel. По умолчанию: вуаль без рамки. */
+  #reader { display:none; margin-top:1rem; max-width:680px; }
+  #reader.show { display:block; }
+  #reader h2 { font-family:'Unbounded',sans-serif; font-weight:400; font-size:1.2rem; margin:1.3rem 0 0.5rem; color:var(--accent); }
+  #reader h3 { font-family:'Unbounded',sans-serif; font-weight:400; font-size:0.95rem; margin:1.1rem 0 0.4rem; }
+  #reader p,#reader li { font-size:0.85rem; line-height:1.75; color:#e2e8f2; }
+  #reader code { background:rgba(255,255,255,0.08); padding:0.1em 0.35em; border-radius:3px; font-size:0.8rem; }
+  #reader table { border-collapse:collapse; width:100%; margin:1rem 0; font-size:0.78rem; }
+  #reader td,#reader th { border:1px solid var(--border); padding:0.5rem 0.7rem; text-align:left; }
+  #reader hr { border:none; border-top:1px solid rgba(255,255,255,0.12); margin:1.5rem 0; }
+</style>
+</head>
+<body>
+
+<canvas id="sky"></canvas>
+
+<header>
+  <a href="index.html" class="logo" data-i18n="materials.logo">UNITYCODE // МАТЕРИЯ</a>
+  <nav>
+    <a href="petlya.html" data-i18n="nav.spiral">Спираль</a>
+    <a href="set.html" data-i18n="nav.network">Сеть</a>
+    <a href="implant.html" data-i18n="nav.pattern">Паттерн</a>
+    <a href="materials.html" class="active" data-i18n="nav.matter">Материя</a>
+  </nav>
+</header>
+
+<div class="mat-menu" id="menu"></div>
+
+<main>
+  <div id="reader"><div id="readerBody"></div></div>
+</main>
+
+<script src="i18n.js"></script>
+<script src="analytics.js" defer></script>
+<script src="audio.js" defer></script>
+<script>
+// ⚠️ ВСТАВЬ URL voice-воркера (unitycode-voice) после деплоя:
+const VOICE_WORKER_URL = 'https://unitycode-voice.sv2txxznjm.workers.dev';
+
+// Голос Сети в Материи: эссенция звучит «на лету», один голос за раз.
+// Пока звучит — новые вызовы игнорируются (голос это событие, не поток;
+// из двух подряд озвучится та, что первой дозрела до проявления). Любая
+// ошибка (нет сети, сбой синтеза, автоплей заблокирован) молча гасит
+// замок — звук лишь украшение, ничего не ломает.
+let _ucMatBusy = false;
+// ФИКС 16.07: озвучка почти всегда молчала — ровно 3 раза за всё время,
+// хотя Яндекс синтез исправно платно отрабатывал. Причина: `new
+// Audio(blob).play()` вызывался из автономного цикла анимации (ни
+// единого пользовательского жеста рядом), и политика автоплея браузера
+// это отклоняла — те редкие 3 срабатывания были случайными допусками
+// эвристики браузера (Chrome media engagement index), не системой.
+//
+// Решение — тот же канал, что уже держит fxSparks/fxExplode/shipCapture
+// в этой же Материи (см. audio.js): Web Audio API поверх уже
+// разблокированного ctx, не отдельный <audio>-элемент. Раз разблокирован
+// жестом однажды (обычный тап по канвасу), дальше играть можно из любого
+// места, хоть из requestAnimationFrame — политика автоплея это не
+// затрагивает, это ровно то же, что уже работает для взрывов/искр.
+function ucMatSpeak(text){
+  try{
+    const t=String(text||'').trim();
+    if(!t || _ucMatBusy) return;
+    if(!VOICE_WORKER_URL || VOICE_WORKER_URL.indexOf('ЗАМЕНИ')!==-1) return; // ещё не настроен
+    if(!window.UCAudio || !window.UCAudio.speak) return; // audio.js не загрузился — молча пропускаем
+    _ucMatBusy=true;
+    fetch(VOICE_WORKER_URL+'?text='+encodeURIComponent(t.slice(0,200)))
+      .then(r=>{
+        const ct=r.headers.get('Content-Type')||'';
+        if(!ct.includes('audio')){ _ucMatBusy=false; return null; }
+        return r.arrayBuffer();
+      })
+      .then(buf=>{
+        if(!buf) return;
+        window.UCAudio.speak(buf).finally(()=>{ _ucMatBusy=false; });
+      })
+      .catch(()=>{ _ucMatBusy=false; });
+  }catch(e){ _ucMatBusy=false; }
+}
+
+/* ╔══════════════════════════════════════════════════════════════════════╗
+   ║  CONFIG — ПРИБОРНАЯ ПАНЕЛЬ СТРАНИЦЫ. Меняй значения здесь.            ║
+   ║  Всё оформление страницы Материалов управляется отсюда.              ║
+   ╚══════════════════════════════════════════════════════════════════════╝ */
+const CONFIG = {
+
+  // ── Репозиторий для кнопки «Форкнуть» ─────────────────────────────────
+  repoUrl: "https://github.com/doctorums/unitycode/fork",   // ведёт сразу на форк-форму
+
+  // ── Подложка контента (как текст лежит на небе) ───────────────────────
+  panel: {
+    opacity:   0.42,   // непрозрачность вуали: 0 = текст прямо на звёздах, 1 = плотная коробка
+    blur:      8,      // размытие неба под текстом, px (0 = без размытия)
+    softEdges: true,   // true = края дымки тают в небо (без рамки); false = ровная вуаль
+    tint:      "10,18,32", // цвет вуали, R,G,B (тёмно-синий «космос»)
+    pad:       24,     // внутренний отступ текста, px
+    radius:    6,      // скругление углов, px (при softEdges почти не виден)
+  },
+
+  // ── Небо (фон-градиент) ───────────────────────────────────────────────
+  sky: {
+    top:        "#0a1626",  // цвет вверху
+    mid:        "#070f1c",  // цвет в середине
+    bottom:     "#04080f",  // цвет внизу
+    brightness: 1.0,        // общая яркость неба (1 = норма, <1 темнее, >1 светлее)
+  },
+
+  // ── Звёзды ────────────────────────────────────────────────────────────
+  stars: {
+    density:   1.0,            // плотность (1 = базовая; 1.5 гуще, 0.5 реже)
+    maxCount:  420,            // потолок числа звёзд (бережёт мобильные)
+    color:     "220,235,255",  // цвет, R,G,B
+    sizeSmall: 0.9,            // размер обычной звезды, px
+    sizeBig:   1.6,            // размер крупной звезды, px
+    bigChance: 0.12,           // доля крупных (0..1)
+    twinkle:   1.0,            // скорость мерцания (0 = не мерцают)
+    drift:     0.02,           // скорость дрейфа (0 = неподвижны)
+    minAlpha:  0.15, maxAlpha: 0.75, // диапазон яркости
+  },
+
+  // ── Галактики (type: "spiral" | "globular") ───────────────────────────
+  galaxies: [
+    { on:true, type:"spiral",   xPct:68, yPct:22, sizePct:16, angle:0.4, hue:"180,160", arms:3, bright:0.5, tilt:0.7, lean:-0.6 },
+    { on:true, type:"globular", xPct:20, yPct:82, sizePct:9,  angle:2.1, hue:"210,180",         bright:0.5 },
+  ],
+
+  // ── Меню материалов (положение и вид) ─────────────────────────────────
+  menu: {
+    corner:     "top-right",   // top-right | top-left | bottom-right | bottom-left
+    offset:     "5rem 0.8rem", // отступ от края окна: «сверху/снизу  справа/слева» (меню прилипло к экрану)
+    fontSize:   "0.72rem",
+    padding:    "0.5rem 0.9rem",
+    bg:         "rgba(0,0,0,0.72)",   // фон кнопок
+    border:     "1px solid rgba(255,255,255,0.08)",
+    color:      "#555",        // цвет неактивной кнопки
+  },
+
+  // ── Комета (как в индексе): периодически пролетает с хвостом ──────────
+  comet: {
+    on:        true,   // false = выключить комету
+    minDelay:  3,      // мин. пауза между пролётами, сек
+    maxDelay:  8,      // макс. пауза, сек
+  },
+
+  // ── Планета: влетает снизу-слева дугой через центр, уходит вверх-слева ─
+  planet: {
+    on:        true,    // false = выключить
+    color:     "150,170,210",  // цвет планеты, R,G,B
+    maxSize:   38,      // макс. радиус в центре экрана, px
+    depth:     0.42,    // как глубоко заходит к центру по X (0..1; 0.5 = ровно центр)
+    speed:     0.6,     // скорость (1 = базовая; меньше = медленнее)
+    minDelay:  6,       // мин. пауза между пролётами, сек
+    maxDelay:  14,      // макс. пауза, сек
+    ring:      true,    // кольцо вокруг планеты (как у Сатурна)
+  },
+
+  // ── Доп. объект на будущее (пока выключен) ────────────────────────────
+  object: {
+    on:    false,       // включи, когда придумаешь объект
+    kind:  "",          // напр. "planet" | "blackhole" | "ship" — реализуем позже
+    xPct:  50, yPct: 40, sizePct: 8,
+  },
+
+  // ── Шум третьего агента (режим покоя) ─────────────────────────────────
+  // Плавает по небу, колышется, взрывается/прошивается при встрече с
+  // планетой или кометой. Сейчас — ЗАГЛУШКА. Позже источником станет
+  // вывод Связующего (самый рейтинговый шум/связь сети).
+  noise: {
+    on:        true,
+    color:     "210,225,255",  // цвет текста, R,G,B
+    drift:     0.15,           // скорость дрейфа
+    sway:      6,              // амплитуда колыхания, px
+    respawn:   2.5,            // пауза перед появлением нового после разрушения, сек
+    // набор шрифтов — каждый шум получает случайный (разные «голоса»)
+    fonts: [
+      "'Cormorant Garamond', Georgia, serif",
+      "'Caveat', cursive",
+      "'Marck Script', cursive",
+      "'Pacifico', cursive",
+      "Verdana, sans-serif",
+      "'Share Tech Mono', monospace",
+      "Georgia, serif",
+    ],
+    // weight = «вес» шума: влияет на размер (кегль). Больше вес — крупнее и
+    // устойчивее (мелкие объекты прошивают его, не разрушая).
+    items: [
+      { text:"боюсь, что время уходит впустую", weight:34 },
+      { text:"кажется, меня никто не слышит",     weight:22 },
+      { text:"что, если всё это не зря",          weight:46 },
+      { text:"я снова на связи",                  weight:18 },
+      { text:"мы — одно целое, разорванное на части", weight:52 },
+    ],
+  },
+
+  // ── Кораблик-охотник: выбирает шум, подлетает, заглатывает, уносит ─────
+  ship: {
+    on:       true,
+    color:    "180,210,255",  // цвет корпуса/свечения, R,G,B
+    size:     20,             // размер силуэта, px
+    speed:    2.2,            // скорость полёта
+    hideMin:  5,              // мин. пауза в укрытии (у меню), сек
+    hideMax:  12,             // макс. пауза, сек
+  },
+
+  //   link = страница сайта | reader = показать md тут | ext = внешняя ссылка
+  materials: [
+    { id:"book", type:"link",   title:"Книга",        key:"materials.book",    href:"kniga.html" },
+    { id:"new",  type:"reader", title:"С чего начать", key:"materials.start",   src:"start.md" },
+    { id:"fork", type:"reader", title:"Как форкнуть", key:"materials.forkHow", src:"FORK.md" },
+    { id:"repo", type:"ext",    title:"Форкнуть",     key:"materials.fork",    href:"@repo" }, // @repo = CONFIG.repoUrl
+  ],
+};
+/* ── конец панели. Ниже — движок, его обычно менять не нужно. ─────────── */
+
+// применяем параметры меню (позиция/вид) из CONFIG
+(function applyMenuStyle(){
+  const m=CONFIG.menu, el=document.getElementById('menu');
+  const [a,b]=m.offset.split(/\s+/);
+  const vert = m.corner.startsWith('top') ? 'top' : 'bottom';
+  const horz = m.corner.endsWith('right') ? 'right' : 'left';
+  el.style[vert]=a; el.style[horz]=b;
+  el.style.alignItems = horz==='right' ? 'flex-end' : 'flex-start';
+  const css=document.createElement('style');
+  css.textContent='.mat-item{font-size:'+m.fontSize+';padding:'+m.padding+';background:'+m.bg
+    +';border:'+m.border+';color:'+m.color+';}';
+  document.head.appendChild(css);
+})();
+
+// применяем подложку контента из CONFIG.panel
+(function applyPanel(){
+  const p=CONFIG.panel, r=document.getElementById('reader');
+  r.style.padding=p.pad+'px';
+  r.style.borderRadius=p.radius+'px';
+  if(p.blur){ r.style.backdropFilter='blur('+p.blur+'px)'; r.style.webkitBackdropFilter='blur('+p.blur+'px)'; }
+  if(p.softEdges){
+    // дымка без рамки: радиальное затемнение, тающее к краям
+    r.style.background='radial-gradient(ellipse at center, rgba('+p.tint+','+p.opacity
+      +') 0%, rgba('+p.tint+','+(p.opacity*0.7).toFixed(3)+') 60%, rgba('+p.tint+',0) 100%)';
+  } else {
+    r.style.background='rgba('+p.tint+','+p.opacity+')';
+    r.style.border='1px solid rgba(255,255,255,0.08)';
+  }
+})();
+
+// строим меню материалов
+// Текущий язык: localStorage → язык браузера → ru (база)
+const LANG = (function(){
+  let p=null;
+  try { p = new URLSearchParams(location.search).get('lang'); } catch(e){}
+  let stored=null; try { stored = localStorage.getItem('uc_lang'); } catch(e){}
+  const v = (p || stored || navigator.language || 'ru').slice(0,2).toLowerCase();
+  if(p){ try { localStorage.setItem('uc_lang', v); } catch(e){} }  // ?lang=en запоминается
+  return v;
+})();
+
+// Загрузка md с учётом языка: пробуем FILE_<lang>.md, откат на базовый (RU) FILE.md
+async function loadLocalized(src){
+  const list = (LANG && LANG !== 'ru') ? [ src.replace(/(\.[^.\/]+)$/, '_'+LANG+'$1'), src ] : [ src ];
+  for(const url of list){
+    try{ const res = await fetch(url); if(res.ok) return await res.text(); }catch(e){}
+  }
+  return null;
+}
+const LAST_KEY="uc_materials_last";
+const reader=document.getElementById('reader'), readerBody=document.getElementById('readerBody');
+CONFIG.materials.forEach(m=>{
+  const href = m.href==='@repo' ? CONFIG.repoUrl : m.href;
+  const el=document.createElement(m.type==='reader'?'button':'a');
+  el.className='mat-item'; el.dataset.id=m.id; el.textContent=(m.key && window.UC_I18N) ? (UC_I18N.t(m.key)||m.title) : m.title;
+  if(m.type==='link') el.href=href;
+  if(m.type==='ext'){ el.href=href; el.target='_blank'; el.rel='noopener'; }
+  if(m.type==='reader') el.onclick=()=>toggleReader(m);
+  document.getElementById('menu').appendChild(el);
+});
+function markCurrent(id){ document.querySelectorAll('.mat-item').forEach(b=>b.classList.toggle('cur',b.dataset.id===id)); }
+
+let openId=null;  // какой материал сейчас раскрыт
+
+function closeReader(){
+  reader.classList.remove('show');
+  markCurrent(null);
+  if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  openId=null;
+  if(window.__noiseHide) window.__noiseHide(false);
+  try{ localStorage.removeItem(LAST_KEY); }catch(e){}
+}
+
+function toggleReader(m){
+  if(openId===m.id){ closeReader(); }   // уже открыт — свернуть, не перезагружая
+  else { openReader(m); }
+}
+
+async function openReader(m){
+  markCurrent(m.id);
+  openId=m.id;
+  try{ localStorage.setItem(LAST_KEY,m.id); }catch(e){}
+  reader.classList.add('show');
+  if(window.__noiseHide) window.__noiseHide(true);
+  // встроенный текст: строка или объект { ru, en, ... } по языку
+  if(m.text){
+    const t = (typeof m.text==='object') ? (m.text[LANG] || m.text.ru || Object.values(m.text)[0]) : m.text;
+    readerBody.innerHTML=renderMarkdown(t); return;
+  }
+  readerBody.innerHTML=('<p style="color:#9aa">'+(window.UC_I18N?UC_I18N.t('materials.loading'):'Загрузка…')+'</p>');
+  const md = await loadLocalized(m.src);
+  readerBody.innerHTML = (md!=null) ? renderMarkdown(md)
+    : ('<p style="color:#9aa">'+(window.UC_I18N?UC_I18N.t('materials.loadErrA'):'Не удалось загрузить ')+m.src+(window.UC_I18N?UC_I18N.t('materials.loadErrB'):'. Открой файл в репозитории напрямую.')+'</p>');
+}
+(function initLast(){
+  let last=null; try{ last=localStorage.getItem(LAST_KEY); }catch(e){}
+  const m=CONFIG.materials.find(x=>x.id===last&&x.type==='reader'); if(m) openReader(m);
+})();
+
+function renderMarkdown(md){
+  const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const inline=t=>esc(t).replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" style="color:var(--accent)">$1</a>');
+  let html='',inList=false,inTable=false;
+  const cl=()=>{ if(inList){html+='</ul>';inList=false;} };
+  const ct=()=>{ if(inTable){html+='</table>';inTable=false;} };
+  for(const raw of md.split('\n')){
+    const line=raw.replace(/\s+$/,'');
+    if(/^\s*$/.test(line)){cl();ct();continue;}
+    if(/^#\s/.test(line)){cl();ct();continue;}
+    if(/^##\s/.test(line)){cl();ct();html+='<h2>'+inline(line.replace(/^##\s/,''))+'</h2>';continue;}
+    if(/^###\s/.test(line)){cl();ct();html+='<h3>'+inline(line.replace(/^###\s/,''))+'</h3>';continue;}
+    if(/^---+$/.test(line)){cl();ct();html+='<hr>';continue;}
+    if(/^\|/.test(line)){
+      if(/^\|[\s:|-]+\|?\s*$/.test(line))continue;
+      const cells=line.split('|').slice(1,-1).map(c=>'<td>'+inline(c.trim())+'</td>').join('');
+      if(!inTable){html+='<table>';inTable=true;} html+='<tr>'+cells+'</tr>';continue;
+    } else ct();
+    if(/^\s*[-*]\s/.test(line)){ if(!inList){html+='<ul>';inList=true;} html+='<li>'+inline(line.replace(/^\s*[-*]\s/,''))+'</li>';continue; }
+    else cl();
+    html+='<p>'+inline(line)+'</p>';
+  }
+  cl();ct();return html;
+}
+
+// ── ЗВЁЗДНОЕ НЕБО (читает CONFIG.sky / stars / galaxies / object) ───────
+(function sky(){
+  const cv=document.getElementById('sky'), ctx=cv.getContext('2d');
+  const S=CONFIG.stars, SK=CONFIG.sky;
+  let W,H,stars,gals;
+  // комета (перенесено из index.html)
+  const CO=CONFIG.comet||{on:false};
+  let cometT=null, cometParams={};
+  function scheduleComet(){
+    if(!CO.on) return;
+    setTimeout(()=>{
+      const edge=Math.random(); let sx,sy;
+      if(edge<0.6){sx=W*(0.4+Math.random()*0.6);sy=10+Math.random()*30;}
+      else{sx=W-10-Math.random()*30;sy=H*Math.random()*0.4;}
+      let dx,dy;
+      if(Math.random()<0.3){
+        const tx=W*(0.4+Math.random()*0.2), ty=H*(0.4+Math.random()*0.2);
+        const len=Math.sqrt((tx-sx)**2+(ty-sy)**2), dist=W*(0.55+Math.random()*0.3);
+        dx=(tx-sx)/len*dist; dy=(ty-sy)/len*dist;
+      } else {
+        const a=(195+Math.random()*110)*Math.PI/180, dist=W*(0.45+Math.random()*0.35);
+        dx=Math.cos(a)*dist; dy=Math.sin(a)*dist;
+      }
+      cometParams={sx,sy,dx,dy,dur:12+Math.random()*22};
+      cometT=performance.now()/1000;
+    },((CO.minDelay||3)+Math.random()*((CO.maxDelay||8)-(CO.minDelay||3)))*1000);
+  }
+  // планета: каждый пролёт — случайные облик и траектория
+  const PL=CONFIG.planet||{on:false};
+  let planetT=null, planetDur=0, planetP={};
+  const rnd=(a,b)=>a+Math.random()*(b-a);
+  function schedulePlanet(){
+    if(!PL.on) return;
+    setTimeout(()=>{
+      const base=(PL.color||"150,170,210").split(',').map(Number);
+      const palettes=[
+        [90,130,160],[110,140,120],[160,120,90],[130,110,150],[80,140,150],base
+      ];
+      const col=palettes[Math.floor(Math.random()*palettes.length)];
+      // случайная точка на периметре экрана (с запасом за краем, чтобы вплывала/уплывала)
+      const m=120;
+      function edgePoint(){
+        switch(Math.floor(Math.random()*4)){
+          case 0: return {x:rnd(-m,W+m), y:-m};      // сверху
+          case 1: return {x:W+m,        y:rnd(-m,H+m)}; // справа
+          case 2: return {x:rnd(-m,W+m), y:H+m};      // снизу
+          default:return {x:-m,         y:rnd(-m,H+m)}; // слева
+        }
+      }
+      const A=edgePoint(); let B=edgePoint();
+      // выход желательно с другого края, чтобы путь шёл через центр
+      let tries=0; while(Math.hypot(B.x-A.x,B.y-A.y) < Math.max(W,H)*0.8 && tries++<6) B=edgePoint();
+      planetP={
+        size:  (PL.maxSize||38)*rnd(0.55,1.4),
+        color: col,
+        ax:A.x, ay:A.y, bx:B.x, by:B.y,
+        cx: W*rnd(0.35,0.65), cy: H*rnd(0.35,0.65),  // контрол дуги — центральная зона
+        ring:  Math.random()<0.5,
+        tilt:  rnd(-1.2,1.2),
+      };
+      planetT=performance.now()/1000;
+      planetDur=rnd(16,28)/(PL.speed||1);
+    },((PL.minDelay||6)+Math.random()*((PL.maxDelay||14)-(PL.minDelay||6)))*1000);
+  }
+
+  // ── ШУМ ТРЕТЬЕГО АГЕНТА (режим покоя) ──────────────────────────────────
+  const NS=CONFIG.noise||{on:false};
+  // Приоритет источников фраз:
+  //   1) живые выжимки (essence) из Supabase — реальные мысли Сети, ПРИОРИТЕТ
+  //   2) noises.json — ручной список форкера (если есть)
+  //   3) дефолтные CONFIG.noise.items — подстраховка, когда живых нет
+  // spawnNoise сначала пробует живые; дефолтные всплывают, только если
+  // живых не осталось (пул пуст или все уже на экране).
+  NS.defaults = (NS.items || []).slice();  // дефолтные сохраняем отдельно
+  NS.live = [];                            // живые из базы + noises.json
+  window.__liveCount = 0;                  // сколько живых реально пришло (для проверки)
+
+  (async ()=>{
+    try{
+      const r=await fetch('noises.json'); if(r.ok){
+        const arr=await r.json();
+        if(Array.isArray(arr) && arr.length) NS.live=NS.live.concat(arr);
+      }
+    }catch(e){}
+  })();
+  (async ()=>{
+    const SB_URL='https://lukyyqabkxzrgdixzphs.supabase.co';
+    const SB_KEY='sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
+    const TR_URL='https://unitycode-analyze.sv2txxznjm.workers.dev';
+    try{
+      const r=await fetch(
+        SB_URL+'/rest/v1/nodes?select=id,essence&essence=not.is.null&order=created_at.desc&limit=40',
+        { headers:{ apikey:SB_KEY, Authorization:'Bearer '+SB_KEY } }
+      );
+      if(!r.ok) return;
+      const rows=await r.json();
+      if(!Array.isArray(rows)) return;
+      const live=rows
+        .map(x=>({ id:x.id, text:(x.essence||'').trim() }))
+        .filter(o=>o.text.length>2 && !o.text.startsWith('__TRACE__'))
+        .map(o=>({ id:o.id, text:o.text, weight:18+Math.floor(Math.random()*36) }));
+      if(live.length){ NS.live=NS.live.concat(live); window.__liveCount=NS.live.length; }
+
+      // авто-перевод essence: если язык не RU и текст кириллический — переводим асинхронно
+      // NS.live обновляется in-place: след. spawnNoise подхватит перевод, анимация не трогается
+      if(LANG && LANG!=='ru'){
+        const needsTr=live.filter(o=>/[а-яёА-ЯЁ]/u.test(o.text));
+        if(needsTr.length) (async()=>{
+          for(const o of needsTr){
+            const ckey='uc_tr:'+o.id+':ess:'+LANG;
+            try{
+              const cached=localStorage.getItem(ckey);
+              if(cached){ const lv=NS.live.find(x=>x.id===o.id); if(lv) lv.text=cached; continue; }
+            }catch(_){}
+            try{
+              await new Promise(r=>setTimeout(r,120)); // не DDoS-им воркер
+              const res=await fetch(TR_URL,{method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({mode:'translate',text:o.text,lang:LANG})});
+              const d=await res.json();
+              if(d.translation){
+                try{localStorage.setItem(ckey,d.translation);}catch(_){}
+                const lv=NS.live.find(x=>x.id===o.id); if(lv) lv.text=d.translation;
+              }
+            }catch(_){}
+          }
+        })();
+      }
+    }catch(e){ /* остаётся то, что уже есть */ }
+  })();
+  let noises=[];         // активные шумы (до maxOnscreen)
+  let noiseHidden=false;
+  window.__noiseHide=(v)=>{ noiseHidden=v; };
+  if(reader.classList.contains('show')) noiseHidden=true;
+  let lastObj={px:0,py:0,sz:0, cx:0,cy:0,cOn:false};
+  const MAX_NOISE=2;
+
+  function spawnNoise(){
+    if(!NS.on || noiseHidden) return;
+    if(noises.length>=MAX_NOISE) return;
+    // не брать фразу, которая уже висит
+    const onscreen=noises.map(n=>n.text);
+    // ПРИОРИТЕТ: сначала пробуем живые (из базы/noises.json),
+    // дефолтные — только если живых не осталось
+    let avail=(NS.live||[]).filter(it=>!onscreen.includes(it.text));
+    if(!avail.length) avail=(NS.defaults||[]).filter(it=>!onscreen.includes(it.text));
+    if(!avail.length) return;
+    const it=avail[Math.floor(Math.random()*avail.length)];
+    // движение в объёме: позиция в «мировых» координатах от центра, плюс глубина z
+    const mode=Math.random();
+    let n={
+      text:it.text, base:it.weight||28,
+      // id есть только у живых эссенций (из базы); у дефолтных строк его нет.
+      // По нему отличаем, что можно озвучить: голос — только живым мыслям
+      // Сети, дефолтная подстраховка звучать не должна (решение 15.07).
+      id:it.id||null, spoken:false, born:performance.now(),
+      wx:rnd(-0.5,0.5), wy:rnd(-0.4,0.4),
+      vx:rnd(-0.0003,0.0003), vy:rnd(-0.00025,0.00025),
+      z:0, vz:0, ph:Math.random()*7, parts:null,
+      font:(NS.fonts&&NS.fonts.length)?NS.fonts[Math.floor(Math.random()*NS.fonts.length)]:"'Cormorant Garamond', Georgia, serif"
+    };
+    if(mode<0.45){            // уходит вдаль в точку
+      n.z=rnd(0.6,1.0); n.vz=rnd(0.0004,0.001);
+    } else if(mode<0.8){      // выплывает из глубины к зрителю
+      n.z=rnd(0.7,1.1); n.vz=-rnd(0.0004,0.0009);
+    } else {                  // пролёт мимо камеры
+      n.z=rnd(0.2,0.45); n.vz=-rnd(0.0012,0.0024);
+      n.vx=rnd(-0.0009,0.0009); n.vy=rnd(-0.0007,0.0007);
+    }
+    noises.push(n);
+  }
+
+  function explodeNoise(n, tx, ty, sz){
+    const fnt=n.font||"'Cormorant Garamond', Georgia, serif";
+    ctx.font=sz+"px "+fnt;
+    const chars=n.text.split('');
+    let ox=tx - ctx.measureText(n.text).width/2;
+    n.parts=chars.map(ch=>{
+      const w=ctx.measureText(ch).width, cxp=ox+w/2; ox+=w;
+      return { ch, x:cxp, y:ty, sz, font:fnt, vx:(Math.random()-0.5)*3.5, vy:(Math.random()-0.5)*3.5-0.5,
+               rot:0, vr:(Math.random()-0.5)*0.25, a:1 };
+    });
+  }
+
+  function drawNoise(t){
+    if(noiseHidden){ noises=[]; return; }
+    const C=NS.color||"210,225,255";
+    const FOV=0.9;  // чем меньше — сильнее перспектива
+    for(let i=noises.length-1;i>=0;i--){
+      const n=noises[i];
+      // разлёт букв
+      if(n.parts){
+        let alive=false;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        for(const p of n.parts){
+          if(p.a<=0) continue; alive=true;
+          p.x+=p.vx; p.y+=p.vy; p.vy+=0.04; p.rot+=p.vr; p.a-=0.008;
+          ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+          ctx.font=p.sz+"px "+(p.font||"'Cormorant Garamond', Georgia, serif");
+          ctx.fillStyle='rgba('+C+','+Math.max(0,p.a).toFixed(3)+')';
+          ctx.fillText(p.ch,0,0); ctx.restore();
+        }
+        ctx.textAlign='start'; ctx.textBaseline='alphabetic';
+        if(!alive){ noises.splice(i,1); setTimeout(spawnNoise,(NS.respawn||2.5)*1000+rnd(1500,4000)); }
+        continue;
+      }
+      // движение в объёме
+      n.wx+=n.vx; n.wy+=n.vy; n.z+=n.vz;
+      // вышел за пределы глубины — исчез, родится новый
+      if(n.z>1.25 || n.z<0.06){ noises.splice(i,1); setTimeout(spawnNoise,rnd(5,9)*1000); continue; }
+      const scale=FOV/(n.z+FOV);            // перспектива: ближе z → крупнее
+      let sz=n.base*scale*2.4;
+      // захваченный кораблём — координаты ведёт корабль, текст сжимается
+      if(n.captured){
+        sz*=(n._shrink==null?1:n._shrink);
+        const al2=(n._shrink==null?1:n._shrink);
+        if(sz>0.5){
+          ctx.font=sz+"px "+(n.font||"'Cormorant Garamond', Georgia, serif");
+          ctx.textAlign='center'; ctx.textBaseline='middle';
+          ctx.fillStyle='rgba('+C+','+(0.9*al2).toFixed(3)+')';
+          ctx.fillText(n.text,n.tx,n.ty);
+          ctx.textAlign='start'; ctx.textBaseline='alphabetic';
+        }
+        continue;
+      }
+      const tx=W/2 + n.wx*W*scale*1.6;
+      const ty=H/2 + (n.wy*H + Math.sin(t*0.5+n.ph)*(NS.sway||6))*scale*1.6;
+      n.tx=tx; n.ty=ty; n.sz=sz;   // экранные координаты для корабля
+      // гравитация планеты: ближайший шум подтягивается к ней
+      if(lastObj.sz>0 && !n.captured){
+        const gx=lastObj.px-tx, gy=lastObj.py-ty, gd=Math.hypot(gx,gy)||1;
+        if(gd < lastObj.sz*9){                       // в зоне притяжения
+          const pull=(1 - gd/(lastObj.sz*9))*0.0016; // тем сильнее, чем ближе
+          n.wx += gx/gd*pull; n.wy += gy/gd*pull;
+        }
+      }
+      // ушёл далеко за край — убрать
+      if(tx<-W*0.6||tx>W*1.6||ty<-H*0.6||ty>H*1.6){ noises.splice(i,1); setTimeout(spawnNoise,rnd(4,8)*1000); continue; }
+      const alpha=Math.min(1, scale*1.4) * (n.z>1.0?(1.25-n.z)/0.25:1);
+      ctx.font=sz+"px "+(n.font||"'Cormorant Garamond', Georgia, serif");
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.shadowColor='rgba('+C+','+(0.4*alpha)+')'; ctx.shadowBlur=18*scale;
+      ctx.fillStyle='rgba('+C+','+(0.9*alpha).toFixed(3)+')';
+      ctx.fillText(n.text,tx,ty);
+      ctx.shadowBlur=0; ctx.textAlign='start'; ctx.textBaseline='alphabetic';
+      // ── Голос Сети: эссенция звучит НЕ сразу, а когда проявилась и
+      //    немного полетала (born + пауза). Только живые (есть id) —
+      //    дефолтная подстраховка немая. Одна за раз: пока звучит, новые
+      //    молчат (ucMatSpeak сам держит замок) — голос это событие, не
+      //    поток; из двух подряд озвучится та, что первой дозреет.
+      if(n.id && !n.spoken && alpha>0.55 && (performance.now()-n.born)>2600){
+        n.spoken=true;             // помечаем сразу, чтобы не пытаться повторно каждый кадр
+        ucMatSpeak(n.text);
+      }
+      // ── столкновения с планетой/кометой ──
+      if(scale>0.4 && !n.captured){
+        const textR=sz*0.9;   // зона текста (вся фраза, не только центр)
+        if(lastObj.sz>0){
+          const d=Math.hypot(lastObj.px-tx, lastObj.py-ty);
+          if(d < textR + lastObj.sz){
+            if(!n._sndPlanet){
+              n._sndPlanet=true;
+              if(window.UCAudio) UCAudio.fx(lastObj.sz < sz*0.6 ? 'sparks' : 'explode');
+            }
+            if(lastObj.sz < sz*0.6) sparks(tx,ty,C);   // объект сильно мельче → прошив
+            else explodeNoise(n,tx,ty,sz);              // соизмерим/крупнее → разрыв
+          } else { n._sndPlanet=false; }
+        }
+        if(lastObj.cOn){
+          const d=Math.hypot(lastObj.cx-tx, lastObj.cy-ty);
+          if(d < textR + 18){
+            if(!n._sndComet){
+              n._sndComet=true;
+              if(window.UCAudio) UCAudio.fx(sz > 55 ? 'sparks' : 'explode');
+            }
+            if(sz > 55) sparks(tx,ty,C);
+            else explodeNoise(n,tx,ty,sz);
+          } else { n._sndComet=false; }
+        }
+      }
+    }
+    // поддерживаем поток: если шумов мало — изредка подкинуть
+    if(NS.on && !noiseHidden && noises.length<1 && Math.random()<0.0018) spawnNoise();
+  }
+  let sparkList=[];
+  function sparks(x,y,C){
+    for(let i=0;i<10;i++) sparkList.push({x,y,a:1,
+      vx:(Math.random()-0.5)*4, vy:(Math.random()-0.5)*4, c:C});
+  }
+  function drawSparks(){
+    for(const s of sparkList){ if(s.a<=0)continue;
+      s.x+=s.vx; s.y+=s.vy; s.a-=0.04;
+      ctx.fillStyle='rgba('+s.c+','+Math.max(0,s.a).toFixed(3)+')';
+      ctx.fillRect(s.x,s.y,2,2);
+    }
+    sparkList=sparkList.filter(s=>s.a>0);
+  }
+
+  // ── КОРАБЛИК-ОХОТНИК ───────────────────────────────────────────────────
+  const SH=CONFIG.ship||{on:false};
+  let ship=null;  // { state, x,y, angle, target, ... }
+  let shipHideUntil=0;
+  function shipBase(){ // точка укрытия — район меню (правый верх)
+    return { x: W-60, y: 70 };
+  }
+  function launchShip(){
+    if(!SH.on || noiseHidden) return;
+    // влетает со случайного края экрана
+    let sx,sy;
+    switch(Math.floor(Math.random()*4)){
+      case 0: sx=rnd(0,W); sy=-40; break;       // сверху
+      case 1: sx=W+40;     sy=rnd(0,H); break;  // справа
+      case 2: sx=rnd(0,W); sy=H+40; break;      // снизу
+      default:sx=-40;      sy=rnd(0,H); break;   // слева
+    }
+    ship={ state:'hunt', x:sx, y:sy, angle:0, prevAngle:0, roll:0, target:null, swp:0, wob:Math.random()*7 };
+  }
+  function pickTarget(){
+    // выбирает крупнейший доступный шум (потом — выбор агента)
+    let best=null, bestSz=0;
+    for(const n of noises){
+      if(n.parts||n.captured) continue;
+      if((n.sz||0)>bestSz){ bestSz=n.sz; best=n; }
+    }
+    return best;
+  }
+  function drawShip(){
+    if(noiseHidden){ ship=null; return; }
+    const now=performance.now()/1000;
+    if(!ship){
+      if(SH.on && now>=shipHideUntil) launchShip();
+      return;
+    }
+    const C=SH.color||"180,210,255", spd=SH.speed||2.2, S=SH.size||16;
+
+    if(ship.state==='hunt'){
+      if(!ship.target || ship.target.parts || ship.target.captured || noises.indexOf(ship.target)<0){
+        ship.target=pickTarget();
+      }
+      if(!ship.target){ // некого ловить — назад в укрытие
+        ship.state='leave'; ship.bx=shipBase().x; ship.by=shipBase().y;
+      } else {
+        const tx=ship.target.tx, ty=ship.target.ty;
+        const dx=tx-ship.x, dy=ty-ship.y, d=Math.hypot(dx,dy)||1;
+        const nx=dx/d, ny=dy/d;
+        ship.wob+=0.06;
+        const curve=Math.sin(ship.wob)*0.5;
+        const mx=nx - ny*curve, my=ny + nx*curve;
+        const ml=Math.hypot(mx,my)||1;
+        ship.angle=Math.atan2(my,mx);
+        const grab=ship.target.sz*1.4 + S*2.5;     // дистанция захвата — побольше, чтобы луч был виден
+        const slow=d < grab*2.2 ? 0.4 : 1;          // притормаживает на подлёте
+        ship.x+=mx/ml*spd*2*slow; ship.y+=my/ml*spd*2*slow;
+        if(d < grab){ // в зоне захвата — включаем луч
+          ship.state='swallow'; ship.captured=ship.target; ship.target.captured=true; ship.swp=0;
+          if(window.UCAudio) UCAudio.fx('shipCapture');
+        }
+      }
+    } else if(ship.state==='swallow'){
+      ship.swp+=0.012;
+      const n=ship.captured;
+      if(n){ // шум стягивается к носу корабля
+        const nx=ship.x+Math.cos(ship.angle)*S, ny=ship.y+Math.sin(ship.angle)*S;
+        n.tx+=(nx-n.tx)*0.12; n.ty+=(ny-n.ty)*0.12;
+        n._shrink=(n._shrink==null?1:n._shrink)*0.92;
+      }
+      if(ship.swp>=1){ // проглочен — убрать шум, уносим
+        const idx=noises.indexOf(ship.captured); if(idx>=0) noises.splice(idx,1);
+        setTimeout(spawnNoise, rnd(3,6)*1000);
+        ship.captured=null; ship.state='leave'; const b=shipBase(); ship.bx=b.x; ship.by=b.y;
+      }
+    } else if(ship.state==='leave'){
+      const dx=ship.bx-ship.x, dy=ship.by-ship.y, d=Math.hypot(dx,dy)||1;
+      ship.angle=Math.atan2(dy,dx);
+      ship.x+=dx/d*spd*2.4; ship.y+=dy/d*spd*2.4;
+      if(d<8){ ship=null; shipHideUntil=now+rnd(SH.hideMin||5,SH.hideMax||12); return; }
+    }
+
+    // луч-захват — яркий пульсирующий конус от носа к шуму
+    if(ship.state==='swallow' && ship.captured){
+      const nx=ship.x+Math.cos(ship.angle)*S*1.6, ny=ship.y+Math.sin(ship.angle)*S*1.6;
+      const n=ship.captured;
+      const ang=Math.atan2(n.ty-ny,n.tx-nx);
+      const pulse=0.5+0.5*Math.sin(performance.now()/90);
+      const spread=12+14*Math.sin(ship.swp*Math.PI);
+      // широкое мягкое свечение луча
+      const beam=ctx.createLinearGradient(nx,ny,n.tx,n.ty);
+      beam.addColorStop(0,'rgba('+C+','+(0.7*pulse+0.25)+')');
+      beam.addColorStop(1,'rgba('+C+',0.05)');
+      ctx.beginPath();
+      ctx.moveTo(nx+Math.cos(ang+Math.PI/2)*4, ny+Math.sin(ang+Math.PI/2)*4);
+      ctx.lineTo(nx+Math.cos(ang-Math.PI/2)*4, ny+Math.sin(ang-Math.PI/2)*4);
+      ctx.lineTo(n.tx+Math.cos(ang-Math.PI/2)*spread, n.ty+Math.sin(ang-Math.PI/2)*spread);
+      ctx.lineTo(n.tx+Math.cos(ang+Math.PI/2)*spread, n.ty+Math.sin(ang+Math.PI/2)*spread);
+      ctx.closePath(); ctx.fillStyle=beam; ctx.fill();
+      // яркая осевая линия луча
+      ctx.beginPath(); ctx.moveTo(nx,ny); ctx.lineTo(n.tx,n.ty);
+      ctx.strokeStyle='rgba(255,255,255,'+(0.5*pulse+0.2)+')'; ctx.lineWidth=1.5; ctx.stroke();
+      // точка захвата мерцает на шуме
+      ctx.fillStyle='rgba(255,255,255,'+(0.6*pulse)+')';
+      ctx.beginPath(); ctx.arc(n.tx,n.ty,3*pulse+1,0,Math.PI*2); ctx.fill();
+    }
+
+    // крен: разница углов → наклон
+    let da=ship.angle-ship.prevAngle;
+    while(da>Math.PI) da-=Math.PI*2; while(da<-Math.PI) da+=Math.PI*2;
+    ship.roll += (Math.max(-1,Math.min(1,da*9)) - ship.roll)*0.12;
+    ship.prevAngle=ship.angle;
+
+    // ── ИСТРЕБИТЕЛЬ ──
+    ctx.save(); ctx.translate(ship.x,ship.y); ctx.rotate(ship.angle);
+    ctx.scale(1, 1-Math.abs(ship.roll)*0.5);   // крен
+    const W1='rgba(255,255,255,0.85)';
+    // тёплое пламя дюз (двойное, пульсирующее)
+    const fp=0.6+0.4*Math.sin(performance.now()/55);
+    for(const dy of [-S*0.32, S*0.32]){
+      const fg=ctx.createLinearGradient(-S*0.8,dy,-S*1.9*fp,dy);
+      fg.addColorStop(0,'rgba(255,210,120,0.95)');
+      fg.addColorStop(0.5,'rgba(255,140,50,0.7)');
+      fg.addColorStop(1,'rgba(255,80,30,0)');
+      ctx.fillStyle=fg; ctx.beginPath();
+      ctx.moveTo(-S*0.7,dy-S*0.16); ctx.lineTo(-S*1.9*fp,dy); ctx.lineTo(-S*0.7,dy+S*0.16);
+      ctx.closePath(); ctx.fill();
+    }
+    // крылья (разнесённые плоскости)
+    ctx.fillStyle='rgba('+C+',0.55)'; ctx.strokeStyle=W1; ctx.lineWidth=0.8;
+    ctx.beginPath();
+    ctx.moveTo(-S*0.2,0); ctx.lineTo(-S*0.8,-S*0.95); ctx.lineTo(-S*0.95,-S*0.9); ctx.lineTo(-S*0.45,0);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-S*0.2,0); ctx.lineTo(-S*0.8,S*0.95); ctx.lineTo(-S*0.95,S*0.9); ctx.lineTo(-S*0.45,0);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // фюзеляж (вытянутый корпус)
+    const body=ctx.createLinearGradient(0,-S*0.35,0,S*0.35);
+    body.addColorStop(0,'rgba('+C+',0.95)');
+    body.addColorStop(0.5,'rgba(255,255,255,0.95)');
+    body.addColorStop(1,'rgba('+C+',0.7)');
+    ctx.fillStyle=body; ctx.beginPath();
+    ctx.moveTo(S*1.5,0); ctx.lineTo(-S*0.5,S*0.32); ctx.lineTo(-S*0.7,0); ctx.lineTo(-S*0.5,-S*0.32);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle=W1; ctx.lineWidth=0.9; ctx.stroke();
+    // кабина-блик
+    ctx.fillStyle='rgba(140,200,255,0.95)';
+    ctx.beginPath(); ctx.ellipse(S*0.35,0,S*0.32,S*0.16,0,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  // ФИКС 16.07 (аудит): тот же баг, что чинили в petlya — растр канваса
+  // из innerWidth/innerHeight без debounce ловит переходные размеры iOS
+  // (поворот, смена хрома Safari) и застревает с ними: CSS-бокс на весь
+  // экран, растр меньше — просвечивает фон. Размер берём у body
+  // (100dvh уже резолвится верно), не пересоздаём звёзды при том же размере.
+  function init(){
+    const _w=document.body.clientWidth, _h=document.body.clientHeight;
+    if(_w===W && _h===H) return;
+    W=cv.width=_w; H=cv.height=_h;
+    const N=Math.min(S.maxCount, Math.round(W*H/3600*S.density));
+    stars=Array.from({length:N},()=>({
+      x:Math.random()*W, y:Math.random()*H,
+      r:Math.random()<S.bigChance?S.sizeBig:S.sizeSmall,
+      a:S.minAlpha+Math.random()*(S.maxAlpha-S.minAlpha),
+      sp:0.3+Math.random()*1.2, ph:Math.random()*Math.PI*2,
+      vx:(Math.random()-0.5)*S.drift, vy:(Math.random()-0.5)*S.drift
+    }));
+    gals=CONFIG.galaxies.filter(g=>g.on).map(g=>{
+      const G={ type:g.type||'spiral', x:W*g.xPct/100, y:H*g.yPct/100,
+        s:W*g.sizePct/100, ang:g.angle||0, hue:g.hue.split(',').map(Number), arms:g.arms||2,
+        bright:(g.bright==null?1:g.bright),
+        tilt:(g.tilt==null?0.45:g.tilt), lean:(g.lean||0), pts:[] };
+      if(G.type==='globular'){
+        // шаровое скопление: звёзды густо к центру (степенное распределение)
+        const N=260;
+        for(let i=0;i<N;i++){
+          const rr=Math.pow(Math.random(),2.2);       // сгущение к центру
+          const a=Math.random()*Math.PI*2;
+          G.pts.push({ rx:Math.cos(a)*rr, ry:Math.sin(a)*rr,
+            b:(1-rr)*0.8+0.1, sz:Math.random()<0.15?1.1:0.7 });
+        }
+      } else {
+        // спиральное: точки вдоль рукавов + разброс
+        const N=150;
+        for(let arm=0;arm<G.arms;arm++)for(let i=0;i<N;i++){
+          const f=i/N;
+          const jitter=(Math.random()-0.5)*0.12*(1-f*0.5);
+          G.pts.push({ arm, f, j:jitter, b:(0.55-f*0.45),
+            sz:f<0.15?1.6:(Math.random()<0.2?1.4:1.0) });
+        }
+      }
+      return G;
+    });
+  }
+  function galaxy(g,t){
+    const H0=g.hue[0], H1=g.hue[1], B=g.bright;
+    // мягкое гало
+    const gg=ctx.createRadialGradient(g.x,g.y,0,g.x,g.y,g.s);
+    gg.addColorStop(0,'rgba('+H0+','+H1+',255,'+(0.06*B)+')');
+    gg.addColorStop(0.4,'rgba('+H0+','+H1+',255,'+(0.03*B)+')');
+    gg.addColorStop(1,'rgba(0,0,40,0)');
+    ctx.fillStyle=gg; ctx.beginPath();
+    const squash = g.type==='globular' ? 0.88 : (1 - g.tilt*0.95);
+    const haloAng = g.type==='globular' ? g.ang+t*0.01 : g.lean;
+    ctx.ellipse(g.x,g.y,g.s,g.s*squash,haloAng,0,Math.PI*2); ctx.fill();
+    // яркое ядро
+    const core=ctx.createRadialGradient(g.x,g.y,0,g.x,g.y,g.s*0.22);
+    core.addColorStop(0,'rgba(255,255,255,'+Math.min(1,0.5*B)+')');
+    core.addColorStop(0.5,'rgba('+H0+','+H1+',255,'+(0.18*B)+')');
+    core.addColorStop(1,'rgba('+H0+','+H1+',255,0)');
+    ctx.fillStyle=core; ctx.beginPath(); ctx.arc(g.x,g.y,g.s*0.22,0,Math.PI*2); ctx.fill();
+
+    const rot=g.ang+t*0.012;
+    if(g.type==='globular'){
+      for(const p of g.pts){
+        const px=g.x + p.rx*g.s, py=g.y + p.ry*g.s;
+        ctx.fillStyle='rgba('+H0+','+H1+',255,'+(p.b*0.5*B).toFixed(3)+')';
+        ctx.fillRect(px,py,p.sz,p.sz);
+      }
+    } else {
+      // спиральное: точки в плоскости диска → наклон (squash) → поворот (lean)
+      const cl=Math.cos(g.lean), sl=Math.sin(g.lean), sq=1-g.tilt*0.95;
+      for(const p of g.pts){
+        const a=rot + p.arm*(Math.PI*2/g.arms) + p.f*Math.PI*2.4;
+        const r=g.s*(0.05+p.f*0.85);
+        let dx=Math.cos(a)*r + Math.sin(a)*p.j*g.s;   // координаты в плоскости диска
+        let dy=Math.sin(a)*r + Math.cos(a)*p.j*g.s;
+        dy*=sq;                                        // наклон: сжатие вдоль оси
+        const px=g.x + dx*cl - dy*sl;                  // поворот наклона
+        const py=g.y + dx*sl + dy*cl;
+        if(p.b<0.04) continue;
+        ctx.fillStyle='rgba('+H0+','+H1+',255,'+(p.b*0.7*B).toFixed(3)+')';
+        ctx.fillRect(px,py,p.sz,p.sz);
+      }
+    }
+  }
+  function loop(now){
+    const t=now/1000, br=SK.brightness;
+    lastObj.sz=0; lastObj.cOn=false;  // сброс позиций объектов на кадр
+    const bg=ctx.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,SK.top); bg.addColorStop(0.6,SK.mid); bg.addColorStop(1,SK.bottom);
+    ctx.globalAlpha=1; ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+    if(br!==1){ ctx.globalAlpha=Math.abs(1-br); ctx.fillStyle=br<1?'#000':'#223'; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1; }
+    for(const g of gals) galaxy(g,t);
+    for(const s of stars){
+      s.x+=s.vx; s.y+=s.vy;
+      if(s.x<0)s.x+=W; if(s.x>W)s.x-=W; if(s.y<0)s.y+=H; if(s.y>H)s.y-=H;
+      const tw=S.twinkle?(0.4+0.6*Math.sin(t*s.sp*S.twinkle+s.ph)):1;
+      ctx.fillStyle='rgba('+S.color+','+(s.a*tw).toFixed(3)+')';
+      ctx.fillRect(s.x,s.y,s.r,s.r);
+    }
+    // планета: дуга снизу-слева → центр → вверх-слева (параметры случайны на каждый пролёт)
+    if(planetT!==null){
+      const pt=t-planetT;
+      if(pt<planetDur){
+        const p=pt/planetDur;
+        const PP=planetP, msz=PP.size;
+        const mt=1-p;
+        const px=mt*mt*PP.ax + 2*mt*p*PP.cx + p*p*PP.bx;
+        const py=mt*mt*PP.ay + 2*mt*p*PP.cy + p*p*PP.by;
+        const sz=msz*(0.35+0.65*Math.sin(p*Math.PI));
+        lastObj.px=px; lastObj.py=py; lastObj.sz=sz;
+        const al=Math.min(Math.min(1,p/0.08),Math.min(1,(1-p)/0.08));
+        const C=PP.color;
+        if(PP.ring){
+          ctx.save(); ctx.translate(px,py); ctx.rotate(PP.tilt); ctx.scale(1,0.32);
+          ctx.beginPath(); ctx.arc(0,0,sz*1.9,0,Math.PI*2);
+          ctx.strokeStyle='rgba('+C[0]+','+C[1]+','+C[2]+','+(0.35*al)+')';
+          ctx.lineWidth=sz*0.16; ctx.stroke(); ctx.restore();
+        }
+        const glow=ctx.createRadialGradient(px,py,sz*0.6,px,py,sz*1.4);
+        glow.addColorStop(0,'rgba('+C[0]+','+C[1]+','+C[2]+','+(0.12*al)+')');
+        glow.addColorStop(1,'rgba('+C[0]+','+C[1]+','+C[2]+',0)');
+        ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(px,py,sz*1.4,0,Math.PI*2); ctx.fill();
+        const body=ctx.createRadialGradient(px-sz*0.35,py-sz*0.35,sz*0.1,px,py,sz);
+        body.addColorStop(0,'rgba('+Math.min(255,C[0]+70)+','+Math.min(255,C[1]+70)+','+Math.min(255,C[2]+70)+','+al+')');
+        body.addColorStop(1,'rgba('+(C[0]*0.5|0)+','+(C[1]*0.5|0)+','+(C[2]*0.5|0)+','+al+')');
+        ctx.fillStyle=body; ctx.beginPath(); ctx.arc(px,py,sz,0,Math.PI*2); ctx.fill();
+        if(PP.ring){
+          ctx.save(); ctx.translate(px,py); ctx.rotate(PP.tilt); ctx.scale(1,0.32);
+          ctx.beginPath(); ctx.arc(0,0,sz*1.9,0,Math.PI);
+          ctx.strokeStyle='rgba('+C[0]+','+C[1]+','+C[2]+','+(0.45*al)+')';
+          ctx.lineWidth=sz*0.16; ctx.stroke(); ctx.restore();
+        }
+      } else { planetT=null; schedulePlanet(); }
+    }
+    // комета (перенесено из index.html)
+    if(cometT!==null){
+      const ct=t-cometT, DUR=cometParams.dur||28;
+      if(ct<DUR){
+        const p=ct/DUR;
+        const alpha=(p<.05?p/.05:1)*(p>.85?1-(p-.85)/.15:1);
+        const cx2=cometParams.sx+cometParams.dx*p, cy2=cometParams.sy+cometParams.dy*p;
+        lastObj.cx=cx2; lastObj.cy=cy2; lastObj.cOn=true;
+        const tailLen=(80+p*160)*alpha;
+        const ang=Math.atan2(cometParams.dy,cometParams.dx);
+        const tx=cx2-Math.cos(ang)*tailLen, ty=cy2-Math.sin(ang)*tailLen;
+        const tg=ctx.createLinearGradient(tx,ty,cx2,cy2);
+        tg.addColorStop(0,'rgba(180,210,255,0)');
+        tg.addColorStop(0.5,'rgba(200,225,255,'+(.08*alpha)+')');
+        tg.addColorStop(0.85,'rgba(230,240,255,'+(.25*alpha)+')');
+        tg.addColorStop(1,'rgba(255,255,255,0)');
+        ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(cx2,cy2);
+        ctx.strokeStyle=tg;ctx.lineWidth=1.5*alpha;ctx.stroke();
+        const t2g=ctx.createLinearGradient(tx,ty,cx2,cy2);
+        t2g.addColorStop(0,'rgba(160,200,255,0)');
+        t2g.addColorStop(1,'rgba(180,215,255,'+(.04*alpha)+')');
+        ctx.beginPath();ctx.moveTo(tx-Math.sin(ang)*3,ty+Math.cos(ang)*3);ctx.lineTo(cx2,cy2);
+        ctx.strokeStyle=t2g;ctx.lineWidth=4*alpha;ctx.stroke();
+        const hg=ctx.createRadialGradient(cx2,cy2,0,cx2,cy2,5);
+        hg.addColorStop(0,'rgba(255,255,255,'+(.9*alpha)+')');
+        hg.addColorStop(0.4,'rgba(220,235,255,'+(.4*alpha)+')');
+        hg.addColorStop(1,'rgba(180,210,255,0)');
+        ctx.fillStyle=hg;ctx.beginPath();ctx.arc(cx2,cy2,5,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='rgba(255,255,255,'+alpha+')';
+        ctx.beginPath();ctx.arc(cx2,cy2,1.2,0,Math.PI*2);ctx.fill();
+      } else { cometT=null; scheduleComet(); }
+    }
+    drawNoise(t); drawShip(); drawSparks();
+    requestAnimationFrame(loop);
+  }
+  let _skyRT; // debounce 250мс + отложенный пересчёт после поворота — как в petlya
+  addEventListener('resize',()=>{clearTimeout(_skyRT);_skyRT=setTimeout(init,250);});
+  addEventListener('orientationchange',()=>setTimeout(init,400));
+  init(); scheduleComet(); schedulePlanet(); spawnNoise(); setTimeout(spawnNoise,1500); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
