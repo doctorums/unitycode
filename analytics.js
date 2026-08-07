@@ -14,7 +14,7 @@
    работает как обычно: аналитика не имеет права ломать шум.
 ═══════════════════════════════════════════════════════ */
 (function () {
-  var CF_BEACON_TOKEN = '';
+  var CF_BEACON_TOKEN = '3aaeb59d6733440983cd2db3008ad44b';
   if (!CF_BEACON_TOKEN) return;
   try {
     var s = document.createElement('script');
