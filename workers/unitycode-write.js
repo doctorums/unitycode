@@ -39,6 +39,8 @@ const NOISE_MIN = 1;
 const NOISE_MAX = 600;
 const RATE_MAX_PER_HOUR = 30;   // записей на token в час
 const RATE_MAX_PER_DAY  = 200;  // записей на token в сутки
+// Узкая калитка для записей без пройденного Turnstile (см. фикс 01.08 ниже).
+const RATE_MAX_UNVERIFIED_PER_HOUR = 5;
 
 const ID_RE  = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{1,20})$/i;
 const URL_RE = /(https?:\/\/|www\.|t\.me\/|\b[\w-]+\.(com|ru|net|org|xyz|io|info|link|click)\b)/i;
@@ -316,6 +318,7 @@ const EVENT_SCHEMA_V = {
   node_duplicate_retry: 1,// v1: пустой payload, значим только client_id строки
   essence_failed: 1,      // v1: reason (строка из distill().fail) — фикс 25.07
   essence_retried: 1,     // v1: reason первой неудачи, когда спас повтор — фикс 01.08
+  woven_unverified: 1,    // v1: action — запись прошла без Turnstile, фикс 01.08
 };
 
 async function logEvent(env, type, { clientId, nodeId, payload } = {}) {
@@ -552,7 +555,7 @@ function looksSpammy(text) {
   return null;
 }
 
-async function rateOk(kv, token, ip) {
+async function rateOk(kv, token, ip, unverified) {
   if (!kv) return true;
   const now = Date.now();
   const windows = [
@@ -560,6 +563,8 @@ async function rateOk(kv, token, ip) {
     ['d:' + token, 86400000, RATE_MAX_PER_DAY],
     ['ip:' + ip,   3600000, RATE_MAX_PER_HOUR * 3],
   ];
+  // Без Turnstile — отдельное, куда более узкое окно по IP.
+  if (unverified) windows.push(['u:' + ip, 3600000, RATE_MAX_UNVERIFIED_PER_HOUR]);
   for (const [key, windowMs, max] of windows) {
     const raw = await kv.get(key);
     const fresh = (raw ? JSON.parse(raw) : []).filter(ts => now - ts < windowMs);
@@ -650,11 +655,35 @@ export default {
     const token = (body.token || '').toString().slice(0, 128);
     if (!token) return json({ error: 'no_token' }, 400, origin);
 
-    if (!(await verifyTurnstile(body.turnstile, ip, env.TURNSTILE_SECRET)))
+    // ── TURNSTILE КАК ЛУЧШЕЕ УСИЛИЕ, А НЕ ШЛАГБАУМ (01.08) ──────────
+    // Было: нет токена — жёсткий 403. На практике это значило, что человек
+    // там, где challenges.cloudflare.com открывается плохо или не
+    // открывается вовсе, не мог вплести мысль никогда: клиент ждал токен
+    // 12 секунд, отправлял пустую строку и получал отказ.
+    //
+    // Turnstile — не единственная защита этого воркера, их пять: лимиты
+    // частоты, looksSpammy (ссылки и повторы), ограничение длины и, главное,
+    // ИИ-привратник, который и так отсекает клавиатурный мусор и спам.
+    // Поэтому отсутствие токена больше не отказ, а понижение доверия:
+    // пускаем, но через узкую калитку RATE_MAX_UNVERIFIED_PER_HOUR.
+    //
+    // ВАЖНО: послабление действует только там, где есть чем компенсировать.
+    // Без RATE_KV лимитов нет вообще (rateOk сразу возвращает true), и тогда
+    // Turnstile остаётся обязательным — иначе дверь осталась бы нараспашку.
+    const verified = await verifyTurnstile(body.turnstile, ip, env.TURNSTILE_SECRET);
+    if (!verified && !env.RATE_KV)
       return json({ error: 'turnstile' }, 403, origin);
 
-    if (!(await rateOk(env.RATE_KV, token, ip)))
+    if (!(await rateOk(env.RATE_KV, token, ip, !verified)))
       return json({ error: 'rate_limited' }, 429, origin);
+
+    // Каждая непроверенная запись оставляет след: злоупотребление должно
+    // быть видно в журнале, а не обнаруживаться на глаз.
+    if (!verified) {
+      ctx.waitUntil(logEvent(env, 'woven_unverified', {
+        payload: { action: String(body.action || '').slice(0, 32) },
+      }));
+    }
 
     try {
       if (body.action === 'node') {

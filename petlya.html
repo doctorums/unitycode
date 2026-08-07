@@ -535,6 +535,44 @@ function getTurnstileToken(){
   });
 }
 
+// ── ПРОГРЕВ ТОКЕНА ─────────────────────────────────────────────
+// Раньше Turnstile запускался в момент нажатия «Вплести», и на медленном
+// канале человек стоял у кнопки до 12 секунд, а потом мог получить отказ.
+// Между откликом ИИ и нажатием есть естественная пауза: человек читает
+// ответ. Токен берём в ней — к нажатию он уже в кармане, ожидание исчезает.
+//
+// Токен Turnstile ОДНОРАЗОВЫЙ: сервер гасит его при проверке. Поэтому
+// взятый из кэша сразу оттуда убирается, а следом греется новый.
+// Живёт он около пяти минут — держим запас и считаем протухшим раньше.
+let _tsCached = '', _tsCachedAt = 0, _tsWarming = false;
+const TS_TTL = 240000;   // 4 минуты при пяти реальных
+
+function tsFresh(){
+  return (_tsCached && (Date.now() - _tsCachedAt) < TS_TTL) ? _tsCached : '';
+}
+
+function prewarmTurnstile(){
+  if (_tsWarming || tsFresh()) return;
+  if (!window.turnstile || _tsId === null) return;
+  _tsWarming = true;
+  getTurnstileToken().then(t => {
+    _tsWarming = false;
+    if (t) { _tsCached = t; _tsCachedAt = Date.now(); }
+  }).catch(() => { _tsWarming = false; });
+}
+
+// Забрать токен для отправки: сначала прогретый (и сразу его освободить),
+// иначе — обычным путём, как было.
+async function takeTurnstileToken(){
+  const ready = tsFresh();
+  if (ready) {
+    _tsCached = ''; _tsCachedAt = 0;
+    setTimeout(prewarmTurnstile, 500);   // греем следующий на будущее
+    return ready;
+  }
+  return await getTurnstileToken();
+}
+
 // ═══════════════════════════════════════════════════════
 // УТИЛИТЫ
 // ═══════════════════════════════════════════════════════
@@ -590,6 +628,8 @@ weaveBtn.dataset.msgIndex = messages.length - 1; // отклик уже в messa
 weaveBtn.dataset.idem = ensureIdem(messages.length - 1);
 weaveBtn.onclick = function() { weaveIntoNet(this); };
 div.appendChild(weaveBtn);
+// кнопка появилась — человек читает отклик, а мы в этой паузе берём токен
+prewarmTurnstile();
 }
 
 async function typeText(mbId, fullText, speed = 8) {
@@ -673,6 +713,7 @@ async function restoreDialog() {
         weaveBtn.style.width = 'auto';
         weaveBtn.style.alignSelf = 'flex-start';
         div.appendChild(weaveBtn);
+        prewarmTurnstile();   // восстановленный диалог: кнопка снова живая
       }
     }
   }
@@ -918,15 +959,26 @@ async function getUserToken() {
   }
 }
 
+// ── МЕСТО БЕЗ ВОПРОСА К БРАУЗЕРУ ───────────────────────────────
+// Разрешение геолокации больше не спрашиваем. Две причины.
+//
+// Практическая: диалог разрешения плюс ожидание позиции до 10 секунд —
+// это половина того «квеста», в который превращается вплетение на слабом
+// канале. А точка на карте появляется и без него: воркер с 25.07 умеет
+// откат — последняя известная позиция этого же токена, иначе грубая гео
+// по IP от Cloudflare (см. fallbackCoords). Разрешение покупало только
+// точность: точка вместо города.
+//
+// Доктринальная: на входе написано «мы не собираем персональные данные».
+// Точные координаты устройства персональнее, чем город по IP. Отказ от
+// запроса — не уступка скорости, а движение к тому, что уже обещано.
+//
+// Функция оставлена и возвращает пустое место: все точки вызова работают
+// как прежде, координаты просто проставляет сервер.
+// Вернуть точность (осознанным «уточнить место», а не автоматически) —
+// снова вызвать здесь navigator.geolocation.getCurrentPosition.
 function getCoords() {
-return new Promise(resolve => {
-if (!navigator.geolocation) return resolve({ lat: null, lng: null });
-navigator.geolocation.getCurrentPosition(
-pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-() => resolve({ lat: null, lng: null }),
-{ timeout: 10000, maximumAge: 0, enableHighAccuracy: false }
-);
-});
+  return Promise.resolve({ lat: null, lng: null });
 }
 
 function genIdem(){ try { return crypto.randomUUID(); } catch(e){ return Date.now().toString(36) + Math.random().toString(36).slice(2); } }
@@ -1137,7 +1189,7 @@ ucQueueUpsert({
   lang: payload.lang,
 });
 
-const ts = await getTurnstileToken();
+const ts = await takeTurnstileToken();
 const res = await fetch(WRITE_WORKER_URL, {
 method: 'POST',
 headers: { 'Content-Type': 'application/json' },
@@ -1293,7 +1345,7 @@ async function ucTrySyncQueue() {
         if (preBtn) styleWovenButton(preBtn);
         continue;
       }
-      const ts = await getTurnstileToken();
+      const ts = await takeTurnstileToken();
       const res = await fetch(WRITE_WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
