@@ -662,11 +662,40 @@ const linesLayer = L.layerGroup().addTo(map);
 const loadedConnections = new Set();
 const connectionLines = {};   // id -> polyline (для удаления)
 
+// ФИКС 08.08: в одной точке может лежать много шумов, и каждый связан
+// отдельно. Кластер по клику «распускает» их в венчик (spiderfy) и при
+// этом РЕАЛЬНО переносит маркеры на позиции лепестков — marker.getLatLng()
+// начинает возвращать координату лепестка, а не узла. Линии же были
+// нарисованы по nodeCoords (общая точка) и оставались висеть из центра:
+// шумы разъехались, связи — нет. Поэтому конец линии берём у маркера,
+// если он есть, и пересчитываем на распускании/схлопывании.
+function nodePos(id) {
+const m = nodeMarkers[id];
+if (m && m.getLatLng) { const p = m.getLatLng(); return [p.lat, p.lng]; }
+return nodeCoords[id] || null;
+}
+
+function refreshLinePositions() {
+for (const cid in connectionLines) {
+const line = connectionLines[cid];
+const a = nodePos(line._fromId);
+const b = nodePos(line._toId);
+if (a && b) line.setLatLngs([a, b]);
+}
+raiseHumanLines();
+}
+
+cluster.on('spiderfied', refreshLinePositions);
+cluster.on('unspiderfied', function () {
+refreshLinePositions();
+setTimeout(refreshLinePositions, 350);   // маркеры возвращаются с анимацией
+});
+
 // Добавляет одну связь на карту — общая функция для кэша и сети
 function addConnectionToMap(conn) {
 if (loadedConnections.has(conn.id)) return false;
-const from = nodeCoords[conn.from_node_id];
-const to = nodeCoords[conn.to_node_id];
+const from = nodePos(conn.from_node_id);
+const to = nodePos(conn.to_node_id);
 if (!from || !to) return false;
 loadedConnections.add(conn.id);
 const isLinker = conn.created_by === 'linker';
@@ -676,8 +705,22 @@ weight: 1.5,
 dashArray: '1 8',
 lineCap: 'round',
 }).addTo(linesLayer);
+line._fromId = conn.from_node_id;
+line._toId = conn.to_node_id;
+line._human = !isLinker;
 connectionLines[conn.id] = line;
 return true;
+}
+
+// Человеческие связи держим поверх: их единицы, и там где они ложатся на ту
+// же пару точек, что и линкерские, синее иначе не видно вовсе. Поднимать в
+// момент добавления бесполезно — линкерская связь, пришедшая следом, ляжет
+// сверху; поднимаем после всей пачки.
+function raiseHumanLines() {
+for (const cid in connectionLines) {
+const l = connectionLines[cid];
+if (l._human) l.bringToFront();
+}
 }
 
 function removeConnectionFromMap(id) {
@@ -693,6 +736,7 @@ loadedConnections.delete(id);
 const cachedConns = readCache(CACHE_CONNS);
 if (cachedConns && Array.isArray(cachedConns)) {
 cachedConns.forEach(addConnectionToMap);
+raiseHumanLines();
 }
 
 // Полный refresh связей: грузит все, сверяет, убирает удалённые
@@ -713,6 +757,7 @@ toRemove.forEach(removeConnectionFromMap);
 
 // Добавить новые
 conns.forEach(addConnectionToMap);
+raiseHumanLines();
 
 writeCache(CACHE_CONNS, conns);
 } catch(e) { console.warn('Connections load error', e); }
