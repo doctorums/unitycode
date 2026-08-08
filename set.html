@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════════════════════════
+     UNITYCODE · СЕТЬ (карта узлов)  —  ПАМЯТКА ФОРКЕРУ
+     Подробности: FORK.md в корне репозитория.
+
+     ✏️  МЕНЯЙ СВОБОДНО: тексты, цвета, стиль карты.
+     ⚙️  ВПИШИ СВОЁ при форке:
+         • SUPABASE_URL  — адрес твоей базы (≈ строка 142);
+         • SUPABASE_KEY  — публичный anon/publishable-ключ (≈ строка 143).
+           ⚠️ Только публичный ключ! НИКОГДА не вставляй service_role.
+     ⛔️ НЕ ТРОГАЙ (несущая стена):
+         • схема таблиц nodes / connections и имена их полей
+           (raw_noise, lat, lng, user_token, from_node_id, to_node_id, status);
+         • три пункта меню и имена файлов.
+════════════════════════════════════════════════════════════════════════ -->
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title data-i18n="set.title">UNITYCODE — Сеть</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400;700&display=swap" rel="stylesheet"></noscript>
+<link rel="stylesheet" href="shared.css">
+<style>
+body { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; overscroll-behavior: none; }
+body::before { display: none; }
+header { flex-shrink: 0; position: fixed !important; top: 0; left: 0; right: 0; z-index: 1001 !important; background: rgba(0,0,0,0.98); }
+.status-bar { margin-top: 57px; }
+.status-bar {
+display: flex; gap: 2rem;
+padding: 0.6rem 2rem;
+border-bottom: 1px solid var(--border);
+background: rgba(0,0,0,0.95);
+flex-shrink: 0;
+position: relative;
+z-index: 1000;
+}
+.stat { display: flex; align-items: center; gap: 0.5rem; }
+.stat-label { font-size: 0.55rem; color: var(--dim); letter-spacing: 0.15em; text-transform: uppercase; }
+.stat-val { font-size: 0.7rem; color: var(--accent); }
+#map { flex: 1; position: relative; z-index: 1; }
+#loading {
+position: fixed;
+bottom: 1.2rem; left: 50%; transform: translateX(-50%);
+z-index: 1000;
+font-family: 'Share Tech Mono', monospace;
+font-size: 0.6rem;
+letter-spacing: 0.2em;
+color: var(--accent);
+background: rgba(0,0,0,0.85);
+padding: 0.4rem 1rem;
+border: 1px solid rgba(0,255,136,0.2);
+opacity: 0;
+transition: opacity 0.3s;
+pointer-events: none;
+}
+#loading.visible { opacity: 1; }
+.node-marker {
+width: 10px; height: 10px;
+background: var(--accent); border-radius: 50%;
+box-shadow: 0 0 10px var(--accent), 0 0 20px rgba(0,255,136,0.3);
+animation: node-pulse 2s ease-in-out infinite; cursor: pointer;
+}
+@keyframes node-pulse {
+0%,100% { box-shadow: 0 0 10px var(--accent); }
+50% { box-shadow: 0 0 20px var(--accent), 0 0 40px rgba(0,255,136,0.2); }
+}
+.marker-cluster { background: rgba(0,255,136,0.12) !important; border: 1px solid rgba(0,255,136,0.4) !important; }
+.marker-cluster div { background: rgba(0,255,136,0.2) !important; color: #00ff88 !important; font-family: 'Share Tech Mono', monospace !important; font-size: 11px !important; font-weight: normal !important; border: 1px solid rgba(0,255,136,0.6) !important; }
+.marker-cluster-small, .marker-cluster-medium, .marker-cluster-large { background: rgba(0,255,136,0.08) !important; }
+.marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div { background: rgba(0,255,136,0.15) !important; }
+.leaflet-container { background: #050a05 !important; font-family: 'Share Tech Mono', monospace; }
+.leaflet-tile-pane { filter: brightness(0.5) saturate(0) hue-rotate(120deg); }
+.leaflet-popup-content-wrapper { background: rgba(0,0,0,0.95) !important; border: 1px solid rgba(0,255,136,0.3) !important; border-radius: 0 !important; color: #fff !important; padding: 0 !important; box-shadow: 0 0 20px rgba(0,255,136,0.1) !important; }
+.leaflet-popup-tip { background: rgba(0,0,0,0.95) !important; }
+.popup-content { padding: 1.2rem; min-width: 240px; max-width: 300px; }
+.popup-tag { font-size: 0.55rem; color: #00ff88; letter-spacing: 0.2em; margin-bottom: 0.6rem; }
+.popup-text { font-size: 0.75rem; line-height: 1.6; color: rgba(255,255,255,0.7); margin-bottom: 0.8rem; max-height: 120px; overflow-y: auto; }
+.popup-time { font-size: 0.55rem; color: #555; }
+.popup-btns { display: flex; gap: 0.5rem; margin-top: 0.8rem; flex-wrap: wrap; }
+.popup-btn {
+display: inline-block; padding: 0.4rem 0.8rem;
+border: 1px solid rgba(0,255,136,0.3);
+color: #00ff88; font-size: 0.6rem; letter-spacing: 0.1em;
+cursor: pointer; background: transparent; text-transform: uppercase;
+transition: background 0.2s, color 0.2s; text-decoration: none;
+font-family: 'Share Tech Mono', monospace;
+}
+.popup-btn:hover { background: #00ff88; color: #000; }
+.popup-btn.connect { border-color: rgba(0,200,255,0.4); color: #00c8ff; }
+.popup-btn.connect:hover { background: #00c8ff; color: #000; }
+.popup-btn:disabled { opacity: 0.4; cursor: default; }
+/* Интро */
+@keyframes tp1 {
+0% { transform: translateY(80vh); opacity: 0; }
+5% { opacity: 1; }
+85% { opacity: 1; transform: translateY(-30vh); }
+100% { opacity: 0; transform: translateY(-40vh); }
+}
+@keyframes tp2 {
+0% { opacity: 0; }
+10% { opacity: 1; }
+80% { opacity: 1; }
+100% { opacity: 0; }
+}
+@keyframes fadeOut {
+from { opacity: 1; }
+to { opacity: 0; }
+}
+</style>
+</head>
+<body>
+
+<!-- Интро — поверх карты -->
+<div id="intro" onclick="skipIntro()" style="position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);">
+<div id="track1" style="position:absolute;width:90%;max-width:560px;padding:0 2rem;opacity:0;animation:tp1 20s linear forwards;">
+<p style="font-family:monospace;font-size:16px;line-height:1.9;color:rgba(255,255,255,0.75);margin-bottom:1.2rem;" data-i18n="set.intro1">Перед тобой — карта живых узлов Сети. Каждая точка здесь — это человек, который прошёл через Спираль и создал свой личный узел. Это не аватары и не профили. Это сигналы. Следы мыслей, которые были осмыслены и вплетены в общую ткань.</p>
+<div style="width:40px;height:1px;background:rgba(0,255,136,0.3);margin:1rem 0;"></div>
+<p style="font-family:monospace;font-size:16px;line-height:1.9;color:rgba(255,255,255,0.75);margin-bottom:1.2rem;" data-i18n="set.intro2">Как капли дождя на перроне: сначала каждый след сам по себе, но чем дольше длится процесс, тем больше они соприкасаются. Ты видишь не просто карту. Ты видишь, как реальность учится быть единой.</p>
+</div>
+<div id="track2" style="position:absolute;width:90%;max-width:560px;padding:0 2rem;opacity:0;animation:tp2 16s ease forwards;animation-delay:20s;">
+<p style="font-family:monospace;font-size:16px;line-height:1.9;color:rgba(255,255,255,0.75);margin-bottom:1.2rem;" data-i18n="set.introDo">Что можно сделать:</p>
+<p style="font-family:monospace;font-size:15px;line-height:1.9;color:#00ff88;margin-bottom:1.2rem;" data-i18n="set.introB1">— Нажми на любую точку и увидишь, какой сигнал оставил этот человек. Не имя, не лицо — а мысль, прошедшую через Спираль, и рождённую в ней связь.</p>
+<p style="font-family:monospace;font-size:15px;line-height:1.9;color:#00ff88;margin-bottom:1.2rem;" data-i18n="set.introB2">— Если этот сигнал резонирует с твоим — предложи связь. Это не лайк и не комментарий. Это приглашение к со-творчеству. Два узла, которые узнали друг друга, создают новую нить между своими трактатами.</p>
+<p style="font-family:monospace;font-size:15px;line-height:1.9;color:#00ff88;margin-bottom:1.2rem;" data-i18n="set.introB3">— Когда связь принята, в обоих личных узлах появляется запись. Она не исчезает, не теряется. Она становится частью растущей паутины.</p>
+</div>
+</div>
+
+<header>
+<a href="index.html" class="logo" data-i18n="set.logo">UNITYCODE // СЕТЬ</a>
+<nav>
+<a href="petlya.html" data-i18n="nav.spiral">Спираль</a>
+<a href="set.html" data-i18n="nav.network">Сеть</a>
+<a href="implant.html" data-i18n="nav.pattern">Паттерн</a>
+<a href="materials.html" data-i18n="nav.matter">Материя</a>
+</nav>
+</header>
+
+<div class="status-bar">
+<div class="stat"><span class="stat-label" data-i18n="set.statNodes">Узлов в сети:</span><span class="stat-val" id="nodeCount">—</span></div>
+<div class="stat"><span class="stat-label" data-i18n="set.statActive">Активны сейчас:</span><span class="stat-val" id="activeCount">1</span></div>
+<div class="stat"><span class="stat-label" data-i18n="set.statPulse">Пульс сети:</span><span class="stat-val" id="pulse">●</span></div>
+</div>
+
+<div id="map"></div>
+<div id="loading" data-i18n="set.loading">// СИНХРОНИЗАЦИЯ...</div>
+
+<!-- Leaflet локально — без зависимости от CDN -->
+<link rel="stylesheet" href="leaflet.min.css">
+<link rel="stylesheet" href="MarkerCluster.min.css">
+<script src="leaflet.min.js" defer></script>
+<script src="leaflet.markercluster.min.js" defer></script>
+<script src="nav.js" defer></script>
+<script src="audio.js" defer></script>
+
+<script src="i18n.js"></script>
+<script src="analytics.js" defer></script>
+<script src="js/uc-data.js"></script>
+<script>
+const SUPABASE_URL = 'https://lukyyqabkxzrgdixzphs.supabase.co';
+const ANALYZE_URL   = 'https://unitycode-analyze.sv2txxznjm.workers.dev';
+const SUPABASE_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
+const REFRESH_INTERVAL = 10000;
+const INTRO_DURATION = 37000;
+
+// ── Запись через воркер-шлюз + защита ──────────────────────────────────
+const WRITE_WORKER_URL = 'https://unitycode-write.sv2txxznjm.workers.dev/';
+const TURNSTILE_SITEKEY = '0x4AAAAAADipuIhRBHuABO1Z';
+
+// HTML-экранирование пользовательского текста (защита от XSS на выводе)
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Turnstile: одноразовый токен по требованию (interaction-only — обычно невидим)
+let _tsId = null, _tsResolve = null;
+window.onloadTurnstileCallback = function(){
+  try {
+    _tsId = turnstile.render('#ts-box', {
+      sitekey: TURNSTILE_SITEKEY, appearance: 'interaction-only', execution: 'execute',
+      callback: t => { if(_tsResolve){ _tsResolve(t); _tsResolve = null; } try { document.getElementById('ts-box').style.visibility = 'hidden'; } catch(e){} },
+      'error-callback': () => { if(_tsResolve){ _tsResolve(''); _tsResolve = null; } try { document.getElementById('ts-box').style.visibility = 'hidden'; } catch(e){} },
+    });
+  } catch(e){}
+};
+function getTurnstileToken(){
+  return new Promise(resolve => {
+    if (!window.turnstile || _tsId === null) { resolve(''); return; }
+    _tsResolve = resolve;
+    try { document.getElementById('ts-box').style.visibility = 'visible'; } catch(e){}
+    try { turnstile.reset(_tsId); } catch(e){}
+    try { turnstile.execute(_tsId); } catch(e){ resolve(''); }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// КЭШ В sessionStorage с TTL
+// ═══════════════════════════════════════════════════════
+// Живёт пока открыта вкладка, но не дольше CACHE_TTL_MS.
+// При устаревании — рисуем мгновенно, но в фоне делаем
+// полный refresh и убираем удалённые узлы с карты.
+// ═══════════════════════════════════════════════════════
+const CACHE_NODES = 'uc_cache_nodes_v3';
+const CACHE_CONNS = 'uc_cache_conns_v4'; // v3→v4: старый формат без created_by, нужна сразу свежая загрузка
+const CACHE_TTL_MS = 10 * 60 * 1000;   // 10 минут — после этого кэш игнорируется
+const FULL_REFRESH_INTERVAL = 60 * 1000; // 60 сек — фоновый полный пересчёт
+
+function readCache(key) {
+try {
+const raw = sessionStorage.getItem(key);
+if (!raw) return null;
+const wrapped = JSON.parse(raw);
+// Поддержка старого формата без TTL: считаем устаревшим
+if (!wrapped || typeof wrapped !== 'object' || !wrapped.ts || !Array.isArray(wrapped.data)) return null;
+if (Date.now() - wrapped.ts > CACHE_TTL_MS) {
+sessionStorage.removeItem(key);
+return null;
+}
+return wrapped.data;
+} catch(e) {
+console.warn('Cache read error', key, e);
+return null;
+}
+}
+function writeCache(key, data) {
+try {
+sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+} catch(e) {
+// При переполнении sessionStorage (5MB) — чистим и забываем
+console.warn('Cache write failed (quota?)', e);
+try { sessionStorage.removeItem(key); } catch(_) {}
+}
+}
+function invalidateCache() {
+try {
+sessionStorage.removeItem(CACHE_NODES);
+sessionStorage.removeItem(CACHE_CONNS);
+} catch(_) {}
+}
+
+let mapInitialized = false;
+
+async function phraseToToken(phrase) {
+  try {
+    const enc = new TextEncoder().encode(phrase.trim().toLowerCase());
+    const hash = await crypto.subtle.digest('SHA-256', enc);
+    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch(e) {
+    let h = 0;
+    for (const c of phrase.trim().toLowerCase()) h = (Math.imul(31, h) + c.charCodeAt(0)) | 0;
+    return Math.abs(h).toString(16).padStart(8, '0') + phrase.length.toString(16) + Date.now().toString(16).slice(-8);
+  }
+}
+
+// Глобальный кэш
+const cache = {
+myNodeIds: [],
+myNodes: [],          // [{id, raw_noise}] — для списка выбора в попапе
+connPairs: new Set(), // "from|to" — парная защита от дублей
+};
+
+async function preloadMyData() {
+const myToken = localStorage.getItem('uc_token');
+if (!myToken) return;
+const headers = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY };
+try {
+const [nodesRes, connsRes] = await Promise.all([
+UCData.fetchRetry(`${SUPABASE_URL}/rest/v1/nodes?user_token=eq.${myToken}&select=id,raw_noise&order=created_at.desc`, { headers }),
+UCData.fetchRetry(`${SUPABASE_URL}/rest/v1/connections?select=from_node_id,to_node_id&status=eq.accepted`, { headers }),
+]);
+const [myNodes, allConns] = await Promise.all([nodesRes.json(), connsRes.json()]);
+cache.myNodes = Array.isArray(myNodes) ? myNodes : [];
+cache.myNodeIds = cache.myNodes.map(n => n.id);
+// Пары в обе стороны — мост A↔B считаем существующим независимо от направления
+cache.connPairs = new Set();
+if (Array.isArray(allConns)) {
+allConns.forEach(c => {
+cache.connPairs.add(c.from_node_id + '|' + c.to_node_id);
+cache.connPairs.add(c.to_node_id + '|' + c.from_node_id);
+});
+}
+} catch(e) { console.warn('Cache preload error', e); }
+}
+
+// Запускаем сразу
+preloadMyData();
+
+// Повторный визит или есть токен — сразу карта
+if (localStorage.getItem('uc_intro_seen') || localStorage.getItem('uc_token')) {
+document.getElementById('intro').style.display = 'none';
+}
+
+// Если токена нет — предлагаем ввести фразу
+if (!localStorage.getItem('uc_token')) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="width:90%;max-width:420px;border:1px solid rgba(0,255,136,0.3);background:#050a05;padding:2rem;">
+      <div style="font-family:monospace;font-size:0.6rem;color:#00ff88;letter-spacing:0.2em;margin-bottom:1rem;">${UC_I18N.t('set.keyTitle')}</div>
+      <p style="font-family:monospace;font-size:0.8rem;line-height:1.7;color:rgba(255,255,255,0.7);margin-bottom:1.4rem;">${UC_I18N.t('set.keyDesc')}</p>
+      <input id="uc-set-phrase" type="text" placeholder="${UC_I18N.t('set.keyPhrase')}" style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(0,255,136,0.2);color:#fff;font-family:monospace;font-size:0.8rem;padding:0.6rem 0.8rem;outline:none;margin-bottom:1rem;">
+      <div style="display:flex;gap:0.8rem;">
+        <button id="uc-set-ok" style="flex:1;padding:0.6rem;border:1px solid #00ff88;color:#00ff88;font-family:monospace;font-size:0.7rem;letter-spacing:0.1em;background:transparent;cursor:pointer;">${UC_I18N.t('set.keyEnter')}</button>
+        <button id="uc-set-skip" style="flex:1;padding:0.6rem;border:1px solid rgba(255,255,255,0.1);color:#555;font-family:monospace;font-size:0.7rem;letter-spacing:0.1em;background:transparent;cursor:pointer;">${UC_I18N.t('set.keyJustLook')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  async function confirmPhrase() {
+    const phrase = document.getElementById('uc-set-phrase').value.trim();
+    document.body.removeChild(overlay);
+    if (phrase) {
+      const token = await phraseToToken(phrase);
+      localStorage.setItem('uc_token', token);
+      // Сбрасываем кэш и перезагружаем страницу — узлы перерисуются с новым токеном
+      invalidateCache();
+      location.reload();
+    }
+  }
+
+  document.getElementById('uc-set-ok').onclick = confirmPhrase;
+  document.getElementById('uc-set-skip').onclick = () => document.body.removeChild(overlay);
+  document.getElementById('uc-set-phrase').onkeydown = e => { if (e.key === 'Enter') confirmPhrase(); };
+}
+
+function skipIntro() {
+localStorage.setItem('uc_intro_seen', '1');
+const intro = document.getElementById('intro');
+intro.style.animation = 'fadeOut 0.6s ease forwards';
+setTimeout(() => { intro.style.display = 'none'; }, 600);
+}
+setTimeout(skipIntro, INTRO_DURATION);
+
+// Разворачивает список твоих шумов для выбора источника связи
+async function openConnectPicker(targetId, btn) {
+const myToken = localStorage.getItem('uc_token');
+if (!myToken) {
+btn.textContent = UC_I18N.t('set.btnDoSpiral');
+btn.style.color = '#00ff88';
+btn.onclick = () => window.location.href = 'petlya.html';
+return;
+}
+
+// Подгружаем свои данные, если кэш пуст
+if (!cache.myNodes.length) await preloadMyData();
+
+// Страховка: цель — мой собственный узел? Связывание запрещено.
+if (cache.myNodeIds.includes(targetId)) {
+btn.textContent = UC_I18N.t('set.btnYourNode');
+btn.style.color = '#555';
+btn.style.borderColor = 'rgba(255,255,255,0.1)';
+btn.onclick = null;
+return;
+}
+
+if (!cache.myNodes.length) {
+btn.textContent = UC_I18N.t('set.btnDoSpiral');
+btn.style.color = '#00ff88';
+btn.onclick = () => window.location.href = 'petlya.html';
+return;
+}
+
+const picker = document.getElementById('picker-' + targetId);
+if (!picker) return;
+
+// Тоггл: повторный клик — свернуть
+if (picker.style.display === 'block') {
+picker.style.display = 'none';
+btn.textContent = UC_I18N.t('set.connect');
+return;
+}
+btn.textContent = UC_I18N.t('set.btnChooseNoise');
+
+// Строим список: каждый свой шум — кнопка. Цель — всегда чужой узел.
+const rows = cache.myNodes.map(n => {
+const already = cache.connPairs.has(n.id + '|' + targetId);
+const short = (n.raw_noise || '').slice(0, 40) + ((n.raw_noise || '').length > 40 ? '…' : '');
+
+if (already) {
+return `<div style="font-size:0.6rem;color:#555;padding:0.35rem 0;">✓ ${esc(short)}</div>`;
+}
+return `<div class="pick-row" style="font-size:0.65rem;color:#00c8ff;padding:0.4rem 0.2rem;cursor:pointer;border-bottom:1px solid rgba(0,200,255,0.08);"
+onclick="createConnection('${n.id}','${targetId}', this)">→ ${esc(short)}</div>`;
+}).join('');
+
+picker.innerHTML = `<div style="font-size:0.55rem;color:#00c8ff;letter-spacing:0.15em;margin-bottom:0.5rem;">${UC_I18N.t('set.pickerHeader')}</div>${rows}`;
+picker.style.display = 'block';
+}
+
+// Создаёт связь: выбранный свой шум (from) → цель (to)
+async function createConnection(fromId, toId, rowEl) {
+if (fromId === toId) return; // защита от самосвязывания
+rowEl.style.pointerEvents = 'none';
+const original = rowEl.textContent;
+rowEl.textContent = UC_I18N.t('set.stLinking');
+
+try {
+const ts = await getTurnstileToken();
+const res = await fetch(WRITE_WORKER_URL, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ action: 'connection', token: localStorage.getItem('uc_token') || '', turnstile: ts, from_node_id: fromId, to_node_id: toId }),
+});
+if (!res.ok) throw new Error('HTTP ' + res.status);
+
+// Обновляем кэш пар в обе стороны
+cache.connPairs.add(fromId + '|' + toId);
+cache.connPairs.add(toId + '|' + fromId);
+
+rowEl.style.color = '#00ff88';
+rowEl.textContent = UC_I18N.t('set.stLinked');
+} catch(e) {
+rowEl.style.pointerEvents = 'auto';
+rowEl.style.color = '#f55';
+rowEl.textContent = UC_I18N.t('set.stError');
+setTimeout(() => { rowEl.textContent = original; rowEl.style.color = '#00c8ff'; }, 1800);
+console.warn('Connection error', e);
+}
+}
+
+function waitForLeaflet() {
+if (typeof L !== 'undefined' && typeof L.markerClusterGroup !== 'undefined') {
+initMap();
+} else {
+setTimeout(waitForLeaflet, 50);
+}
+}
+window.addEventListener('DOMContentLoaded', waitForLeaflet);
+
+// ФИКС 16.07: шапка (.header, position:fixed сверху) «улетала» при
+// открытии клавиатуры — фокус на #uc-set-phrase поднимает клавиатуру,
+// Safari сдвигает ВИДИМЫЙ вьюпорт вниз (страница технически не ресайзится,
+// а скроллится под клавиатуру), а position:fixed остаётся привязан к
+// верху LAYOUT-вьюпорта — визуально шапка уходит вверх за пределы экрана.
+// Та же природа бага, что чинили в Спирали у звезды, но там лечилось
+// переходом на absolute; здесь нельзя — шапка ДОЛЖНА оставаться прибитой
+// к верху при обычном скролле контента, это её прямое назначение.
+// Правильный инструмент для именно этого случая — Visual Viewport API:
+// он единственный реально знает, куда сместился ВИДИМЫЙ вьюпорт при
+// клавиатуре (в отличие от window.scrollY, который тут ни при чём — body
+// overflow:hidden, обычного скролла страницы нет вообще). transform
+// дешевле, чем менять top (не вызывает reflow), и складывается поверх
+// имеющегося top:0 из CSS, не конфликтуя с ним.
+if (window.visualViewport) {
+  const _ucHeader = document.querySelector('header');
+  const ucFixHeaderOffset = () => {
+    if (!_ucHeader) return;
+    _ucHeader.style.transform = 'translateY(' + window.visualViewport.offsetTop + 'px)';
+  };
+  window.visualViewport.addEventListener('resize', ucFixHeaderOffset);
+  window.visualViewport.addEventListener('scroll', ucFixHeaderOffset);
+}
+
+function initMap() {
+if (mapInitialized) return;
+mapInitialized = true;
+
+const map = L.map('map', {
+center: [20, 20], zoom: 2,
+zoomControl: false, attributionControl: false
+});
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+
+if (navigator.geolocation) {
+navigator.geolocation.getCurrentPosition(pos => {
+map.setView([pos.coords.latitude, pos.coords.longitude], 5);
+});
+}
+
+const nodeIcon = () => L.divIcon({
+className: '', html: '<div class="node-marker"></div>',
+iconSize: [10, 10], iconAnchor: [5, 5]
+});
+
+function timeAgo(iso) {
+const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
+if (diff < 60) return UC_I18N.t('set.tNow');
+if (diff < 3600) return Math.floor(diff / 60) + UC_I18N.t('set.tMin');
+if (diff < 86400) return Math.floor(diff / 3600) + UC_I18N.t('set.tHour');
+return Math.floor(diff / 86400) + UC_I18N.t('set.tDay');
+}
+
+const cluster = L.markerClusterGroup({
+maxClusterRadius: 50,
+iconCreateFunction: function(c) {
+return L.divIcon({
+html: `<div><span>${c.getChildCount()}</span></div>`,
+className: 'marker-cluster',
+iconSize: [34, 34]
+});
+}
+});
+map.addLayer(cluster);
+
+const loadedIds = new Set();
+let lastCreatedAt = null;
+const nodeCoords = {};
+const nodeMarkers = {};   // id -> Leaflet marker (для удаления)
+
+function showLoading(visible) {
+document.getElementById('loading').classList.toggle('visible', visible);
+}
+
+// Добавляет один узел на карту — общая функция для кэша и сети
+function addNodeToMap(node) {
+if (loadedIds.has(node.id)) return;
+loadedIds.add(node.id);
+if (!lastCreatedAt || node.created_at > lastCreatedAt) lastCreatedAt = node.created_at;
+nodeCoords[node.id] = [node.lat, node.lng];
+
+// Свой узел: связывание недоступно — связи только между разными людьми
+const isMine = node.user_token && node.user_token === localStorage.getItem('uc_token');
+const actionHtml = isMine
+? `<span style="font-size:0.6rem;color:#00ff88;letter-spacing:0.15em;align-self:center;">${UC_I18N.t('set.yourNode')}</span>`
+: `<button class="popup-btn connect" id="popup-${node.id}" onclick="openConnectPicker('${node.id}', this)">${UC_I18N.t('set.connect')}</button>`;
+
+const marker = L.marker([node.lat, node.lng], { icon: nodeIcon() });
+marker._nodeId = node.id; marker._nodeNoise = node.raw_noise || '';
+marker.bindPopup(`
+<div class="popup-content">
+<div class="popup-tag">${UC_I18N.t('set.popupTag')}</div>
+<div class="popup-text">${esc(node.raw_noise)}</div>
+<div class="popup-time">${timeAgo(node.created_at)}</div>
+<div class="popup-btns">
+<a href="petlya.html" class="popup-btn">${UC_I18N.t('set.popupSpiral')}</a>
+${actionHtml}
+</div>
+${isMine ? '' : `<div class="connect-picker" id="picker-${node.id}" style="display:none;margin-top:0.8rem;border-top:1px solid rgba(0,200,255,0.2);padding-top:0.8rem;"></div>`}
+</div>`, { className: '' });
+cluster.addLayer(marker);
+nodeMarkers[node.id] = marker;
+}
+
+// ── АВТО-ПЕРЕВОД ШУМА В ПОПАПЕ ────────────────────────────────
+function _hasCyrillic(t){ return /[а-яёА-ЯЁ]/u.test(t); }
+function _needsTranslation(noise, lang){
+  if (!noise) return false;
+  const cy = _hasCyrillic(noise);
+  if (lang === 'ru') return !cy && /[a-zA-Z]{3,}/.test(noise);  // ru-интерфейс + латинский шум
+  return cy;                                                      // en/es/fr/zh + кириллический шум
+}
+function _appendTr(textEl, tr){
+  if (textEl.querySelector('.popup-tr')) return;
+  const d = document.createElement('div');
+  d.className = 'popup-tr';
+  d.style.cssText = 'font-size:0.75rem;color:rgba(255,255,255,0.7);margin-top:0.5rem;padding-top:0.4rem;border-top:1px solid rgba(255,255,255,0.07);line-height:1.6;';
+  d.textContent = tr;
+  textEl.appendChild(d);
+}
+map.on('popupopen', async function(e){
+  const mk = e.popup._source;
+  if (!mk || !mk._nodeId) return;
+  const noise = mk._nodeNoise;
+  const lang = (window.UC_I18N ? UC_I18N.lang : null) || localStorage.getItem('uc_lang') || 'ru';
+  if (!_needsTranslation(noise, lang)) return;
+  const popupEl = e.popup.getElement();
+  if (!popupEl) return;
+  const textEl = popupEl.querySelector('.popup-text');
+  if (!textEl) return;
+  // оригинал тускнеет — он становится фоном для перевода
+  textEl.style.color = 'rgba(255,255,255,0.35)';
+  const ckey = 'uc_tr:' + mk._nodeId + ':' + lang;
+  try {
+    const cached = localStorage.getItem(ckey);
+    if (cached) { _appendTr(textEl, cached); return; }
+  } catch(_){}
+  try {
+    const res = await fetch(ANALYZE_URL, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ mode:'translate', text:noise, lang })
+    });
+    const d = await res.json();
+    if (d.translation) {
+      try { localStorage.setItem(ckey, d.translation); } catch(_){}
+      const te2 = e.popup.getElement()?.querySelector('.popup-text');
+      if (te2) _appendTr(te2, d.translation);
+    }
+  } catch(_){}
+});
+// ───────────────────────────────────────────────────────────────
+
+// Удаляет узел с карты (если был удалён из БД)
+function removeNodeFromMap(id) {
+const marker = nodeMarkers[id];
+if (marker) {
+cluster.removeLayer(marker);
+delete nodeMarkers[id];
+}
+delete nodeCoords[id];
+loadedIds.delete(id);
+}
+
+// 1) МГНОВЕННАЯ ОТРИСОВКА ИЗ КЭША
+const cachedNodes = readCache(CACHE_NODES);
+if (cachedNodes && Array.isArray(cachedNodes) && cachedNodes.length) {
+cachedNodes.forEach(addNodeToMap);
+document.getElementById('nodeCount').textContent = loadedIds.size;
+}
+
+// Инкрементальная загрузка (только новые узлы)
+async function loadNodes(initial = false) {
+showLoading(true);
+try {
+let url = `${SUPABASE_URL}/rest/v1/nodes?select=id,created_at,raw_noise,lat,lng,user_token&lat=not.is.null&lng=not.is.null&order=created_at.desc`;
+if (lastCreatedAt) {
+url += `&created_at=gt.${encodeURIComponent(lastCreatedAt)}`;
+}
+const res = await UCData.fetchRetry(url, {
+headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
+});
+if (!res.ok) throw new Error('HTTP ' + res.status);
+const nodes = await res.json();
+
+nodes.forEach(addNodeToMap);
+document.getElementById('nodeCount').textContent = loadedIds.size;
+
+// Кэш обновляем в fullRefreshNodes — там полный набор
+} catch (e) {
+console.error('Supabase incremental error:', e);
+if (initial && !cachedNodes) document.getElementById('nodeCount').textContent = '?';
+} finally {
+showLoading(false);
+}
+}
+
+// Полный refresh: грузит ВСЕ узлы, сверяет с картой, убирает удалённые
+async function fullRefreshNodes() {
+try {
+const url = `${SUPABASE_URL}/rest/v1/nodes?select=id,created_at,raw_noise,lat,lng,user_token&lat=not.is.null&lng=not.is.null&order=created_at.desc`;
+const res = await UCData.fetchRetry(url, {
+headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
+});
+if (!res.ok) throw new Error('HTTP ' + res.status);
+const nodes = await res.json();
+
+const freshIds = new Set(nodes.map(n => n.id));
+
+// 1) Удалить с карты то, чего больше нет в БД
+const toRemove = [];
+loadedIds.forEach(id => { if (!freshIds.has(id)) toRemove.push(id); });
+toRemove.forEach(removeNodeFromMap);
+
+// 2) Добавить то, чего ещё нет на карте
+nodes.forEach(addNodeToMap);
+
+document.getElementById('nodeCount').textContent = loadedIds.size;
+
+// 3) Кэш = актуальный полный список из БД
+writeCache(CACHE_NODES, nodes);
+} catch (e) {
+console.warn('Full refresh error', e);
+}
+}
+
+loadNodes(true);
+setInterval(() => loadNodes(false), REFRESH_INTERVAL);
+setInterval(fullRefreshNodes, FULL_REFRESH_INTERVAL);
+
+// Линии связей
+const linesLayer = L.layerGroup().addTo(map);
+const loadedConnections = new Set();
+const connectionLines = {};   // id -> polyline (для удаления)
+
+// ФИКС 08.08: в одной точке может лежать много шумов, и каждый связан
+// отдельно. Кластер по клику «распускает» их в венчик (spiderfy) и при
+// этом РЕАЛЬНО переносит маркеры на позиции лепестков — marker.getLatLng()
+// начинает возвращать координату лепестка, а не узла. Линии же были
+// нарисованы по nodeCoords (общая точка) и оставались висеть из центра:
+// шумы разъехались, связи — нет. Поэтому конец линии берём у маркера,
+// если он есть, и пересчитываем на распускании/схлопывании.
+function nodePos(id) {
+const m = nodeMarkers[id];
+if (m && m.getLatLng) { const p = m.getLatLng(); return [p.lat, p.lng]; }
+return nodeCoords[id] || null;
+}
+
+function refreshLinePositions() {
+for (const cid in connectionLines) {
+const line = connectionLines[cid];
+const a = nodePos(line._fromId);
+const b = nodePos(line._toId);
+if (a && b) line.setLatLngs([a, b]);
+}
+raiseHumanLines();
+}
+
+cluster.on('spiderfied', refreshLinePositions);
+cluster.on('unspiderfied', function () {
+refreshLinePositions();
+setTimeout(refreshLinePositions, 350);   // маркеры возвращаются с анимацией
+});
+
+// Добавляет одну связь на карту — общая функция для кэша и сети
+function addConnectionToMap(conn) {
+if (loadedConnections.has(conn.id)) return false;
+const from = nodePos(conn.from_node_id);
+const to = nodePos(conn.to_node_id);
+if (!from || !to) return false;
+loadedConnections.add(conn.id);
+const isLinker = conn.created_by === 'linker';
+const line = L.polyline([from, to], {
+color: isLinker ? 'rgba(0,255,136,0.7)' : 'rgba(0,200,255,0.7)',
+weight: 1.5,
+dashArray: '1 8',
+lineCap: 'round',
+}).addTo(linesLayer);
+line._fromId = conn.from_node_id;
+line._toId = conn.to_node_id;
+line._human = !isLinker;
+connectionLines[conn.id] = line;
+return true;
+}
+
+// Человеческие связи держим поверх: их единицы, и там где они ложатся на ту
+// же пару точек, что и линкерские, синее иначе не видно вовсе. Поднимать в
+// момент добавления бесполезно — линкерская связь, пришедшая следом, ляжет
+// сверху; поднимаем после всей пачки.
+function raiseHumanLines() {
+for (const cid in connectionLines) {
+const l = connectionLines[cid];
+if (l._human) l.bringToFront();
+}
+}
+
+function removeConnectionFromMap(id) {
+const line = connectionLines[id];
+if (line) {
+linesLayer.removeLayer(line);
+delete connectionLines[id];
+}
+loadedConnections.delete(id);
+}
+
+// 2) МГНОВЕННАЯ ОТРИСОВКА СВЯЗЕЙ ИЗ КЭША
+const cachedConns = readCache(CACHE_CONNS);
+if (cachedConns && Array.isArray(cachedConns)) {
+cachedConns.forEach(addConnectionToMap);
+raiseHumanLines();
+}
+
+// Полный refresh связей: грузит все, сверяет, убирает удалённые
+async function loadConnections() {
+try {
+const res = await UCData.fetchRetry(
+`${SUPABASE_URL}/rest/v1/connections?select=id,from_node_id,to_node_id,created_by&status=eq.accepted`,
+{ headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY } }
+);
+if (!res.ok) return;
+const conns = await res.json();
+const freshIds = new Set(conns.map(c => c.id));
+
+// Удалить исчезнувшие
+const toRemove = [];
+loadedConnections.forEach(id => { if (!freshIds.has(id)) toRemove.push(id); });
+toRemove.forEach(removeConnectionFromMap);
+
+// Добавить новые
+conns.forEach(addConnectionToMap);
+raiseHumanLines();
+
+writeCache(CACHE_CONNS, conns);
+} catch(e) { console.warn('Connections load error', e); }
+}
+
+// Если узлы уже из кэша — линии можно рисовать почти сразу
+setTimeout(loadConnections, cachedNodes ? 200 : 2000);
+setInterval(loadConnections, 30000);
+
+let pulseState = true;
+setInterval(() => {
+document.getElementById('pulse').style.color = (pulseState = !pulseState) ? '#00ff88' : '#555';
+}, 1500);
+
+setInterval(() => {
+document.getElementById('activeCount').textContent = Math.floor(1 + Math.random() * 8);
+}, 5000);
+}
+</script>
+<div id="ts-box" style="position:fixed;bottom:8px;right:8px;z-index:4000;"></div>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onloadTurnstileCallback&render=explicit" async defer></script>
+</body>
+</html>
