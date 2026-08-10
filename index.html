@@ -745,16 +745,20 @@ d.style.color='';
 </script>
 <script>
 // ═══════════════════════════════════════════════════════
-// ВЫХОД — слово, вплетённое в воду.
-// Принцип: если есть «войти в сеть», должен быть и выход.
-// Слово живёт в толще сцены: качается на той же волне, что
-// и текст (через waveLines/waveAt), медленно дрейфует, буквы
-// дышат. Видит его только вернувшийся — тот, у кого в
-// localStorage остался след (токен или прошлые визиты).
-// Чистый клиент: ноль сети, физика воды не изменена — слово
-// только читает буфер волны, как строки заголовка.
-// Ничего не стирается: уход — жест, а не удаление.
-// Отладка: ?vyhod=now — показать сразу, даже без следа.
+// ВЫХОД И МЕНЮ — слова, вплетённые в воду.
+// Тот же приём, что раньше был только у «Выход», применён и
+// к пунктам меню (Спираль/Сеть/Паттерн/Материя): каждое —
+// независимый цикл всплытие → дрейф → иногда вспышка → уход
+// под воду → всплытие в новом месте (см. spawnDriftWord).
+// Слова взаимно избегают друг друга через occupied().
+// Видит их только вернувшийся — тот же hasTrace, что был у
+// Выхода: новичку слов нет вовсе, ему ещё нечего искать.
+// Спираль ведёт туда же, куда кнопка «Услышать себя» (тот же
+// tunnelGo) — это осознанное дублирование, не ошибка.
+// Выход — единственное слово с собственным ритуалом ухода
+// (веха, капля в воду, UCDoor.open); у пунктов меню его нет,
+// клик — обычный переход на страницу.
+// Отладка: ?vyhod=now — показать все сразу, даже без следа.
 // ═══════════════════════════════════════════════════════
 (function(){
   var force = false;
@@ -769,11 +773,7 @@ d.style.color='';
   try { hasTrace = !!localStorage.getItem('uc_token') || visits > 0; } catch(e){}
   if (!hasTrace && !force) return; // новичку выходить не из чего
 
-  // сид от номера визита — каждый раз чуть другое
-  var seed = ((visits + 1) * 2654435761) >>> 0;
-  function srnd(n){ seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return (seed >>> 8) / 16777216 * n; }
-
-  var bx = 0, by = 0, dph = 0, driftT0 = performance.now(), DA = 1;
+  var liveWords = []; // все смонтированные слова — чтобы обходили друг друга
 
   // Размер экрана берём у body, а не у window.innerWidth/innerHeight: на iOS
   // они отдают значение до схлопывания адресной строки — та же причина, по
@@ -795,206 +795,255 @@ d.style.color='';
     return o;
   }
 
-  // что сейчас занято текстом — считаем по живым прямоугольникам, а не по
-  // долям экрана: на узком телефоне блок текста занимает почти всю ширину
-  function occupied(){
+  // что сейчас занято — живые прямоугольники текста и всех ЧУЖИХ всплывших
+  // слов (self исключаем), а не доли экрана: на узком телефоне текст
+  // занимает почти всю ширину
+  function occupied(self){
     var out = [];
     document.querySelectorAll('.center h1, .center #btn, .center .disclaimer, .node, nav, .version, #uc-lang')
       .forEach(function(el){
-        if (el === outer || (outer && outer.contains(el))) return;
         var r = el.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) out.push(r);
       });
+    liveWords.forEach(function(w){
+      if (w === self || !w.visible) return;
+      var r = w.outer.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) out.push(r);
+    });
     return out;
-  }
-
-  function findSpot(padX, padY){
-    var vp = viewport(), ins = insets(), rects = occupied(), m = 10;
-    var minX = ins.l + m, maxX = vp.w - ins.r - BW - m;
-    var minY = ins.t + m, maxY = vp.h - ins.b - BH - m;
-    if (maxX <= minX || maxY <= minY) return null;
-    for (var i = 0; i < 70; i++){
-      var x = minX + srnd(maxX - minX), y = minY + srnd(maxY - minY);
-      var free = true;
-      for (var j = 0; j < rects.length; j++){
-        var r = rects[j];
-        if (x < r.right + padX && x + BW > r.left - padX &&
-            y < r.bottom + padY && y + BH > r.top  - padY){ free = false; break; }
-      }
-      if (free) return {x:x, y:y};
-    }
-    return null;
-  }
-
-  // всплывает каждый раз в новом месте; запас считается с учётом дрейфа,
-  // чтобы слово не заплыло в текст уже после появления
-  function newPlace(){
-    var vp = viewport();
-    var base = Math.max(0.34, Math.min(1, vp.w / 900)); // на узком экране ходит меньше
-    DA = base;
-    var spot = findSpot(72*DA + 12, 50*DA + 12);
-    if (!spot){                       // тесно — тогда почти стоит на месте
-      DA = base * 0.28;
-      spot = findSpot(72*DA + 10, 50*DA + 10);
-    }
-    if (!spot) return false;          // места нет вовсе — переждём
-    bx = spot.x; by = spot.y;
-    dph = srnd(6.28);
-    driftT0 = performance.now();
-    return true;
   }
 
   var BASE_COLOR  = 'rgba(170,215,255,0.42)';
   var BASE_SHADOW = '0 0 10px rgba(160,210,255,0.22)';
 
-  // три слоя, у каждого свой transform — иначе они затирают друг друга:
-  // outer — позиция и дрейф; scaler — рост перед уходом; word — волна
-  var outer = document.createElement('div');
-  outer.id = 'vyhod';
-  // padding/margin — невидимый запас под палец: 16 px с каждой стороны
-  // доводят область касания примерно до 44 px, как просит iOS
-  outer.style.cssText = 'position:fixed;left:0;top:0;z-index:15;opacity:0;transition:opacity 2.8s ease;pointer-events:none;cursor:pointer;padding:16px;margin:-16px;';
-  var scaler = document.createElement('span');
-  scaler.style.cssText = 'display:inline-block;transform-origin:50% 50%;will-change:transform;';
-  var word = document.createElement('span');
-  word.style.cssText = 'display:inline-block;font-family:"Share Tech Mono",monospace;font-size:0.74rem;letter-spacing:0.35em;color:'+BASE_COLOR+';text-shadow:'+BASE_SHADOW+';will-change:transform;';
-  var letters = [];
-  String(UC_I18N.t('index.exit')).split('').forEach(function(ch){
-    var s = document.createElement('span');
-    s.style.display = 'inline-block';
-    s.textContent = ch;
-    word.appendChild(s);
-    letters.push(s);
-  });
-  scaler.appendChild(word);
-  outer.appendChild(scaler);
-  document.body.appendChild(outer);
+  // Заводит одно слово с собственным независимым циклом всплытия. cfg:
+  // id, text, seedTweak (разводит псевдослучайность между словами),
+  // startDelay (первое всплытие каждого слова смещено по времени),
+  // onActivate(e) — что происходит по клику/тапу.
+  function spawnDriftWord(cfg){
+    // сид от номера визита + сдвиг слова — каждое слово и каждый визит иначе
+    var seed = (((visits + 1) * 2654435761) ^ cfg.seedTweak) >>> 0;
+    function srnd(n){ seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return (seed >>> 8) / 16777216 * n; }
 
-  // размер слова меряем один раз в полную величину — по нему ищется место
-  var wbox = word.getBoundingClientRect();
-  var BW = Math.ceil(wbox.width) || 60, BH = Math.ceil(wbox.height) || 16;
+    var self = { visible:false, leaving:false };
+    var bx = 0, by = 0, dph = 0, driftT0 = performance.now(), DA = 1;
 
-  // вплетение: тот же контракт, что у строк заголовка
-  var entry = {el:word, phase:srnd(6.28), freq:0.28+srnd(0.14), amp:0.5, cx:0, cy:0, letters:letters};
-  waveLines.push(entry);
+    function findSpot(padX, padY){
+      var vp = viewport(), ins = insets(), rects = occupied(self), m = 10;
+      var minX = ins.l + m, maxX = vp.w - ins.r - BW - m;
+      var minY = ins.t + m, maxY = vp.h - ins.b - BH - m;
+      if (maxX <= minX || maxY <= minY) return null;
+      for (var i = 0; i < 70; i++){
+        var x = minX + srnd(maxX - minX), y = minY + srnd(maxY - minY);
+        var free = true;
+        for (var j = 0; j < rects.length; j++){
+          var r = rects[j];
+          if (x < r.right + padX && x + BW > r.left - padX &&
+              y < r.bottom + padY && y + BH > r.top  - padY){ free = false; break; }
+        }
+        if (free) return {x:x, y:y};
+      }
+      return null;
+    }
 
-  // ── цикл: всплывает → плывёт → иногда вспыхивает → уходит под воду
-  // → всплывает снова в другом месте. Слово не висит, оно живёт.
-  var visible = false;
+    // всплывает каждый раз в новом месте; запас считается с учётом дрейфа,
+    // чтобы слово не заплыло в текст уже после появления
+    function newPlace(){
+      var vp = viewport();
+      var base = Math.max(0.34, Math.min(1, vp.w / 900)); // на узком экране ходит меньше
+      DA = base;
+      var spot = findSpot(72*DA + 12, 50*DA + 12);
+      if (!spot){                       // тесно — тогда почти стоит на месте
+        DA = base * 0.28;
+        spot = findSpot(72*DA + 10, 50*DA + 10);
+      }
+      if (!spot) return false;          // места нет вовсе — переждём
+      bx = spot.x; by = spot.y;
+      dph = srnd(6.28);
+      driftT0 = performance.now();
+      return true;
+    }
 
-  function surface(){
-    if (leaving) return;
-    if (!newPlace()) { setTimeout(surface, 5000); return; } // всё занято текстом — ждём
-    scaler.style.transition = 'none';   // всплывает всегда в исходном размере
-    scaler.style.transform = 'scale(1)';
-    outer.style.transition = 'opacity 2.8s ease';
-    outer.style.opacity = '1';
-    outer.style.pointerEvents = 'all';
-    visible = true;
-    setTimeout(sink, 19000 + srnd(10000)); // держится ~19–29 с
-  }
-
-  // вспышка — не каждый раз: слово словно вспоминает о себе перед уходом
-  function flash(){
-    word.style.transition = 'color 0.22s ease, text-shadow 0.22s ease';
-    word.style.color = 'rgba(220,242,255,0.95)';
-    word.style.textShadow = '0 0 14px rgba(190,228,255,0.8), 0 0 34px rgba(140,200,255,0.45)';
-    setTimeout(function(){
-      word.style.transition = 'color 0.8s ease, text-shadow 0.8s ease';
-      word.style.color = BASE_COLOR;
-      word.style.textShadow = BASE_SHADOW;
-    }, 250);
-  }
-
-  // горизонтальный луч — тот же жест, что у крест-звезды узла в минимуме
-  // пульса (.node::before): из почти растворившегося текста выходит нить
-  // с градиентом от прозрачного к свету и гаснет.
-  function ray(){
-    if (leaving) return;
-    var r = word.getBoundingClientRect();
-    if (!r.width) return;
-    var span = Math.max(200, Math.round(r.width * 4));
-    var el = document.createElement('div');
-    el.style.cssText = 'position:fixed;left:'+(r.left + r.width/2).toFixed(1)+'px;top:'+(r.top + r.height/2).toFixed(1)+'px;'
-      + 'width:'+span+'px;margin-left:'+(-span/2).toFixed(1)+'px;height:0.5px;margin-top:-0.25px;z-index:14;pointer-events:none;'
-      + 'background:linear-gradient(to right,rgba(255,255,255,0) 0%,rgba(205,236,255,0.55) 50%,rgba(255,255,255,0) 100%);'
-      + 'transform:scaleX(0.05);transform-origin:50% 50%;opacity:0;'
-      + 'transition:transform 0.6s cubic-bezier(0.06,0.86,0.18,1), opacity 0.5s ease;';
-    document.body.appendChild(el);
-    requestAnimationFrame(function(){
-      el.style.transform = 'scaleX(1)';
-      el.style.opacity = '1';
+    // три слоя, у каждого свой transform — иначе они затирают друг друга:
+    // outer — позиция и дрейф; scaler — рост перед уходом; word — волна
+    var outer = document.createElement('div');
+    outer.id = cfg.id;
+    // padding/margin — невидимый запас под палец: 16 px с каждой стороны
+    // доводят область касания примерно до 44 px, как просит iOS
+    outer.style.cssText = 'position:fixed;left:0;top:0;z-index:15;opacity:0;transition:opacity 2.8s ease;pointer-events:none;cursor:pointer;padding:16px;margin:-16px;';
+    var scaler = document.createElement('span');
+    scaler.style.cssText = 'display:inline-block;transform-origin:50% 50%;will-change:transform;';
+    var word = document.createElement('span');
+    word.style.cssText = 'display:inline-block;font-family:"Share Tech Mono",monospace;font-size:0.74rem;letter-spacing:0.35em;color:'+BASE_COLOR+';text-shadow:'+BASE_SHADOW+';will-change:transform;';
+    var letters = [];
+    String(cfg.text).split('').forEach(function(ch){
+      var s = document.createElement('span');
+      s.style.display = 'inline-block';
+      s.textContent = ch;
+      word.appendChild(s);
+      letters.push(s);
     });
-    setTimeout(function(){
-      el.style.transition = 'transform 1.2s ease-out, opacity 1.2s ease';
-      el.style.transform = 'scaleX(1.3)';
-      el.style.opacity = '0';
-    }, 620);
-    setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 2000);
-  }
+    scaler.appendChild(word);
+    outer.appendChild(scaler);
+    document.body.appendChild(outer);
+    self.outer = outer;
 
-  function sink(){
-    if (leaving || !visible) return;
-    var doFlash = srnd(1) < 0.5;
-    // логарифмический набор: рывком берёт почти весь размер и замирает
-    scaler.style.transition = 'transform 1.7s cubic-bezier(0.05,0.9,0.15,1)';
-    scaler.style.transform = 'scale(1.25)';
-    setTimeout(function(){
-      if (leaving) return;
-      if (doFlash) flash();
+    // размер слова меряем один раз в полную величину — по нему ищется место
+    var wbox = word.getBoundingClientRect();
+    var BW = Math.ceil(wbox.width) || 60, BH = Math.ceil(wbox.height) || 16;
+
+    // вплетение: тот же контракт, что у строк заголовка
+    var entry = {el:word, phase:srnd(6.28), freq:0.28+srnd(0.14), amp:0.5, cx:0, cy:0, letters:letters};
+    waveLines.push(entry);
+    self.entry = entry;
+
+    // вспышка — не каждый раз: слово словно вспоминает о себе перед уходом
+    function flash(){
+      word.style.transition = 'color 0.22s ease, text-shadow 0.22s ease';
+      word.style.color = 'rgba(220,242,255,0.95)';
+      word.style.textShadow = '0 0 14px rgba(190,228,255,0.8), 0 0 34px rgba(140,200,255,0.45)';
       setTimeout(function(){
-        if (leaving) return;
-        visible = false;
-        outer.style.transition = 'opacity 2.4s ease';
-        outer.style.opacity = '0';
-        outer.style.pointerEvents = 'none';
-        setTimeout(ray, 1700); // текст уже почти растворился — из него выходит луч
-        setTimeout(surface, 2400 + 8000 + srnd(7000)); // под водой ~10–17 с
-      }, doFlash ? 950 : 0);
-    }, 1700);
+        word.style.transition = 'color 0.8s ease, text-shadow 0.8s ease';
+        word.style.color = BASE_COLOR;
+        word.style.textShadow = BASE_SHADOW;
+      }, 250);
+    }
+
+    // горизонтальный луч — тот же жест, что у крест-звезды узла в минимуме
+    // пульса (.node::before): из почти растворившегося текста выходит нить
+    // с градиентом от прозрачного к свету и гаснет.
+    function ray(){
+      if (self.leaving) return;
+      var r = word.getBoundingClientRect();
+      if (!r.width) return;
+      var span = Math.max(200, Math.round(r.width * 4));
+      var el = document.createElement('div');
+      el.style.cssText = 'position:fixed;left:'+(r.left + r.width/2).toFixed(1)+'px;top:'+(r.top + r.height/2).toFixed(1)+'px;'
+        + 'width:'+span+'px;margin-left:'+(-span/2).toFixed(1)+'px;height:0.5px;margin-top:-0.25px;z-index:14;pointer-events:none;'
+        + 'background:linear-gradient(to right,rgba(255,255,255,0) 0%,rgba(205,236,255,0.55) 50%,rgba(255,255,255,0) 100%);'
+        + 'transform:scaleX(0.05);transform-origin:50% 50%;opacity:0;'
+        + 'transition:transform 0.6s cubic-bezier(0.06,0.86,0.18,1), opacity 0.5s ease;';
+      document.body.appendChild(el);
+      requestAnimationFrame(function(){
+        el.style.transform = 'scaleX(1)';
+        el.style.opacity = '1';
+      });
+      setTimeout(function(){
+        el.style.transition = 'transform 1.2s ease-out, opacity 1.2s ease';
+        el.style.transform = 'scaleX(1.3)';
+        el.style.opacity = '0';
+      }, 620);
+      setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 2000);
+    }
+
+    function surface(){
+      if (self.leaving) return;
+      if (!newPlace()) { setTimeout(surface, 5000); return; } // всё занято — ждём
+      scaler.style.transition = 'none';   // всплывает всегда в исходном размере
+      scaler.style.transform = 'scale(1)';
+      outer.style.transition = 'opacity 2.8s ease';
+      outer.style.opacity = '1';
+      outer.style.pointerEvents = 'all';
+      self.visible = true;
+      setTimeout(sink, 19000 + srnd(10000)); // держится ~19–29 с
+    }
+
+    function sink(){
+      if (self.leaving || !self.visible) return;
+      var doFlash = srnd(1) < 0.5;
+      // логарифмический набор: рывком берёт почти весь размер и замирает
+      scaler.style.transition = 'transform 1.7s cubic-bezier(0.05,0.9,0.15,1)';
+      scaler.style.transform = 'scale(1.25)';
+      setTimeout(function(){
+        if (self.leaving) return;
+        if (doFlash) flash();
+        setTimeout(function(){
+          if (self.leaving) return;
+          self.visible = false;
+          outer.style.transition = 'opacity 2.4s ease';
+          outer.style.opacity = '0';
+          outer.style.pointerEvents = 'none';
+          setTimeout(ray, 1700); // текст уже почти растворился — из него выходит луч
+          setTimeout(surface, 2400 + 8000 + srnd(7000)); // под водой ~10–17 с
+        }, doFlash ? 950 : 0);
+      }, 1700);
+    }
+
+    setTimeout(surface, (force ? 700 : 3200 + srnd(2600)) + (cfg.startDelay||0)); // первое всплытие смещено по слову
+
+    // собственный дрейф — заметный ход по сцене, поверх волновой качки.
+    // Амплитуда масштабируется под ширину экрана (DA): на телефоне слово
+    // ходит меньше, иначе уплывает в текст, которому там тесно.
+    (function driftLoop(now){
+      var t = (now - driftT0)/1000;
+      var dx = (52*Math.sin(t*0.075 + dph) + 20*Math.sin(t*0.031 + dph*1.7)) * DA;
+      var dy = (34*Math.sin(t*0.052 + dph*0.6) + 16*Math.cos(t*0.041 + dph)) * DA;
+      outer.style.left = (bx + dx).toFixed(1) + 'px';
+      outer.style.top  = (by + dy).toFixed(1) + 'px';
+      requestAnimationFrame(driftLoop);
+    })(performance.now());
+
+    outer.addEventListener('click', cfg.onActivate);
+    outer.addEventListener('touchend', cfg.onActivate);
+
+    liveWords.push(self);
+    return self;
   }
 
-  setTimeout(surface, force ? 700 : 3200 + srnd(2600)); // первое всплытие ~3.2–5.8 с
+  // ── Выход: единственное слово со своим ритуалом ухода. Ничего не
+  // стирается — уход жест, а не удаление; сцена гаснет в тишину.
+  var exitWord = spawnDriftWord({
+    id: 'vyhod',
+    text: UC_I18N.t('index.exit'),
+    seedTweak: 0,
+    onActivate: function(e){
+      if (e) e.preventDefault();
+      if (exitWord.leaving) return;
+      // туннель уже начался — уход не перебивает переход в Спираль
+      var tc = document.getElementById('tunnel-canvas');
+      if (tc && tc.style.display === 'block') return;
+      exitWord.leaving = true;
+      try { if (window.UCAudio && UCAudio.fx) UCAudio.fx('page'); } catch(_e){}
+      // слово роняет последнюю каплю в воду
+      try { drop(exitWord.entry.cx, exitWord.entry.cy, 6, 3, 20); } catch(_e){}
+      // вуаль ловит касания — во время ухода портал не отвечает на «войти»
+      var veil = document.createElement('div');
+      veil.style.cssText = 'position:fixed;inset:0;z-index:150;background:#02060c;opacity:0;transition:opacity 5s ease;';
+      document.body.appendChild(veil);
+      requestAnimationFrame(function(){ veil.style.opacity = '1'; });
+      ['.ui','.version','nav','#uc-lang'].forEach(function(sel){
+        var el2 = document.querySelector(sel);
+        if (el2){ el2.style.transition = 'opacity 4s ease'; el2.style.opacity = '0'; }
+      });
+      exitWord.outer.style.transition = 'opacity 3s ease';
+      exitWord.outer.style.opacity = '0';
+      setTimeout(function(){ if (window.UCDoor) UCDoor.open(); }, 5200);
+    }
+  });
 
-  // собственный дрейф — заметный ход по сцене, поверх волновой качки.
-  // Амплитуда масштабируется под ширину экрана (DA): на телефоне слово
-  // ходит меньше, иначе уплывает в текст, которому там тесно.
-  (function driftLoop(now){
-    var t = (now - driftT0)/1000;
-    var dx = (52*Math.sin(t*0.075 + dph) + 20*Math.sin(t*0.031 + dph*1.7)) * DA;
-    var dy = (34*Math.sin(t*0.052 + dph*0.6) + 16*Math.cos(t*0.041 + dph)) * DA;
-    outer.style.left = (bx + dx).toFixed(1) + 'px';
-    outer.style.top  = (by + dy).toFixed(1) + 'px';
-    requestAnimationFrame(driftLoop);
-  })(performance.now());
-
-  // ── ритуал ухода: ничего не стирается, сцена гаснет в тишину
-  var leaving = false;
-  function leave(e){
-    if (e) e.preventDefault();
-    if (leaving) return;
-    // туннель уже начался — уход не перебивает переход в Спираль
-    var tc = document.getElementById('tunnel-canvas');
-    if (tc && tc.style.display === 'block') return;
-    leaving = true;
-    try { if (window.UCAudio && UCAudio.fx) UCAudio.fx('page'); } catch(_e){}
-    // слово роняет последнюю каплю в воду
-    try { drop(entry.cx, entry.cy, 6, 3, 20); } catch(_e){}
-    // вуаль ловит касания — во время ухода портал не отвечает на «войти»
-    var veil = document.createElement('div');
-    veil.style.cssText = 'position:fixed;inset:0;z-index:150;background:#02060c;opacity:0;transition:opacity 5s ease;';
-    document.body.appendChild(veil);
-    requestAnimationFrame(function(){ veil.style.opacity = '1'; });
-    ['.ui','.version','nav','#uc-lang'].forEach(function(sel){
-      var el2 = document.querySelector(sel);
-      if (el2){ el2.style.transition = 'opacity 4s ease'; el2.style.opacity = '0'; }
+  // ── Пункты меню: та же вода, тот же алгоритм всплытия, но без ритуала —
+  // клик просто ведёт на страницу. Спираль намеренно дублирует кнопку
+  // «Услышать себя» — тот же tunnelGo, тот же переход.
+  var navItems = [
+    { key:'nav.spiral',  href:'petlya.html',    seedTweak:0x9E3779B1, tunnel:true },
+    { key:'nav.network', href:'set.html',       seedTweak:0x85EBCA6B },
+    { key:'nav.pattern', href:'implant.html',   seedTweak:0xC2B2AE35 },
+    { key:'nav.matter',  href:'materials.html', seedTweak:0x27D4EB2F }
+  ];
+  navItems.forEach(function(item, i){
+    spawnDriftWord({
+      id: 'vyhod-nav-' + i,
+      text: UC_I18N.t(item.key),
+      seedTweak: item.seedTweak,
+      startDelay: (i+1) * 900, // расходятся по времени первого всплытия
+      onActivate: function(e){
+        if (item.tunnel) { if (window.tunnelGo) window.tunnelGo(e); return; }
+        if (e) e.preventDefault();
+        try { if (window.UCAudio && UCAudio.fx) UCAudio.fx('page'); } catch(_e){}
+        location.href = item.href;
+      }
     });
-    outer.style.transition = 'opacity 3s ease';
-    outer.style.opacity = '0';
-    setTimeout(function(){ if (window.UCDoor) UCDoor.open(); }, 5200);
-  }
-  outer.addEventListener('click', leave);
-  outer.addEventListener('touchend', leave);
+  });
 })();
 </script>
 </body>
