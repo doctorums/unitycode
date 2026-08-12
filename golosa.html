@@ -19,7 +19,11 @@ body{
   display:flex;
   flex-direction:column;
   align-items:center;
-  padding:8vh 1.5rem 4rem;
+  /* переключатель языка (i18n.js) — fixed, top:safe-area+12px, свои ~38px
+     высоты, справа. На невысоких экранах 8vh не хватает, чтобы «ВТОРЫЕ
+     ВОРОТА» не заехали под него; на них с чёлкой та же беда от safe-area.
+     max() берёт что больше — вниз не просядет ни там, ни там. */
+  padding:max(8vh, calc(env(safe-area-inset-top,0px) + 64px)) 1.5rem 4rem;
 }
 .page{width:100%;max-width:560px;display:flex;flex-direction:column;align-items:center;}
 .eyebrow{font-size:0.6rem;letter-spacing:0.3em;color:rgba(160,215,255,0.55);text-transform:uppercase;margin-bottom:2.2rem;text-align:center;}
@@ -39,7 +43,7 @@ h1{
 }
 #state{width:100%;display:flex;flex-direction:column;align-items:center;}
 .note{font-size:0.85rem;line-height:1.75;color:rgba(255,255,255,0.62);text-align:center;max-width:460px;margin-bottom:1.2rem;}
-.link-back{display:inline-block;margin-top:0.6rem;font-size:0.68rem;letter-spacing:0.1em;color:rgba(160,215,255,0.75);text-decoration:underline;}
+.link-back{display:inline-block;margin-top:0.6rem;padding:0.6rem;margin-bottom:-0.6rem;font-size:0.68rem;letter-spacing:0.1em;color:rgba(160,215,255,0.75);text-decoration:underline;}
 .voice-form{width:100%;display:flex;flex-direction:column;align-items:center;}
 .voice-textarea{
   width:100%;min-height:220px;resize:vertical;
@@ -53,7 +57,8 @@ h1{
 .voice-counter.over,.voice-counter.under{color:rgba(255,140,140,0.85);}
 .voice-hint{width:100%;font-size:0.62rem;color:rgba(255,150,150,0.75);text-align:left;margin-bottom:0.9rem;min-height:1.2em;}
 .voice-btn{
-  padding:0.7rem 2rem;border:1px solid rgba(160,215,255,0.5);
+  padding:0.7rem 2rem;min-height:44px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid rgba(160,215,255,0.5);
   color:rgba(160,215,255,0.95);font-family:'Share Tech Mono',monospace;font-size:0.7rem;letter-spacing:0.15em;
   text-transform:uppercase;background:rgba(255,255,255,0.05);cursor:pointer;
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:6px;transition:all 0.3s;
