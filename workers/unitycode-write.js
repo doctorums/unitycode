@@ -901,9 +901,10 @@ export default {
 
       if (body.action === 'voice_check') {
         const vt = (body.user_token || '').toString();
-        if (!TOKEN_RE.test(vt)) return json({ eligible: false, count: 0 }, 200, origin);
+        const threshold = voiceThreshold(env);
+        if (!TOKEN_RE.test(vt)) return json({ eligible: false, count: 0, threshold }, 200, origin);
         const count = await countUserNodes(env, vt);
-        return json({ eligible: count >= voiceThreshold(env), count }, 200, origin);
+        return json({ eligible: count >= threshold, count, threshold }, 200, origin);
       }
 
       if (body.action === 'voice_write') {
