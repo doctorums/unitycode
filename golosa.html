@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title data-i18n="voice.title">UNITYCODE — Голоса</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400&display=swap" rel="stylesheet"></noscript>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;min-height:100%;}
+body{
+  font-family:'Share Tech Mono',monospace;
+  background:radial-gradient(ellipse at 50% -10%, #0d2438 0%, #061120 55%, #040d1a 100%);
+  color:rgba(255,255,255,0.85);
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:8vh 1.5rem 4rem;
+}
+.page{width:100%;max-width:560px;display:flex;flex-direction:column;align-items:center;}
+.eyebrow{font-size:0.6rem;letter-spacing:0.3em;color:rgba(160,215,255,0.55);text-transform:uppercase;margin-bottom:2.2rem;text-align:center;}
+.node{width:56px;height:56px;margin:0 auto 2.4rem;position:relative;flex-shrink:0;}
+.node-core{width:8px;height:8px;background:rgba(255,255,255,0.8);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);animation:pc 22s ease-in-out infinite;}
+@keyframes pc{
+0%{transform:translate(-50%,-50%) scale(0.20);box-shadow:0 0 4px rgba(255,255,255,0.2),0 0 10px rgba(180,210,255,0.15);}
+50%{transform:translate(-50%,-50%) scale(1.09);box-shadow:0 0 10px rgba(255,255,255,0.5),0 0 28px rgba(160,200,255,0.35);}
+100%{transform:translate(-50%,-50%) scale(0.20);box-shadow:0 0 4px rgba(255,255,255,0.2),0 0 10px rgba(180,210,255,0.15);}
+}
+h1{
+  width:100%;
+  font-family:'Unbounded',sans-serif;font-weight:400;
+  font-size:clamp(1.1rem,3.4vw,1.7rem);line-height:1.7;
+  color:rgba(255,255,255,0.92);text-align:center;
+  text-shadow:0 2px 30px rgba(0,20,60,0.9);margin-bottom:2.6rem;
+}
+#state{width:100%;display:flex;flex-direction:column;align-items:center;}
+.note{font-size:0.85rem;line-height:1.75;color:rgba(255,255,255,0.62);text-align:center;max-width:460px;margin-bottom:1.2rem;}
+.link-back{display:inline-block;margin-top:0.6rem;font-size:0.68rem;letter-spacing:0.1em;color:rgba(160,215,255,0.75);text-decoration:underline;}
+.voice-form{width:100%;display:flex;flex-direction:column;align-items:center;}
+.voice-textarea{
+  width:100%;min-height:220px;resize:vertical;
+  background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.18);border-radius:8px;
+  color:rgba(255,255,255,0.9);font-family:'Share Tech Mono',monospace;font-size:0.88rem;line-height:1.7;
+  padding:1rem;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
+.voice-textarea:focus{outline:none;border-color:rgba(160,215,255,0.5);}
+.voice-row{width:100%;display:flex;justify-content:space-between;align-items:center;margin-top:0.6rem;margin-bottom:1.4rem;}
+.voice-counter{font-size:0.65rem;letter-spacing:0.05em;color:rgba(255,255,255,0.35);}
+.voice-counter.over{color:rgba(255,140,140,0.85);}
+.voice-btn{
+  padding:0.7rem 2rem;border:1px solid rgba(160,215,255,0.5);
+  color:rgba(160,215,255,0.95);font-family:'Share Tech Mono',monospace;font-size:0.7rem;letter-spacing:0.15em;
+  text-transform:uppercase;background:rgba(255,255,255,0.05);cursor:pointer;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:6px;transition:all 0.3s;
+}
+.voice-btn:hover:not(:disabled){background:rgba(255,255,255,0.1);border-color:rgba(160,215,255,0.85);}
+.voice-btn:disabled{opacity:0.55;cursor:default;}
+.voice-note{font-size:0.6rem;color:rgba(200,210,220,0.35);line-height:1.8;text-align:center;max-width:460px;margin-top:1.4rem;}
+.voice-draft{font-size:0.6rem;color:rgba(160,215,255,0.5);letter-spacing:0.05em;text-align:center;margin-bottom:0.8rem;}
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="eyebrow" data-i18n="voice.eyebrow">ВТОРЫЕ ВОРОТА</div>
+<div class="node"><div class="node-core"></div></div>
+<h1 data-i18n="voice.lead"></h1>
+
+<div id="state"></div>
+
+</div>
+
+<div id="ts-box" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:4000;"></div>
+
+<script src="js/uc-data.js"></script>
+<script src="i18n.js"></script>
+<script src="analytics.js" defer></script>
+<script>
+(function(){
+  var t = UC_I18N.t.bind(UC_I18N), tn = UC_I18N.tn.bind(UC_I18N);
+  var TOKEN_RE = /^[0-9a-f]{64}$/i;
+  var VOICE_MAX = 4000;
+  var DRAFT_KEY = 'uc_voice_draft';
+  var WRITE_WORKER_URL = 'https://unitycode-write.sv2txxznjm.workers.dev/';
+  var TURNSTILE_SITEKEY = '0x4AAAAAADipuIhRBHuABO1Z';
+
+  var stateEl = document.getElementById('state');
+  var myToken = UCData.token();
+
+  // ── Turnstile: тот же виджет и режим, что в petlya.html, без прогрева —
+  // здесь нет тесной петли «жест → отправка», торопиться некуда.
+  var _tsId = null, _tsResolve = null;
+  function setTsVisible(on){
+    var box = document.getElementById('ts-box');
+    if (box) box.style.visibility = on ? 'visible' : 'hidden';
+  }
+  window.onloadTurnstileCallback = function(){
+    try {
+      _tsId = turnstile.render('#ts-box', {
+        sitekey: TURNSTILE_SITEKEY, appearance: 'interaction-only', execution: 'execute',
+        callback: function(tok){ setTsVisible(false); if(_tsResolve){ _tsResolve(tok); _tsResolve=null; } },
+        'error-callback': function(){ setTsVisible(false); if(_tsResolve){ _tsResolve(''); _tsResolve=null; } }
+      });
+    } catch(e){}
+    setTsVisible(false);
+  };
+  function getTurnstileToken(){
+    return new Promise(function(resolve){
+      if (!window.turnstile || _tsId === null) { resolve(''); return; }
+      var done = false;
+      function finish(v){ if(done) return; done = true; setTsVisible(false); resolve(v); }
+      _tsResolve = finish;
+      setTsVisible(true);
+      try { turnstile.reset(_tsId); } catch(e){}
+      try { turnstile.execute(_tsId); } catch(e){ finish(''); }
+      setTimeout(function(){ if(!done){ _tsResolve = null; finish(''); } }, 12000);
+    });
+  }
+  // Худший канал: скрипт Turnstile мог не догрузиться вовсе — не ждём вечно.
+  function waitTsReady(maxMs){
+    return new Promise(function(resolve){
+      var start = Date.now();
+      (function poll(){
+        if (_tsId !== null) { resolve(); return; }
+        if (Date.now() - start > maxMs) { resolve(); return; }
+        setTimeout(poll, 150);
+      })();
+    });
+  }
+  async function safeTurnstileToken(){
+    await waitTsReady(4000);
+    return getTurnstileToken();
+  }
+
+  function genIdem(){
+    try { return crypto.randomUUID(); } catch(e){ return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+  }
+
+  function readDraft(){
+    try {
+      var raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return '';
+      var d = JSON.parse(raw);
+      return (d && typeof d.text === 'string') ? d.text : '';
+    } catch(e){ return ''; }
+  }
+  function writeDraft(text){
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ text: text, at: Date.now() })); } catch(e){}
+  }
+  function clearDraft(){
+    try { localStorage.removeItem(DRAFT_KEY); } catch(e){}
+  }
+
+  // ── Состояния ───────────────────────────────────────────────────────────
+  function renderNote(key){
+    var p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = t(key);
+    stateEl.innerHTML = '';
+    stateEl.appendChild(p);
+  }
+  function renderGuest(){
+    renderNote('voice.lockedGuest');
+    var a = document.createElement('a');
+    a.className = 'link-back';
+    a.href = 'petlya.html';
+    a.textContent = t('nav.spiral');
+    stateEl.appendChild(a);
+  }
+  function renderChecking(){ renderNote('voice.checking'); }
+  function renderLocked(count, threshold){
+    stateEl.innerHTML = '';
+    var p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = tn('voice.lockedProgress', count, { threshold: threshold });
+    stateEl.appendChild(p);
+    var a = document.createElement('a');
+    a.className = 'link-back';
+    a.href = 'petlya.html';
+    a.textContent = t('nav.spiral');
+    stateEl.appendChild(a);
+  }
+
+  function renderForm(){
+    stateEl.innerHTML = '';
+
+    var draft = readDraft();
+    if (draft) {
+      var dn = document.createElement('div');
+      dn.className = 'voice-draft';
+      dn.textContent = t('voice.draftRestored');
+      stateEl.appendChild(dn);
+    }
+
+    var lead = document.createElement('p');
+    lead.className = 'note';
+    lead.textContent = t('voice.unlockedLead');
+    stateEl.appendChild(lead);
+
+    var form = document.createElement('div');
+    form.className = 'voice-form';
+
+    var ta = document.createElement('textarea');
+    ta.className = 'voice-textarea';
+    ta.maxLength = VOICE_MAX;
+    ta.placeholder = t('voice.placeholder');
+    ta.value = draft;
+    form.appendChild(ta);
+
+    var row = document.createElement('div');
+    row.className = 'voice-row';
+    var counter = document.createElement('span');
+    counter.className = 'voice-counter';
+    row.appendChild(counter);
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'voice-btn';
+    btn.textContent = t('voice.send');
+    row.appendChild(btn);
+    form.appendChild(row);
+
+    var note = document.createElement('p');
+    note.className = 'voice-note';
+    note.textContent = t('voice.networkNote');
+    form.appendChild(note);
+
+    stateEl.appendChild(form);
+
+    function updateCounter(){
+      var n = ta.value.length;
+      counter.textContent = t('voice.charCount', { n: n, max: VOICE_MAX });
+      counter.classList.toggle('over', n > VOICE_MAX);
+      btn.disabled = (n === 0 || n > VOICE_MAX);
+    }
+    updateCounter();
+
+    var draftTimer = null;
+    ta.addEventListener('input', function(){
+      updateCounter();
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(function(){ writeDraft(ta.value); }, 400);
+    });
+
+    var idem = genIdem();
+    var sending = false;
+
+    async function send(){
+      if (sending) return;
+      var text = ta.value.trim();
+      if (!text || text.length > VOICE_MAX) return;
+      sending = true;
+      btn.disabled = true;
+      btn.textContent = t('voice.sending');
+      writeDraft(ta.value); // на случай обрыва прямо во время отправки
+
+      try {
+        var ts = await safeTurnstileToken();
+        var res = await UCData.fetchRetry(WRITE_WORKER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'voice_write',
+            token: myToken,
+            turnstile: ts,
+            user_token: myToken,
+            text: text,
+            lang: UC_I18N.lang,
+            client_id: idem,
+          }),
+        });
+        var data = await res.json();
+        if (!data || data.ok !== true) throw new Error('voice_write: ' + (data && data.error));
+
+        clearDraft();
+        ta.value = '';
+        updateCounter();
+        btn.textContent = t('voice.sent');
+        idem = genIdem(); // готовим отдельный голос к следующей отправке
+        setTimeout(function(){ btn.textContent = t('voice.send'); sending = false; btn.disabled = (ta.value.length === 0); }, 2400);
+      } catch(e) {
+        // Текст остаётся в textarea и в черновике — обрыв связи ничего не стирает.
+        btn.textContent = t('voice.retry');
+        sending = false;
+        btn.disabled = false;
+      }
+    }
+    btn.addEventListener('click', send);
+  }
+
+  // ── Вход ────────────────────────────────────────────────────────────────
+  if (!TOKEN_RE.test(myToken)) { renderGuest(); return; }
+
+  renderChecking();
+
+  (async function(){
+    try {
+      var ts = await safeTurnstileToken();
+      var res = await UCData.fetchRetry(WRITE_WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'voice_check', token: myToken, turnstile: ts, user_token: myToken }),
+      });
+      var data = await res.json();
+      if (data && data.eligible) renderForm();
+      else renderLocked((data && data.count) || 0, (data && data.threshold) || 50);
+    } catch(e) {
+      // Сеть не ответила — тихий откат к «пока рано», без пугающей ошибки.
+      renderLocked(0, 50);
+    }
+  })();
+})();
+</script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onloadTurnstileCallback&render=explicit" async defer></script>
+</body>
+</html>
