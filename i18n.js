@@ -307,6 +307,7 @@
     'voice.sendError':    { ru:`[ ✗ ОШИБКА ]`, en:`[ ✗ ERROR ]`, es:`[ ✗ ERROR ]`, fr:`[ ✗ ERREUR ]`, zh:`[ ✗ 出错了 ]`},
     'voice.retry':        { ru:`[ ↻ ПОВТОРИТЬ ]`, en:`[ ↻ RETRY ]`, es:`[ ↻ REINTENTAR ]`, fr:`[ ↻ RÉESSAYER ]`, zh:`[ ↻ 重试 ]`},
     'voice.draftRestored':{ ru:`Черновик восстановлен — ничего не потерялось.`, en:`Draft restored — nothing was lost.`, es:`Borrador restaurado — no se perdió nada.`, fr:`Brouillon restauré — rien n'a été perdu.`, zh:`草稿已恢复——什么都没丢失。`},
+    'voice.tooShort':     { ru:`Ещё рано — нужно хотя бы {min} символов.`, en:`Not yet — needs at least {min} characters.`, es:`Todavía no — hacen falta al menos {min} caracteres.`, fr:`Pas encore — il faut au moins {min} caractères.`, zh:`还不够——至少需要 {min} 个字。`},
     'voice.tooLong':      { ru:`Слишком длинно — не больше 4000 символов.`, en:`Too long — 4000 characters max.`, es:`Demasiado largo — máximo 4000 caracteres.`, fr:`Trop long — 4000 caractères maximum.`, zh:`太长了——最多 4000 字。`},
     'voice.networkNote':  { ru:`Если связь оборвётся — текст останется здесь, ничего не потеряется.`, en:`If the connection drops, the text stays here — nothing is lost.`, es:`Si la conexión se corta, el texto queda aquí — no se pierde nada.`, fr:`Si la connexion se coupe, le texte reste ici — rien n'est perdu.`, zh:`如果连接中断，文字仍留在这里——什么都不会丢失。`}
   };

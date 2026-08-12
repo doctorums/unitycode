@@ -647,6 +647,7 @@ async function sbExists(env, table, col, id) {
 // Порог вплетённых шумов, дающий доступ к длинным осознанным текстам.
 // Голоса — отдельная таблица (migrations/voices.sql), не узлы графа.
 const TOKEN_RE = /^[0-9a-f]{64}$/i;
+const VOICE_TEXT_MIN = 50;    // синхронизировано с CHECK в voices (migrations/voices_min_length.sql)
 const VOICE_TEXT_MAX = 4000;
 const VOICE_THRESHOLD_DEFAULT = 50;
 
@@ -911,7 +912,7 @@ export default {
         const vt = (body.user_token || '').toString();
         if (!TOKEN_RE.test(vt)) return json({ error: 'bad_token' }, 422, origin);
         const text = (body.text || '').toString().trim();
-        if (text.length < 1 || text.length > VOICE_TEXT_MAX) return json({ error: 'length' }, 422, origin);
+        if (text.length < VOICE_TEXT_MIN || text.length > VOICE_TEXT_MAX) return json({ error: 'length' }, 422, origin);
 
         // Клиент показывает счётчик, право записи подтверждает только сервер —
         // eligibility здесь пересчитывается заново, а не берётся с его слов.

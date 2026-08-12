@@ -48,9 +48,10 @@ h1{
   padding:1rem;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
 }
 .voice-textarea:focus{outline:none;border-color:rgba(160,215,255,0.5);}
-.voice-row{width:100%;display:flex;justify-content:space-between;align-items:center;margin-top:0.6rem;margin-bottom:1.4rem;}
+.voice-row{width:100%;display:flex;justify-content:space-between;align-items:center;margin-top:0.6rem;margin-bottom:0.5rem;}
 .voice-counter{font-size:0.65rem;letter-spacing:0.05em;color:rgba(255,255,255,0.35);}
-.voice-counter.over{color:rgba(255,140,140,0.85);}
+.voice-counter.over,.voice-counter.under{color:rgba(255,140,140,0.85);}
+.voice-hint{width:100%;font-size:0.62rem;color:rgba(255,150,150,0.75);text-align:left;margin-bottom:0.9rem;min-height:1.2em;}
 .voice-btn{
   padding:0.7rem 2rem;border:1px solid rgba(160,215,255,0.5);
   color:rgba(160,215,255,0.95);font-family:'Share Tech Mono',monospace;font-size:0.7rem;letter-spacing:0.15em;
@@ -83,6 +84,7 @@ h1{
 (function(){
   var t = UC_I18N.t.bind(UC_I18N), tn = UC_I18N.tn.bind(UC_I18N);
   var TOKEN_RE = /^[0-9a-f]{64}$/i;
+  var VOICE_MIN = 50;   // синхронизировано с CHECK в voices и VOICE_TEXT_MIN воркера
   var VOICE_MAX = 4000;
   var DRAFT_KEY = 'uc_voice_draft';
   var WRITE_WORKER_URL = 'https://unitycode-write.sv2txxznjm.workers.dev/';
@@ -223,6 +225,10 @@ h1{
     row.appendChild(btn);
     form.appendChild(row);
 
+    var hint = document.createElement('p');
+    hint.className = 'voice-hint';
+    form.appendChild(hint);
+
     var note = document.createElement('p');
     note.className = 'voice-note';
     note.textContent = t('voice.networkNote');
@@ -233,8 +239,11 @@ h1{
     function updateCounter(){
       var n = ta.value.length;
       counter.textContent = t('voice.charCount', { n: n, max: VOICE_MAX });
-      counter.classList.toggle('over', n > VOICE_MAX);
-      btn.disabled = (n === 0 || n > VOICE_MAX);
+      var under = n > 0 && n < VOICE_MIN, over = n > VOICE_MAX;
+      counter.classList.toggle('under', under);
+      counter.classList.toggle('over', over);
+      hint.textContent = under ? t('voice.tooShort', { min: VOICE_MIN }) : over ? t('voice.tooLong') : '';
+      btn.disabled = (n < VOICE_MIN || n > VOICE_MAX);
     }
     updateCounter();
 
@@ -251,7 +260,7 @@ h1{
     async function send(){
       if (sending) return;
       var text = ta.value.trim();
-      if (!text || text.length > VOICE_MAX) return;
+      if (text.length < VOICE_MIN || text.length > VOICE_MAX) return;
       sending = true;
       btn.disabled = true;
       btn.textContent = t('voice.sending');
@@ -280,7 +289,7 @@ h1{
         updateCounter();
         btn.textContent = t('voice.sent');
         idem = genIdem(); // готовим отдельный голос к следующей отправке
-        setTimeout(function(){ btn.textContent = t('voice.send'); sending = false; btn.disabled = (ta.value.length === 0); }, 2400);
+        setTimeout(function(){ btn.textContent = t('voice.send'); sending = false; updateCounter(); }, 2400);
       } catch(e) {
         // Текст остаётся в textarea и в черновике — обрыв связи ничего не стирает.
         btn.textContent = t('voice.retry');
