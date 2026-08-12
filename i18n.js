@@ -284,7 +284,31 @@
       es:`el hilo apenas comienza — crece con cada ruido`
     , fr:`le fil ne fait que commencer — il grandit avec chaque bruit`, zh:`这根线才刚刚开始——它随每一段噪声生长`},
     'implant.imgPattern': { ru:`ПАТТЕРН`, en:`PATTERN`, es:`PATRÓN` , fr:`MOTIF`, zh:`图案`},
-    'implant.imgNetwork': { ru:`СЕТЬ`,    en:`NETWORK`, es:`RED` , fr:`RÉSEAU`, zh:`网络`}
+    'implant.imgNetwork': { ru:`СЕТЬ`,    en:`NETWORK`, es:`RED` , fr:`RÉSEAU`, zh:`网络`},
+
+    // — «вторые ворота»: golosa.html —
+    'voice.title':   { ru:`UNITYCODE — Голоса`, en:`UNITYCODE — Voices`, es:`UNITYCODE — Voces`, fr:`UNITYCODE — Voix`, zh:`UNITYCODE — 声音`},
+    'voice.logo':    { ru:`UNITYCODE // ГОЛОСА`, en:`UNITYCODE // VOICES`, es:`UNITYCODE // VOCES`, fr:`UNITYCODE // VOIX`, zh:`UNITYCODE // 声音`},
+    'voice.eyebrow': { ru:`ВТОРЫЕ ВОРОТА`, en:`THE SECOND GATE`, es:`LA SEGUNDA PUERTA`, fr:`LA SECONDE PORTE`, zh:`第二道门`},
+    'voice.lead':    { ru:`Кто вплёл в Сеть достаточно шумов, получает право на длинный, осознанный текст. Не обрывок — голос.`, en:`Weave enough noise into the Network, and you earn the right to a long, deliberate text. Not a fragment — a voice.`, es:`Quien entreteje suficiente ruido en la Red gana el derecho a un texto largo y consciente. No un fragmento — una voz.`, fr:`Qui tisse assez de bruit dans le Réseau gagne le droit à un texte long et réfléchi. Pas un fragment — une voix.`, zh:`将足够多的噪声织入网络，便获得书写一段长而深思的文字的资格——不是碎片，是声音。`},
+    'voice.lockedGuest': { ru:`Ворота открываются ключевой фразой и пятьюдесятью вплетёнными шумами. У этого сеанса нет ни того, ни другого — начни в «Спирали».`, en:`The gate opens with a key phrase and fifty woven noises. This session has neither yet — start in the «Spiral».`, es:`La puerta se abre con una frase clave y cincuenta ruidos entretejidos. Esta sesión no tiene ninguno de los dos todavía — empieza en la «Espiral».`, fr:`La porte s'ouvre avec une phrase clé et cinquante bruits tissés. Cette session n'a ni l'un ni l'autre pour l'instant — commencez dans la «Spirale».`, zh:`这道门需要一个密钥短语和五十个已织入的噪声才能开启。此会话两者皆无——请先到「螺旋」开始。`},
+    'voice.lockedProgress': {
+      ru:`Вплетён {n} шум из {threshold}||Вплетено {n} шума из {threshold}||Вплетено {n} шумов из {threshold}`,
+      en:`{n} noise woven in of {threshold}||{n} noises woven in of {threshold}`,
+      es:`{n} ruido entretejido de {threshold}||{n} ruidos entretejidos de {threshold}`
+    , fr:`{n} bruit tissé sur {threshold}||{n} bruits tissés sur {threshold}`, zh:`已织入 {n} 个噪声，共需 {threshold} 个`},
+    'voice.checking':     { ru:`Спрашиваем у Сети…`, en:`Asking the Network…`, es:`Preguntando a la Red…`, fr:`Nous interrogeons le Réseau…`, zh:`正在询问网络……`},
+    'voice.unlockedLead': { ru:`Ворота открыты. Пиши — свободно, до 4000 символов.`, en:`The gate is open. Write — freely, up to 4000 characters.`, es:`La puerta está abierta. Escribe — libremente, hasta 4000 caracteres.`, fr:`La porte est ouverte. Écrivez — librement, jusqu'à 4000 caractères.`, zh:`门已开启。自由书写——最多 4000 字。`},
+    'voice.placeholder':  { ru:`Что накопилось...`, en:`What's been building up...`, es:`Lo que se ha ido acumulando...`, fr:`Ce qui s'est accumulé...`, zh:`积攒下来的……`},
+    'voice.charCount':    { ru:`{n} / {max}`, en:`{n} / {max}`, es:`{n} / {max}`, fr:`{n} / {max}`, zh:`{n} / {max}`},
+    'voice.send':         { ru:`[ ОТПРАВИТЬ ]`, en:`[ SEND ]`, es:`[ ENVIAR ]`, fr:`[ ENVOYER ]`, zh:`[ 发送 ]`},
+    'voice.sending':      { ru:`[ ОТПРАВЛЯЕТСЯ... ]`, en:`[ SENDING... ]`, es:`[ ENVIANDO... ]`, fr:`[ ENVOI EN COURS... ]`, zh:`[ 发送中…… ]`},
+    'voice.sent':         { ru:`[ ✓ ОТПРАВЛЕНО ]`, en:`[ ✓ SENT ]`, es:`[ ✓ ENVIADO ]`, fr:`[ ✓ ENVOYÉ ]`, zh:`[ ✓ 已发送 ]`},
+    'voice.sendError':    { ru:`[ ✗ ОШИБКА ]`, en:`[ ✗ ERROR ]`, es:`[ ✗ ERROR ]`, fr:`[ ✗ ERREUR ]`, zh:`[ ✗ 出错了 ]`},
+    'voice.retry':        { ru:`[ ↻ ПОВТОРИТЬ ]`, en:`[ ↻ RETRY ]`, es:`[ ↻ REINTENTAR ]`, fr:`[ ↻ RÉESSAYER ]`, zh:`[ ↻ 重试 ]`},
+    'voice.draftRestored':{ ru:`Черновик восстановлен — ничего не потерялось.`, en:`Draft restored — nothing was lost.`, es:`Borrador restaurado — no se perdió nada.`, fr:`Brouillon restauré — rien n'a été perdu.`, zh:`草稿已恢复——什么都没丢失。`},
+    'voice.tooLong':      { ru:`Слишком длинно — не больше 4000 символов.`, en:`Too long — 4000 characters max.`, es:`Demasiado largo — máximo 4000 caracteres.`, fr:`Trop long — 4000 caractères maximum.`, zh:`太长了——最多 4000 字。`},
+    'voice.networkNote':  { ru:`Если связь оборвётся — текст останется здесь, ничего не потеряется.`, en:`If the connection drops, the text stays here — nothing is lost.`, es:`Si la conexión se corta, el texto queda aquí — no se pierde nada.`, fr:`Si la connexion se coupe, le texte reste ici — rien n'est perdu.`, zh:`如果连接中断，文字仍留在这里——什么都不会丢失。`}
   };
 
   function raw(key){
