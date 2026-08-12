@@ -446,13 +446,14 @@ function renderMarkdown(md){
 
   // ── ШУМ ТРЕТЬЕГО АГЕНТА (режим покоя) ──────────────────────────────────
   const NS=CONFIG.noise||{on:false};
-  // Приоритет источников фраз:
-  //   1) живые выжимки (essence) из Supabase — реальные мысли Сети, ПРИОРИТЕТ
-  //   2) голоса «вторых ворот» (voices) — длиннее essence, фрагментом
-  //   3) noises.json — ручной список форкера (если есть)
-  //   4) дефолтные CONFIG.noise.items — подстраховка, когда ничего живого нет
-  // spawnNoise пробует уровни по очереди; следующий — только если
-  // предыдущий пуст или весь уже на экране.
+  // Источники фраз — три «живых», смешанные в один пул в spawnNoise:
+  //   • essence — живые выжимки из Supabase, реальные мысли Сети
+  //   • voices  — голоса «вторых ворот», длиннее essence, фрагментом
+  //   • manual  — noises.json, ручной список форкера (если есть)
+  // Строгий каскад по приоритету здесь не годится: пул essence в базе
+  // может быть крошечным (единицы узлов), и он тогда съедает весь экран,
+  // пока не иссякнет, — одно и то же крутится и озвучивается по кругу.
+  // CONFIG.noise.items (дефолты) — подстраховка, когда живого нет совсем.
   NS.defaults = (NS.items || []).slice();  // дефолтные сохраняем отдельно
   NS.essence = [];                         // живые выжимки из nodes
   NS.voices  = [];                         // голоса «вторых ворот»
@@ -554,12 +555,16 @@ function renderMarkdown(md){
     if(noises.length>=MAX_NOISE) return;
     // не брать фразу, которая уже висит
     const onscreen=noises.map(n=>n.text);
-    // ПРИОРИТЕТ: живые essence → голоса → noises.json → дефолты.
-    // Следующий уровень пробуется, только если предыдущий пуст или
-    // весь уже на экране.
-    let avail=(NS.essence||[]).filter(it=>!onscreen.includes(it.text));
-    if(!avail.length) avail=(NS.voices||[]).filter(it=>!onscreen.includes(it.text));
-    if(!avail.length) avail=(NS.manual||[]).filter(it=>!onscreen.includes(it.text));
+    // ПРИОРИТЕТ: живое (essence + голоса + noises.json) выбирается из
+    // ОДНОГО смешанного пула — строгий каскад «пока не кончится essence,
+    // остальное не покажется» съедал весь экран крошечным пулом essence
+    // (в базе пока единицы узлов) и заставлял его крутиться и озвучиваться
+    // по кругу. Дефолты — только когда живого не осталось совсем.
+    let avail=[]
+      .concat(NS.essence||[])
+      .concat(NS.voices||[])
+      .concat(NS.manual||[])
+      .filter(it=>!onscreen.includes(it.text));
     if(!avail.length) avail=(NS.defaults||[]).filter(it=>!onscreen.includes(it.text));
     if(!avail.length) return;
     const it=avail[Math.floor(Math.random()*avail.length)];
