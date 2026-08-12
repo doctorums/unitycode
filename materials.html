@@ -448,19 +448,22 @@ function renderMarkdown(md){
   const NS=CONFIG.noise||{on:false};
   // Приоритет источников фраз:
   //   1) живые выжимки (essence) из Supabase — реальные мысли Сети, ПРИОРИТЕТ
-  //   2) noises.json — ручной список форкера (если есть)
-  //   3) дефолтные CONFIG.noise.items — подстраховка, когда живых нет
-  // spawnNoise сначала пробует живые; дефолтные всплывают, только если
-  // живых не осталось (пул пуст или все уже на экране).
+  //   2) голоса «вторых ворот» (voices) — длиннее essence, фрагментом
+  //   3) noises.json — ручной список форкера (если есть)
+  //   4) дефолтные CONFIG.noise.items — подстраховка, когда ничего живого нет
+  // spawnNoise пробует уровни по очереди; следующий — только если
+  // предыдущий пуст или весь уже на экране.
   NS.defaults = (NS.items || []).slice();  // дефолтные сохраняем отдельно
-  NS.live = [];                            // живые из базы + noises.json
-  window.__liveCount = 0;                  // сколько живых реально пришло (для проверки)
+  NS.essence = [];                         // живые выжимки из nodes
+  NS.voices  = [];                         // голоса «вторых ворот»
+  NS.manual  = [];                         // noises.json форкера
+  window.__liveCount = 0;                  // сколько essence реально пришло (для проверки)
 
   (async ()=>{
     try{
       const r=await fetch('noises.json'); if(r.ok){
         const arr=await r.json();
-        if(Array.isArray(arr) && arr.length) NS.live=NS.live.concat(arr);
+        if(Array.isArray(arr) && arr.length) NS.manual=NS.manual.concat(arr);
       }
     }catch(e){}
   })();
@@ -480,10 +483,11 @@ function renderMarkdown(md){
         .map(x=>({ id:x.id, text:(x.essence||'').trim() }))
         .filter(o=>o.text.length>2 && !o.text.startsWith('__TRACE__'))
         .map(o=>({ id:o.id, text:o.text, weight:18+Math.floor(Math.random()*36) }));
-      if(live.length){ NS.live=NS.live.concat(live); window.__liveCount=NS.live.length; }
+      if(live.length){ NS.essence=NS.essence.concat(live); window.__liveCount=NS.essence.length; }
 
       // авто-перевод essence: если язык не RU и текст кириллический — переводим асинхронно
-      // NS.live обновляется in-place: след. spawnNoise подхватит перевод, анимация не трогается
+      // NS.essence обновляется in-place: след. spawnNoise подхватит перевод, анимация не трогается.
+      // Голоса сюда намеренно не попадают — они на языке автора (решение спеки).
       if(LANG && LANG!=='ru'){
         const needsTr=live.filter(o=>/[а-яёА-ЯЁ]/u.test(o.text));
         if(needsTr.length) (async()=>{
@@ -491,7 +495,7 @@ function renderMarkdown(md){
             const ckey='uc_tr:'+o.id+':ess:'+LANG;
             try{
               const cached=localStorage.getItem(ckey);
-              if(cached){ const lv=NS.live.find(x=>x.id===o.id); if(lv) lv.text=cached; continue; }
+              if(cached){ const lv=NS.essence.find(x=>x.id===o.id); if(lv) lv.text=cached; continue; }
             }catch(_){}
             try{
               await new Promise(r=>setTimeout(r,120)); // не DDoS-им воркер
@@ -500,13 +504,43 @@ function renderMarkdown(md){
               const d=await res.json();
               if(d.translation){
                 try{localStorage.setItem(ckey,d.translation);}catch(_){}
-                const lv=NS.live.find(x=>x.id===o.id); if(lv) lv.text=d.translation;
+                const lv=NS.essence.find(x=>x.id===o.id); if(lv) lv.text=d.translation;
               }
             }catch(_){}
           }
         })();
       }
     }catch(e){ /* остаётся то, что уже есть */ }
+  })();
+  // «Вторые ворота»: голоса длиннее essence, в потоке дрейфует только
+  // фрагмент (~90 символов + «…»), full — полный текст про запас на
+  // будущее. Тап на голосе пока НЕ открывает reader: у всей этой сцены
+  // (essence, noises.json, дефолты — как и голоса) нет hit-test по
+  // canvas-фразам вообще, клик здесь ни на что не отвечает ни для кого.
+  // Вешать его только под голоса значило бы городить отдельную систему
+  // клика ради одного источника — оставляю как открытую проблему, не
+  // изобретаю альтернативу (см. задание).
+  (async ()=>{
+    const SB_URL='https://lukyyqabkxzrgdixzphs.supabase.co';
+    const SB_KEY='sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
+    const FRAG=90;
+    try{
+      const r=await fetch(
+        SB_URL+'/rest/v1/voices?select=id,text,lang&order=created_at.desc&limit=20',
+        { headers:{ apikey:SB_KEY, Authorization:'Bearer '+SB_KEY } }
+      );
+      if(!r.ok) return;
+      const rows=await r.json();
+      if(!Array.isArray(rows)) return;
+      NS.voices = rows
+        .map(x=>({ id:x.id, full:(x.text||'').trim() }))
+        .filter(o=>o.full.length>2)
+        .map(o=>({
+          id:o.id, full:o.full,
+          text: o.full.length>FRAG ? o.full.slice(0,FRAG).trim()+'…' : o.full,
+          weight:26+Math.floor(Math.random()*30), isVoice:true,
+        }));
+    }catch(e){ /* остаётся пусто — приоритет просто пропускает этот источник */ }
   })();
   let noises=[];         // активные шумы (до maxOnscreen)
   let noiseHidden=false;
@@ -520,20 +554,24 @@ function renderMarkdown(md){
     if(noises.length>=MAX_NOISE) return;
     // не брать фразу, которая уже висит
     const onscreen=noises.map(n=>n.text);
-    // ПРИОРИТЕТ: сначала пробуем живые (из базы/noises.json),
-    // дефолтные — только если живых не осталось
-    let avail=(NS.live||[]).filter(it=>!onscreen.includes(it.text));
+    // ПРИОРИТЕТ: живые essence → голоса → noises.json → дефолты.
+    // Следующий уровень пробуется, только если предыдущий пуст или
+    // весь уже на экране.
+    let avail=(NS.essence||[]).filter(it=>!onscreen.includes(it.text));
+    if(!avail.length) avail=(NS.voices||[]).filter(it=>!onscreen.includes(it.text));
+    if(!avail.length) avail=(NS.manual||[]).filter(it=>!onscreen.includes(it.text));
     if(!avail.length) avail=(NS.defaults||[]).filter(it=>!onscreen.includes(it.text));
     if(!avail.length) return;
     const it=avail[Math.floor(Math.random()*avail.length)];
     // движение в объёме: позиция в «мировых» координатах от центра, плюс глубина z
     const mode=Math.random();
     let n={
-      text:it.text, base:it.weight||28,
-      // id есть только у живых эссенций (из базы); у дефолтных строк его нет.
-      // По нему отличаем, что можно озвучить: голос — только живым мыслям
-      // Сети, дефолтная подстраховка звучать не должна (решение 15.07).
-      id:it.id||null, spoken:false, born:performance.now(),
+      text:it.text, base:(it.weight||28)*(it.isVoice?1.2:1),  // голос чуть крупнее — сцена рисуется на canvas, класса CSS тут нет
+      // id есть у живых эссенций и у голосов; isVoice отличает голос от
+      // essence — озвучивать (ucMatSpeak) должны только живые мысли Сети,
+      // голоса молчат намеренно (решение спеки), дефолтная подстраховка
+      // тоже немая, как и раньше (решение 15.07).
+      id:it.id||null, isVoice:!!it.isVoice, spoken:false, born:performance.now(),
       wx:rnd(-0.5,0.5), wy:rnd(-0.4,0.4),
       vx:rnd(-0.0003,0.0003), vy:rnd(-0.00025,0.00025),
       z:0, vz:0, ph:Math.random()*7, parts:null,
@@ -628,7 +666,7 @@ function renderMarkdown(md){
       //    дефолтная подстраховка немая. Одна за раз: пока звучит, новые
       //    молчат (ucMatSpeak сам держит замок) — голос это событие, не
       //    поток; из двух подряд озвучится та, что первой дозреет.
-      if(n.id && !n.spoken && alpha>0.55 && (performance.now()-n.born)>2600){
+      if(n.id && !n.isVoice && !n.spoken && alpha>0.55 && (performance.now()-n.born)>2600){
         n.spoken=true;             // помечаем сразу, чтобы не пытаться повторно каждый кадр
         ucMatSpeak(n.text);
       }
