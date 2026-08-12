@@ -145,6 +145,11 @@ async function checkEnv(){
   rows.push(['Токен', tokenNote]);
   if (token) rows.push(['Токен (тап — копировать)', '<span style="cursor:pointer;text-decoration:underline dotted" data-copy-token>' + esc(token.slice(0,10)) + '…' + esc(token.slice(-6)) + '</span>']);
 
+  // «вторые ворота»: только для токена из ключевой фразы — у гостя
+  // счётчик шумов ни к чему не привязан дольше одной вкладки
+  const isKeyphraseToken = /^[0-9a-f]{64}$/i.test(token);
+  if (isKeyphraseToken) rows.push(['Голоса (вторые ворота)', '<span id="voice-st" class="loading">проверяю…</span>']);
+
   // сеть по мнению браузера
   rows.push(['Браузер считает', navigator.onLine ? '<span class="ok">сеть есть</span>' : '<span class="bad">сети нет</span>']);
   const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -206,6 +211,31 @@ async function checkEnv(){
       }
       g.className = '';
     } catch(e){ g.innerHTML = '<span class="warn">статус неизвестен</span>'; g.className=''; }
+  })();
+
+  // голоса «вторых ворот»: счётчик шумов до порога, спрашивает тот же
+  // action, что видит golosa.html. Без Turnstile — на диагностической
+  // странице лишний виджет ради одной строки не оправдан; если воркер
+  // из-за этого откажет, строка просто покажет «недоступно».
+  if (isKeyphraseToken) (async () => {
+    const p = document.getElementById('voice-st');
+    try {
+      const r = await fetch('https://unitycode-write.sv2txxznjm.workers.dev/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'voice_check', token: token, turnstile: '', user_token: token }),
+      });
+      const d = await r.json();
+      if (d && typeof d.count === 'number') {
+        const threshold = d.threshold || 50;
+        const left = Math.max(0, threshold - d.count);
+        p.innerHTML = d.eligible
+          ? '<span class="ok">' + d.count + ' / ' + threshold + ' — ворота открыты</span>'
+          : d.count + ' / ' + threshold + ' <span class="warn">(до порога: ' + left + ')</span>';
+      } else {
+        p.innerHTML = '<span class="bad">воркер не ответил числом</span>';
+      }
+    } catch(e){ p.innerHTML = '<span class="bad">недоступно</span>'; }
   })();
 }
 
