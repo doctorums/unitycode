@@ -446,6 +446,22 @@
     }
     .delta-text .delta-accent { color: var(--accent); }
 
+    /* АДДИТИВНО: «Вторые врата» — статус доступа к длинным голосам.
+       Дышит в обоих состояниях: заперто — тускло и медленно (что-то ждёт),
+       открыто — ярче и живее (приглашение, не просто факт). */
+    .voice-gate-text { font-size: 0.75rem; line-height: 1.9; font-family: 'Share Tech Mono', monospace; }
+    .voice-gate-text a { text-decoration: none; }
+    .voice-gate-text.locked a { color: rgba(255,255,255,0.42); animation: vgBreatheLocked 4.6s ease-in-out infinite; }
+    .voice-gate-text.open a { color: var(--accent); animation: vgBreatheOpen 3s ease-in-out infinite; }
+    @keyframes vgBreatheLocked {
+      0%, 100% { opacity: 0.5; }
+      50%      { opacity: 0.85; }
+    }
+    @keyframes vgBreatheOpen {
+      0%, 100% { opacity: 0.85; text-shadow: 0 0 6px rgba(0,255,136,0.25); }
+      50%      { opacity: 1;    text-shadow: 0 0 18px rgba(0,255,136,0.65), 0 0 32px rgba(0,255,136,0.3); }
+    }
+
     /* АДДИТИВНО: строка свежести узора над кнопкой анализа */
     .freshness-line {
       font-size: 0.55rem;
@@ -642,6 +658,12 @@
   <div class="section" id="delta-section" style="display:none;">
     <div class="section-tag" id="delta-tag">// ПОКА ТЕБЯ НЕ БЫЛО</div>
     <div class="delta-text" id="delta-text"></div>
+  </div>
+
+  <!-- АДДИТИВНО: «Вторые врата» — виден только токену из ключевой фразы -->
+  <div class="section" id="voice-gate-section" style="display:none;">
+    <div class="section-tag" data-i18n="implant.voiceGateTag">// ВТОРЫЕ ВРАТА</div>
+    <div class="voice-gate-text" id="voice-gate-text"></div>
   </div>
 
   <!-- Блок 1: Личный узел -->
@@ -1538,6 +1560,40 @@ async function loadDelta() {
     // Точку отсчёта двигаем ТОЛЬКО после успешного подсчёта.
     try { localStorage.setItem(DELTA_KEY, nowIso); } catch (e) {}
   } catch (e) { /* тихо: сеть подвела — покажем в следующий раз */ }
+}
+
+// АДДИТИВНО: «Вторые врата» — бейдж статуса доступа к длинным голосам.
+// Читает количество узлов токена напрямую из Supabase (как и весь чтение
+// на странице) — без похода на write-воркер: там Turnstile/rate-limit,
+// и дёргать их ради индикатора на каждый визит Паттерна было бы жадно.
+// Порог — локальная копия дефолта воркера (VOICE_THRESHOLD в Cloudflare).
+// Это только предпоказ: настоящую проверку делает сервер на golosa.html —
+// если порог там когда-нибудь поменяют, эта константа может ненадолго
+// разойтись с реальностью, но бейдж от этого не ломается, просто чуть врёт.
+const VOICE_BADGE_THRESHOLD = 50;
+async function loadVoiceGate() {
+  const TOKEN_RE = /^[0-9a-f]{64}$/i;
+  const myToken = localStorage.getItem('uc_token');
+  if (!myToken || !TOKEN_RE.test(myToken)) return;
+  const box = document.getElementById('voice-gate-section');
+  const txt = document.getElementById('voice-gate-text');
+  if (!box || !txt) return;
+  try {
+    const rows = await UCData.myNodes('id', myToken);
+    const count = Array.isArray(rows) ? rows.length : 0;
+    const link = document.createElement('a');
+    link.href = 'golosa.html';
+    if (count >= VOICE_BADGE_THRESHOLD) {
+      txt.className = 'voice-gate-text open';
+      link.textContent = UC_I18N.t('implant.voiceOpenText');
+    } else {
+      txt.className = 'voice-gate-text locked';
+      link.textContent = '🔒 ' + UC_I18N.tn('voice.lockedProgress', count, { threshold: VOICE_BADGE_THRESHOLD });
+    }
+    txt.innerHTML = '';
+    txt.appendChild(link);
+    box.style.display = 'block';
+  } catch (e) { /* тихо: сеть подвела — бейдж просто не покажется сейчас */ }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2508,6 +2564,7 @@ function saveNetworkAnalysisImage() {
 loadPersonal();
 loadStats();
 loadDelta();
+loadVoiceGate();
 loadFreshness();
 ucApplyTimeOfDay();
 loadUzor();
