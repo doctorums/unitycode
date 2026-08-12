@@ -771,7 +771,10 @@ d.style.color='';
   } catch(e){}
   var hasTrace = false;
   try { hasTrace = !!localStorage.getItem('uc_token') || visits > 0; } catch(e){}
-  if (!hasTrace && !force) return; // новичку выходить не из чего
+  // Гейт по hasTrace относится ТОЛЬКО к Выходу (новичку нечего выходить) —
+  // пункты меню это навигация, не уход, и видны с первого визита.
+  // Раньше ранний return здесь выключал вообще всё, включая меню, до
+  // первого возврата — это и была основная жалоба, чиню.
 
   var liveWords = []; // все смонтированные слова — чтобы обходили друг друга
 
@@ -990,36 +993,39 @@ d.style.color='';
     return self;
   }
 
-  // ── Выход: единственное слово со своим ритуалом ухода. Ничего не
+  // ── Выход: единственное слово со своим ритуалом ухода, и единственное,
+  // что гейтится по hasTrace — новичку нечего выходить. Ничего не
   // стирается — уход жест, а не удаление; сцена гаснет в тишину.
-  var exitWord = spawnDriftWord({
-    id: 'vyhod',
-    text: UC_I18N.t('index.exit'),
-    seedTweak: 0,
-    onActivate: function(e){
-      if (e) e.preventDefault();
-      if (exitWord.leaving) return;
-      // туннель уже начался — уход не перебивает переход в Спираль
-      var tc = document.getElementById('tunnel-canvas');
-      if (tc && tc.style.display === 'block') return;
-      exitWord.leaving = true;
-      try { if (window.UCAudio && UCAudio.fx) UCAudio.fx('page'); } catch(_e){}
-      // слово роняет последнюю каплю в воду
-      try { drop(exitWord.entry.cx, exitWord.entry.cy, 6, 3, 20); } catch(_e){}
-      // вуаль ловит касания — во время ухода портал не отвечает на «войти»
-      var veil = document.createElement('div');
-      veil.style.cssText = 'position:fixed;inset:0;z-index:150;background:#02060c;opacity:0;transition:opacity 5s ease;';
-      document.body.appendChild(veil);
-      requestAnimationFrame(function(){ veil.style.opacity = '1'; });
-      ['.ui','.version','nav','#uc-lang'].forEach(function(sel){
-        var el2 = document.querySelector(sel);
-        if (el2){ el2.style.transition = 'opacity 4s ease'; el2.style.opacity = '0'; }
-      });
-      exitWord.outer.style.transition = 'opacity 3s ease';
-      exitWord.outer.style.opacity = '0';
-      setTimeout(function(){ if (window.UCDoor) UCDoor.open(); }, 5200);
-    }
-  });
+  if (hasTrace || force) {
+    var exitWord = spawnDriftWord({
+      id: 'vyhod',
+      text: UC_I18N.t('index.exit'),
+      seedTweak: 0,
+      onActivate: function(e){
+        if (e) e.preventDefault();
+        if (exitWord.leaving) return;
+        // туннель уже начался — уход не перебивает переход в Спираль
+        var tc = document.getElementById('tunnel-canvas');
+        if (tc && tc.style.display === 'block') return;
+        exitWord.leaving = true;
+        try { if (window.UCAudio && UCAudio.fx) UCAudio.fx('page'); } catch(_e){}
+        // слово роняет последнюю каплю в воду
+        try { drop(exitWord.entry.cx, exitWord.entry.cy, 6, 3, 20); } catch(_e){}
+        // вуаль ловит касания — во время ухода портал не отвечает на «войти»
+        var veil = document.createElement('div');
+        veil.style.cssText = 'position:fixed;inset:0;z-index:150;background:#02060c;opacity:0;transition:opacity 5s ease;';
+        document.body.appendChild(veil);
+        requestAnimationFrame(function(){ veil.style.opacity = '1'; });
+        ['.ui','.version','nav','#uc-lang'].forEach(function(sel){
+          var el2 = document.querySelector(sel);
+          if (el2){ el2.style.transition = 'opacity 4s ease'; el2.style.opacity = '0'; }
+        });
+        exitWord.outer.style.transition = 'opacity 3s ease';
+        exitWord.outer.style.opacity = '0';
+        setTimeout(function(){ if (window.UCDoor) UCDoor.open(); }, 5200);
+      }
+    });
+  }
 
   // ── Пункты меню: та же вода, тот же алгоритм всплытия, но без ритуала —
   // клик просто ведёт на страницу. Спираль намеренно дублирует кнопку
