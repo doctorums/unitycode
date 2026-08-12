@@ -18,14 +18,25 @@
 //   MIMO_API_KEY          (secret) ключ шлюза DotPoin — включает ИИ-привратника при вплетении.
 //                                  Если секрета нет — привратник выключен, всё вплетается.
 //   RATE_KV               (KV)     опционально; лимит частоты по token/IP
+//   VOICE_THRESHOLD       (var)    опционально; порог шумов для «вторых ворот» (см. voice_*
+//                                  ниже). Без переменной — дефолт 50.
 //
 // Клиент шлёт POST JSON:
-//   { action:'node',       token, turnstile, raw_noise, ai_interpretation, lat?, lng? }
-//   { action:'connection', token, turnstile, from_node_id, to_node_id }
+//   { action:'node',        token, turnstile, raw_noise, ai_interpretation, lat?, lng? }
+//   { action:'connection',  token, turnstile, from_node_id, to_node_id }
+//   { action:'voice_check', token, turnstile, user_token }
+//   { action:'voice_write', token, turnstile, user_token, text, lang?, client_id? }
 //
 // Ответ при вплетении узла:
 //   принято:   { ok:true, id }
 //   отклонено: { ok:false, error:'gate', reason:'...' }  (HTTP 200 — это вердикт, не сбой)
+//
+// «Вторые ворота» (voice_check/voice_write) — отдельный слой поверх Сети:
+// голоса НЕ пишутся в nodes, НЕ создают связей, через Привратника/Дистиллятор/
+// Связующего не проходят. eligibility всегда проверяется здесь заново — клиенту
+// не доверяем, он может прислать что угодно. token/turnstile — тот же общий
+// заслон (origin, лимиты, Turnstile-как-лучшее-усилие), что у node/connection;
+// user_token — 64-hex токен ключевой фразы, по которому считаются шумы.
 
 const ALLOWED_ORIGINS = [
   'https://unitycode.space',
@@ -632,6 +643,34 @@ async function sbExists(env, table, col, id) {
   return Array.isArray(d) && d.length > 0;
 }
 
+// ── «ВТОРЫЕ ВОРОТА» — ГОЛОСА ──────────────────────────────────────
+// Порог вплетённых шумов, дающий доступ к длинным осознанным текстам.
+// Голоса — отдельная таблица (migrations/voices.sql), не узлы графа.
+const TOKEN_RE = /^[0-9a-f]{64}$/i;
+const VOICE_TEXT_MIN = 50;    // синхронизировано с CHECK в voices (migrations/voices_min_length.sql)
+const VOICE_TEXT_MAX = 4000;
+const VOICE_THRESHOLD_DEFAULT = 50;
+
+function voiceThreshold(env) {
+  const n = parseInt(env.VOICE_THRESHOLD, 10);
+  return Number.isFinite(n) && n > 0 ? n : VOICE_THRESHOLD_DEFAULT;
+}
+
+// Content-Range с Prefer:count=exact несёт полный счёт независимо от limit —
+// считать все шумы токена не нужно тащить их тела на воркер.
+async function countUserNodes(env, token) {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/nodes?user_token=eq.${token}&select=id&limit=1`, {
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY,
+      Prefer: 'count=exact',
+    },
+  });
+  if (!r.ok) return 0;
+  const total = parseInt((r.headers.get('Content-Range') || '').split('/').pop(), 10);
+  return Number.isFinite(total) ? total : 0;
+}
+
 // ── КООРДИНАТЫ, КОГДА БРАУЗЕР ИХ НЕ ДАЛ (25.07) ──────────────────
 // Предложение Вити: не оставлять узел совсем без места на карте, если
 // человек не разрешил геолокацию (отказ, таймаут, выключенные службы —
@@ -858,6 +897,34 @@ export default {
           nodeId: from,
           payload: { from_node_id: from, to_node_id: to, created_by: 'user' },
         }));
+        return json({ ok: true }, 200, origin);
+      }
+
+      if (body.action === 'voice_check') {
+        const vt = (body.user_token || '').toString();
+        const threshold = voiceThreshold(env);
+        if (!TOKEN_RE.test(vt)) return json({ eligible: false, count: 0, threshold }, 200, origin);
+        const count = await countUserNodes(env, vt);
+        return json({ eligible: count >= threshold, count, threshold }, 200, origin);
+      }
+
+      if (body.action === 'voice_write') {
+        const vt = (body.user_token || '').toString();
+        if (!TOKEN_RE.test(vt)) return json({ error: 'bad_token' }, 422, origin);
+        const text = (body.text || '').toString().trim();
+        if (text.length < VOICE_TEXT_MIN || text.length > VOICE_TEXT_MAX) return json({ error: 'length' }, 422, origin);
+
+        // Клиент показывает счётчик, право записи подтверждает только сервер —
+        // eligibility здесь пересчитывается заново, а не берётся с его слов.
+        const count = await countUserNodes(env, vt);
+        if (count < voiceThreshold(env)) return json({ error: 'not_eligible', count }, 403, origin);
+
+        const lang = (typeof body.lang === 'string' ? body.lang : '').toLowerCase().slice(0, 5) || 'ru';
+        const row = { user_token: vt, text, lang };
+        if (typeof body.client_id === 'string' && body.client_id.length > 0 && body.client_id.length <= 100) {
+          row.client_id = body.client_id.slice(0, 100);
+        }
+        await sbInsert(env, 'voices', row, false, 'resolution=ignore-duplicates');
         return json({ ok: true }, 200, origin);
       }
 
