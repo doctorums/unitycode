@@ -227,7 +227,7 @@
 
     'implant.deltaTag':    { ru:`// ПОКА ТЕБЯ НЕ БЫЛО`, en:`// WHILE YOU WERE AWAY`, es:`// MIENTRAS NO ESTABAS` , fr:`// PENDANT VOTRE ABSENCE`, zh:`// 你不在的时候`},
     'implant.voiceGateTag':  { ru:`// ВТОРЫЕ ВОРОТА`, en:`// THE SECOND GATE`, es:`// LA SEGUNDA PUERTA`, fr:`// LA SECONDE PORTE`, zh:`// 第二道门`},
-    'implant.voiceOpenText': { ru:`🔓 Вторые врата открыты — написать голос`, en:`🔓 The Second Gate is open — write a voice`, es:`🔓 La Segunda Puerta está abierta — escribe una voz`, fr:`🔓 La Seconde Porte est ouverte — écrivez une voix`, zh:`🔓 第二道门已开启——写下一段声音`},
+    'implant.voiceOpenText': { ru:`🔓 Вторые ворота открыты — написать голос`, en:`🔓 The Second Gate is open — write a voice`, es:`🔓 La Segunda Puerta está abierta — escribe una voz`, fr:`🔓 La Seconde Porte est ouverte — écrivez une voix`, zh:`🔓 第二道门已开启——写下一段声音`},
     'implant.deltaPrefix': { ru:`С прошлого визита: `, en:`Since your last visit: `, es:`Desde tu última visita: ` , fr:`Depuis votre dernière visite : `, zh:`自你上次到访：`},
     'implant.deltaNodes': {
       ru:`Сеть выросла на <span class="delta-accent">{n}</span> узел||Сеть выросла на <span class="delta-accent">{n}</span> узла||Сеть выросла на <span class="delta-accent">{n}</span> узлов`,
