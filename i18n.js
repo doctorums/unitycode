@@ -226,7 +226,7 @@
     , fr:`c'est probablement déjà arrivé — seule la confirmation s'est perdue. Pas besoin d'attendre : vous pouvez continuer à écrire ou vérifier dans le Réseau`, zh:`它很可能已经送达了 —— 丢失的只是确认。不必等待：你可以继续写，或者到「网络」里查看`},
 
     'implant.deltaTag':    { ru:`// ПОКА ТЕБЯ НЕ БЫЛО`, en:`// WHILE YOU WERE AWAY`, es:`// MIENTRAS NO ESTABAS` , fr:`// PENDANT VOTRE ABSENCE`, zh:`// 你不在的时候`},
-    'implant.voiceGateTag':  { ru:`// ВТОРЫЕ ВРАТА`, en:`// THE SECOND GATE`, es:`// LA SEGUNDA PUERTA`, fr:`// LA SECONDE PORTE`, zh:`// 第二道门`},
+    'implant.voiceGateTag':  { ru:`// ВТОРЫЕ ВОРОТА`, en:`// THE SECOND GATE`, es:`// LA SEGUNDA PUERTA`, fr:`// LA SECONDE PORTE`, zh:`// 第二道门`},
     'implant.voiceOpenText': { ru:`🔓 Вторые врата открыты — написать голос`, en:`🔓 The Second Gate is open — write a voice`, es:`🔓 La Segunda Puerta está abierta — escribe una voz`, fr:`🔓 La Seconde Porte est ouverte — écrivez une voix`, zh:`🔓 第二道门已开启——写下一段声音`},
     'implant.deltaPrefix': { ru:`С прошлого визита: `, en:`Since your last visit: `, es:`Desde tu última visita: ` , fr:`Depuis votre dernière visite : `, zh:`自你上次到访：`},
     'implant.deltaNodes': {
