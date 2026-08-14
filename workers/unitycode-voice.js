@@ -4,12 +4,17 @@
 //   тон мысли → голос + манера. Клиент шлёт только текст эссенции,
 //   всю раскладку считает воркер.
 //
-// ПРОТОТИП: синтез каждый раз заново, без хранения (решение 15.07 —
-// сначала услышать в продукте, storage потом). Когда логика устоится:
-//   1) определение тона переедет в distill (unitycode-write), где пара
-//      шум+отклик уже читается — не гадать по ключевым словам, а знать;
-//   2) добавится кэш аудио (Supabase Storage), чтобы не платить за
-//      повторную озвучку одной эссенции.
+// КЭШ (14.08): синтез больше не идёт заново на каждый запрос — см. блок
+// с Cache API ниже. Раньше был честный прототип «каждый раз заново» (см.
+// историю), но разбор живого случая на LTE+VPN показал цену этого:
+// Yandex синтезирует и списывает деньги ДО того, как аудио доедет до
+// браузера, а сама передача — отдельный шаг, который может оборваться
+// сам по себе. Без кэша повторная попытка клиента = второй платёж за тот
+// же текст. Тон/голос детерминированы текстом (см. detectTone/resolveVoice
+// — ни одного Math.random, только хэш), поэтому текст один — кэш-ключ.
+//   Дальнейший шаг (не сделан): определение тона переедет в distill
+//   (unitycode-write), где пара шум+отклик уже читается — не гадать по
+//   ключевым словам, а знать.
 //
 // СЕКРЕТ: YANDEX_API_KEY = то же значение, что в unitycode-petlya
 // (роль ai.speechkit-tts.user на сервисном аккаунте уже выдана).
@@ -100,7 +105,7 @@ function errJson(obj, status, origin) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const origin = request.headers.get('Origin') || '';
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
     if (!env.YANDEX_API_KEY) return errJson({ error: 'no_key' }, 500, origin);
@@ -115,6 +120,27 @@ export default {
     }
     text = text.trim().slice(0, 200);
     if (!text) return errJson({ error: 'empty_text' }, 400, origin);
+
+    // Кэш по тексту — GET|POST с одним и тем же text должны бить в один
+    // ключ, поэтому строим синтетический GET-URL, а не берём request как
+    // есть (у POST своё тело, Cache API его не видит).
+    const cacheKeyUrl = new URL(request.url);
+    cacheKeyUrl.search = '';
+    cacheKeyUrl.pathname = '/voice-cache';
+    cacheKeyUrl.searchParams.set('text', text);
+    const cacheKey = new Request(cacheKeyUrl.toString(), { method: 'GET' });
+    const cache = caches.default;
+
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      // CORS-заголовки в кэш не кладём (см. ниже) — origin у повторного
+      // запроса может быть другим из тех же ALLOWED_ORIGINS, накладываем
+      // свежо при каждой отдаче, а не то, что было закэшировано первым.
+      const headers = new Headers(cached.headers);
+      const cc = cors(origin);
+      for (const k in cc) headers.set(k, cc[k]);
+      return new Response(cached.body, { status: cached.status, headers });
+    }
 
     const tone = detectTone(text);
     const { voice, emotion } = resolveVoice(text, tone);
@@ -153,6 +179,23 @@ export default {
     }
 
     const audio = await res.arrayBuffer();
+
+    // В кэш — без CORS конкретного origin (см. комментарий у cache.match
+    // выше), с Cache-Control, чтобы Cache API знал срок жизни записи.
+    // Не критично, если не получится — звук всё равно уже уходит человеку.
+    try {
+      const toCache = new Response(audio, {
+        status: 200,
+        headers: {
+          'Content-Type': 'audio/ogg',
+          'X-UC-Tone': tone,
+          'X-UC-Voice': voice,
+          'Cache-Control': 'public, max-age=86400',
+        },
+      });
+      ctx.waitUntil(cache.put(cacheKey, toCache));
+    } catch (e) { /* некритично */ }
+
     return new Response(audio, {
       status: 200,
       headers: {

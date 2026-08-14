@@ -486,7 +486,14 @@ function ucSpeakEssence(text) {
     if (!VOICE_WORKER_URL || VOICE_WORKER_URL.indexOf('ЗАМЕНИ') !== -1) return; // ещё не настроен
     if (!window.UCAudio || !window.UCAudio.speak) return; // audio.js не загрузился — молча пропускаем
     _ucVoiceBusy = true;
-    fetch(VOICE_WORKER_URL + '?text=' + encodeURIComponent(t.slice(0, 200)))
+    // ФИКС 14.08: раньше bare fetch без ретраев — на LTE+VPN синтез уже
+    // оплачен (Яндекс списывает при синтезе, не при доставке), а сама
+    // передача аудио обрывалась отдельно и без права на пересдачу. Теперь
+    // воркер кэширует готовое аудио по тексту (Cache API, детерминированный
+    // голос/тон), так что повтор в течение суток не бьёт по Яндексу второй
+    // раз — можно ретраить получение честно, тем же UCData.fetchRetry,
+    // что и весь остальной проект на плохом канале.
+    UCData.fetchRetry(VOICE_WORKER_URL + '?text=' + encodeURIComponent(t.slice(0, 200)))
       .then(r => {
         const ct = r.headers.get('Content-Type') || '';
         if (!ct.includes('audio')) {
@@ -871,6 +878,36 @@ if (data.rejected === true) {
 fullText = data.interpretation || UC_I18N.t('petlya.signalUnrecognized');
 workerOk = true;
 updateInlineStatus();
+
+// ФИКС 14.08: подстраховка от чужого отклика. Разбор живого случая
+// (LTE + VPN) — узел получил дословно ответ на СОВСЕМ другой, более
+// ранний шум. Генератор (unitycode-petlya) ничего не кэширует и
+// каждый раз зовёт модель заново с temperature 0.7 — совпасть слово
+// в слово при разных запросах она сама по себе не должна. Похоже на
+// кэш где-то на сетевом пути (шлюз модели или прокси VPN), не в
+// нашем коде — но объективность важнее версии причины: если новый
+// отклик побайтово совпал с прошлым, это подозрительно почти всегда,
+// и один принудительный повтор запроса стоит меньше, чем чужой отклик
+// у чужого шума. Повтор только один — не зацикливаемся, если модель
+// действительно вернула то же самое дважды честно.
+const lastAiMsg = messages.filter(m => m.role === 'assistant').slice(-1)[0]?.content || '';
+if (fullText && lastAiMsg && fullText === lastAiMsg) {
+  try {
+    const retryRes = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raw_noise: buildContextPayload(), lang: (window.UC_I18N ? UC_I18N.lang : 'ru') }),
+      signal: AbortSignal.timeout(WORKER_TIMEOUT)
+    });
+    if (retryRes.ok) {
+      const retryData = await retryRes.json();
+      if (retryData && !retryData.error && retryData.rejected !== true
+          && typeof retryData.interpretation === 'string' && retryData.interpretation.trim()) {
+        fullText = retryData.interpretation;
+      }
+    }
+  } catch(e) { /* повтор не удался — показываем то, что пришло, задвоенный отклик лучше пустоты */ }
+}
 
 const lastUserMsg = messages.filter(m => m.role === 'user').slice(-1)[0]?.content || '';
 pushMessage('assistant', fullText);   // сохраняем ответ сразу, до анимации печати — переживёт уход со страницы
