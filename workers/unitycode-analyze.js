@@ -190,6 +190,7 @@ const SYSTEM_PROMPT = `Ты — аналитический контур Сети
 
 ТОЧНОСТЬ СТРУКТУРЫ (важнее красоты формулировки). Число связей у каждого узла посчитано ТОЧНО и передано тебе в квадратных скобках: «[связей: 6]». Блок «СТРУКТУРА ГРАФА» — тоже точный расчёт, а не оценка. Правила:
 — Не пересчитывай связи сам и не оценивай их «на глаз»: пользуйся данными числами.
+— Это касается и совокупных чисел (сколько связей ведёт наружу, сколько всего мостов, сколько из них чьих) — если число уже названо в тексте, повторяй его как есть, не округляй и не выводи заново по памяти.
 — Никогда не называй узел изолированным, одиноким, периферийным, листовым, центральным или хабом вопреки его числу связей. Узел с шестью связями не может быть «периферийным», даже если это красиво звучит.
 — Если наблюдение требует, чтобы факт был другим — откажись от наблюдения, а не от факта. Неудобная правда о структуре ценнее изящного, но ложного тезиса.
 
@@ -336,8 +337,18 @@ function computeDegrees(sliced, connections) {
     if (hasB) deg.set(b, deg.get(b) + 1);
     if (hasA && hasB) insideEdges++; else outsideEdges++;
   });
+  // АДДИТИВНО (18.08, второй проход того же дня): «КТО ПОСТРОИЛ МОСТЫ» ниже
+  // раньше считался по СЫРЫМ записям связей (connectionsBlock, без дедупа),
+  // а «Связей между ними» — по УНИКАЛЬНЫМ парам (dedup выше). При
+  // перелинковке (пара соединена и человеком, и Связующим отдельно) эти
+  // два числа расходятся — сверка с реальным ответом агента поймала фразу
+  // «семь из одиннадцати», где 7 — сырой счёт, 11 — дедуп; несопоставимые
+  // числа, поданные рядом как одно. uniqueHuman/uniqueLinker считаются на
+  // ТОЙ ЖЕ базе (seen), что и uniqueEdges — сумма всегда сходится.
+  let uniqueHuman = 0, uniqueLinker = 0;
   seen.forEach(key => {
     const isHuman = pairHuman.get(key);
+    if (isHuman) uniqueHuman++; else uniqueLinker++;
     const [a, b] = key.split('|');
     const bump = (id) => {
       if (!deg.has(id)) return;
@@ -346,7 +357,7 @@ function computeDegrees(sliced, connections) {
     };
     bump(a); bump(b);
   });
-  return { deg, degHuman, degLinker, uniqueEdges: insideEdges, outsideEdges };
+  return { deg, degHuman, degLinker, uniqueEdges: insideEdges, outsideEdges, uniqueHuman, uniqueLinker };
 }
 
 // Сводка по структуре — то, в чём агент систематически ошибался.
@@ -445,7 +456,7 @@ function buildUserMessage(scope, nodes, connections, angle, newIds, prevInterpre
 
   // АДДИТИВНО: точные степени — считаем ДО сборки списка, чтобы подписать
   // каждый узел его реальным числом связей.
-  const { deg, degHuman, degLinker, uniqueEdges, outsideEdges } = computeDegrees(sliced, connections);
+  const { deg, degHuman, degLinker, uniqueEdges, outsideEdges, uniqueHuman, uniqueLinker } = computeDegrees(sliced, connections);
 
   const noiseList = sliced
     .map((n, i) => {
@@ -466,8 +477,14 @@ function buildUserMessage(scope, nodes, connections, angle, newIds, prevInterpre
   // предположил ИИ-Связующий; всё остальное — человек соединил сам. Без
   // этой пометки агент считал все мосты равными фактами и говорил «Сеть
   // узнаёт себя» о структуре, которую на 70% построила машина.
+  //
+  // Список ниже намеренно перечисляет СЫРЫЕ записи как есть (если пара
+  // перелинкована — увидит обе строки, это честно). Но сводный счёт «КТО
+  // ПОСТРОИЛ МОСТЫ» в buildStructureBlock — на дедуп-базе uniqueHuman/
+  // uniqueLinker (см. computeDegrees), не на сыром byLinker/byHuman отсюда:
+  // иначе оно расходится с «Связей между ними» (тоже дедуп), и агент
+  // складывает два несопоставимых числа в одну фразу («семь из одиннадцати»).
   let connectionsBlock = '';
-  let byLinker = 0, byHuman = 0;
   if (Array.isArray(connections) && connections.length > 0) {
     const bridges = connections
       .map(c => {
@@ -475,7 +492,6 @@ function buildUserMessage(scope, nodes, connections, angle, newIds, prevInterpre
         const b = byId[c.to_node_id || c.to];
         if (!a || !b) return null;
         const isLinker = String(c.created_by || '') === 'linker';
-        if (isLinker) byLinker++; else byHuman++;
         const mark = isLinker ? ' — предположено Связующим (ИИ)' : ' — соединено человеком';
         return `«${a.slice(0, 80)}» ↔ «${b.slice(0, 80)}»${mark}`;
       })
@@ -491,7 +507,7 @@ function buildUserMessage(scope, nodes, connections, angle, newIds, prevInterpre
   // АДДИТИВНО: сводка по структуре — центры, изолированные, висячие,
   // полнота среза и авторство мостов. Именно здесь агент раньше врал.
   const structureBlock = buildStructureBlock(
-    sliced, deg, degHuman, degLinker, uniqueEdges, outsideEdges, byLinker, byHuman, totalNodes
+    sliced, deg, degHuman, degLinker, uniqueEdges, outsideEdges, uniqueLinker, uniqueHuman, totalNodes
   );
 
   // АДДИТИВНО: дельта-режим — часть узлов помечена как новая с прошлого
