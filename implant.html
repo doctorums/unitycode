@@ -1236,7 +1236,12 @@ async function runPersonalAnalysis() {
   try {
     // Шлём граф Агенту-Аналитику: узлы с id + пары связей,
     // чтобы аналитик видел, ЧТО с ЧЕМ соединено.
-    const res = await fetch(ANALYZE_URL, {
+    // ФИКС 18.08: был голый fetch без единого повтора — один сетевой
+    // сбой на плохом канале означал не только «ошибка на экране», но и
+    // то, что analysis_cache вообще не получала запись (пишет её сам
+    // воркер, только если запрос до него дошёл). ucFetchRetry — тот же
+    // повтор с бэкоффом, что уже есть у loadStats/loadDelta в этом файле.
+    const res = await ucFetchRetry(ANALYZE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2037,7 +2042,12 @@ async function runDeltaAnalysis() {
 
   openOracle(UC_I18N.t('implant.deltaTitle'));
   try {
-    const res = await fetch(ANALYZE_URL, {
+    // ФИКС 18.08: тот же голый fetch, что был у runPersonalAnalysis —
+    // тот же повтор с бэкоффом (ucFetchRetry), см. комментарий там.
+    // Кэш здесь всё равно не пишется (дельта-режим намеренно без кэша,
+    // см. шапку функции) — но сама попытка теперь честно переживает
+    // временный сбой канала, а не сдаётся с первого раза.
+    const res = await ucFetchRetry(ANALYZE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
