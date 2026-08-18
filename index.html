@@ -540,6 +540,10 @@ tc.width=document.body.clientWidth; tc.height=document.body.clientHeight;
 var _tcRT; // debounce — не ловить переходные размеры iOS (аудит 16.07)
 window.addEventListener('resize',function(){clearTimeout(_tcRT);_tcRT=setTimeout(function(){tc.width=document.body.clientWidth;tc.height=document.body.clientHeight;},250);});
 var active=false, startTime=Infinity, DUR=2000;
+// Куда ведёт туннель. Раньше был жёстко petlya.html — теперь цель задаёт
+// вызывающий, чтобы все всплывающие слова уходили одинаково, а не только
+// Спираль. Без аргумента — прежнее поведение («Услышать себя», choiceYes).
+var dest='petlya.html';
 var aiQuestion=UC_I18N.t('index.choiceQ');
 var aiAlts=[ UC_I18N.t('index.aiAlts0') ];
 
@@ -548,9 +552,10 @@ active=true;
 startTime=performance.now();
 tc.style.display='block';
 }
-window.tunnelGo=function(e){
-e.preventDefault();
+window.tunnelGo=function(e,href){
+if(e&&e.preventDefault)e.preventDefault();
 if(active)return;
+if(href)dest=href;
 active=true; // ставим сразу, чтобы второй синтетический клик (touchend+click) не дублировал звук
 if(window.UCAudio){ UCAudio.fx('page'); UCAudio.prepNav && UCAudio.prepNav(); }
 startTunnel();
@@ -637,7 +642,7 @@ document.querySelector('.version').style.opacity=ui;
 var navEl=document.querySelector('nav'); if(navEl) navEl.style.opacity=ui;
 if(p>=1){
 active=false;
-setTimeout(function(){window.location.href='petlya.html';},300);
+setTimeout(function(){window.location.href=dest;},300);
 }
 };
 window.chooseYes=function(){
@@ -1027,11 +1032,13 @@ d.style.color='';
     });
   }
 
-  // ── Пункты меню: та же вода, тот же алгоритм всплытия, но без ритуала —
-  // клик просто ведёт на страницу. Спираль намеренно дублирует кнопку
-  // «Услышать себя» — тот же tunnelGo, тот же переход.
+  // ── Пункты меню: та же вода, тот же алгоритм всплытия, и — с 18.08 — тот
+  // же уход. Раньше туннель был только у Спирали (она дублирует кнопку
+  // «Услышать себя»), а Сеть, Паттерн и Материя прыгали мгновенно: одно и
+  // то же движение воды заканчивалось по-разному без причины. Теперь все
+  // четыре уходят одинаково, отличается только адрес.
   var navItems = [
-    { key:'nav.spiral',  href:'petlya.html',    seedTweak:0x9E3779B1, tunnel:true },
+    { key:'nav.spiral',  href:'petlya.html',    seedTweak:0x9E3779B1 },
     { key:'nav.network', href:'set.html',       seedTweak:0x85EBCA6B },
     { key:'nav.pattern', href:'implant.html',   seedTweak:0xC2B2AE35 },
     { key:'nav.matter',  href:'materials.html', seedTweak:0x27D4EB2F }
@@ -1043,7 +1050,8 @@ d.style.color='';
       seedTweak: item.seedTweak,
       startDelay: (i+1) * 900, // расходятся по времени первого всплытия
       onActivate: function(e){
-        if (item.tunnel) { if (window.tunnelGo) window.tunnelGo(e); return; }
+        if (window.tunnelGo) { window.tunnelGo(e, item.href); return; }
+        // туннель не поднялся — уходим как раньше, без него
         if (e) e.preventDefault();
         try { if (window.UCAudio && UCAudio.fx) UCAudio.fx('page'); } catch(_e){}
         location.href = item.href;
