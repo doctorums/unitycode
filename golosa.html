@@ -55,6 +55,15 @@ h1{
 .voice-row{width:100%;display:flex;justify-content:space-between;align-items:center;margin-top:0.6rem;margin-bottom:0.5rem;}
 .voice-counter{font-size:0.65rem;letter-spacing:0.05em;color:rgba(255,255,255,0.35);}
 .voice-counter.over,.voice-counter.under{color:rgba(255,140,140,0.85);}
+/* «Стереть» — намеренно тихая ссылка, а не кнопка в рамке: она уносит
+   написанное, и притягивать к ней палец нечем. Слева, по диагонали от
+   «отправить», + невидимый запас на промах пальцем. */
+.voice-clear{display:none;margin-left:0.9rem;padding:0.5rem;margin-top:-0.5rem;margin-bottom:-0.5rem;
+  background:none;border:none;font-family:'Share Tech Mono',monospace;font-size:0.6rem;letter-spacing:0.08em;
+  color:rgba(255,255,255,0.28);text-decoration:underline;cursor:pointer;}
+.voice-clear.avail{display:inline-block;}
+.voice-clear:hover{color:rgba(255,150,150,0.7);}
+.voice-left{display:flex;align-items:center;}
 .voice-hint{width:100%;font-size:0.62rem;color:rgba(255,150,150,0.75);text-align:left;margin-bottom:0.9rem;min-height:1.2em;}
 .voice-btn{
   padding:0.7rem 2rem;min-height:44px;display:inline-flex;align-items:center;justify-content:center;
@@ -265,9 +274,18 @@ h1{
 
     var row = document.createElement('div');
     row.className = 'voice-row';
+    // Слева — счётчик и «стереть» одной группой, справа «отправить».
+    var left = document.createElement('div');
+    left.className = 'voice-left';
     var counter = document.createElement('span');
     counter.className = 'voice-counter';
-    row.appendChild(counter);
+    left.appendChild(counter);
+    var clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'voice-clear';
+    clearBtn.textContent = t('voice.clear');
+    left.appendChild(clearBtn);
+    row.appendChild(left);
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'voice-btn';
@@ -294,8 +312,21 @@ h1{
       counter.classList.toggle('over', over);
       hint.textContent = under ? t('voice.tooShort', { min: VOICE_MIN }) : over ? t('voice.tooLong') : '';
       btn.disabled = (n < VOICE_MIN || n > VOICE_MAX);
+      clearBtn.classList.toggle('avail', n > 0);   // стирать нечего — и ссылки нет
     }
     updateCounter();
+
+    // Стирание — с подтверждением: одно касание уносит длинный текст, а вся
+    // страница построена на обратном. Черновик из памяти тоже чистим, иначе
+    // стёртое вернулось бы при следующем заходе.
+    clearBtn.addEventListener('click', function(){
+      if (!ta.value) return;
+      if (!window.confirm(t('voice.clearConfirm'))) return;
+      ta.value = '';
+      clearDraft();
+      updateCounter();
+      try { ta.focus(); } catch(e){}
+    });
 
     var draftTimer = null;
     ta.addEventListener('input', function(){
