@@ -464,7 +464,11 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 
 
 if (navigator.geolocation) {
 navigator.geolocation.getCurrentPosition(pos => {
-map.setView([pos.coords.latitude, pos.coords.longitude], 5);
+// Геолокация резолвится не мгновенно — если к этому моменту карта уже
+// обрамила узлы (fitAllNodes), не перебиваем её видом «только я»:
+// разрешение на геолокацию не значит «покажи только мою точку».
+// Как запасной центр (сеть ещё совсем пустая, узлов нет) — по-прежнему полезно.
+if (!didInitialFit) map.setView([pos.coords.latitude, pos.coords.longitude], 5);
 });
 }
 
@@ -497,6 +501,23 @@ const loadedIds = new Set();
 let lastCreatedAt = null;
 const nodeCoords = {};
 const nodeMarkers = {};   // id -> Leaflet marker (для удаления)
+
+// АДДИТИВНО: карта раньше открывалась на фиксированном center/zoom (весь
+// мир, zoom 2) — при первом заходе и при обновлении страницы узлы не были
+// видны все сразу, надо было руками зумиться. Один раз, как только на
+// карте появились координаты (из кэша или из первой загрузки), обрамляем
+// их fitBounds. didInitialFit — чтобы не дёргать карту повторно на каждой
+// фоновой подгрузке новых узлов (loadNodes/fullRefreshNodes по таймеру).
+let didInitialFit = false;
+function fitAllNodes() {
+if (didInitialFit) return;
+const coords = Object.values(nodeCoords);
+if (!coords.length) return;
+didInitialFit = true;
+// maxZoom — иначе на плотном кластере (сейчас почти все узлы в одном
+// городе) fitBounds зашёл бы на уровень улиц, а не «вся сеть».
+map.fitBounds(coords, { padding: [40, 40], maxZoom: 8 });
+}
 
 function showLoading(visible) {
 document.getElementById('loading').classList.toggle('visible', visible);
@@ -596,6 +617,7 @@ const cachedNodes = readCache(CACHE_NODES);
 if (cachedNodes && Array.isArray(cachedNodes) && cachedNodes.length) {
 cachedNodes.forEach(addNodeToMap);
 document.getElementById('nodeCount').textContent = loadedIds.size;
+fitAllNodes();
 }
 
 // Инкрементальная загрузка (только новые узлы)
@@ -614,6 +636,7 @@ const nodes = await res.json();
 
 nodes.forEach(addNodeToMap);
 document.getElementById('nodeCount').textContent = loadedIds.size;
+if (initial) fitAllNodes();
 
 // Кэш обновляем в fullRefreshNodes — там полный набор
 } catch (e) {
