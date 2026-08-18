@@ -509,14 +509,41 @@ const nodeMarkers = {};   // id -> Leaflet marker (для удаления)
 // их fitBounds. didInitialFit — чтобы не дёргать карту повторно на каждой
 // фоновой подгрузке новых узлов (loadNodes/fullRefreshNodes по таймеру).
 let didInitialFit = false;
+
+// Ниже этого зума смотреть уже не на что: пустой глобус вместо Сети.
+// Замер 18.08 на живых координатах: одиннадцать узлов в одном городе плюс
+// один за 4700 км (VPN) — рамка «по всем» давала зум 2 на телефоне и 3 на
+// планшете, то есть ровно вид по умолчанию. Обрамление формально работало,
+// а выглядело как «зума нет» — и именно так его и читали.
+const MIN_USEFUL_ZOOM = 5;
+// Насколько далеко от середины узел считается выбросом, а не частью сгустка.
+const CLUSTER_RADIUS_M = 800000;   // 800 км — соседние города, но не соседние страны
+
 function fitAllNodes() {
 if (didInitialFit) return;
 const coords = Object.values(nodeCoords);
 if (!coords.length) return;
 didInitialFit = true;
-// maxZoom — иначе на плотном кластере (сейчас почти все узлы в одном
-// городе) fitBounds зашёл бы на уровень улиц, а не «вся сеть».
-map.fitBounds(coords, { padding: [40, 40], maxZoom: 8 });
+
+const all = L.latLngBounds(coords);
+// maxZoom — иначе на плотном кластере fitBounds зашёл бы на уровень улиц.
+const opts = { padding: [40, 40], maxZoom: 8 };
+
+// Влезают все и при этом видно что-то осмысленное — обрамляем всё.
+if (map.getBoundsZoom(all, false, L.point(40, 40)) >= MIN_USEFUL_ZOOM) {
+map.fitBounds(all, opts);
+return;
+}
+
+// Иначе садимся туда, где Сеть живёт: медиана координат и всё, что рядом.
+// Далёкие узлы никуда не деваются — они рядом отдельным кластером, до них
+// один жест. Показать «все узлы» и «где сеть» при таком разбросе — разные
+// вещи, и вторая полезнее: первая даёт пустой глобус.
+const lats = coords.map(c => c[0]).slice().sort((a, b) => a - b);
+const lngs = coords.map(c => c[1]).slice().sort((a, b) => a - b);
+const mid = L.latLng(lats[Math.floor(lats.length / 2)], lngs[Math.floor(lngs.length / 2)]);
+const near = coords.filter(c => map.distance(L.latLng(c[0], c[1]), mid) <= CLUSTER_RADIUS_M);
+map.fitBounds(L.latLngBounds(near.length ? near : coords), opts);
 }
 
 function showLoading(visible) {
