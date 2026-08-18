@@ -109,6 +109,7 @@
     'set.statActive':{ru:`Активны сейчас:`, en:`Active now:` , es:`Activos ahora:`, fr:`Actifs maintenant :`, zh:`当前活跃：`},
     'set.statPulse':{ ru:`Пульс сети:`,    en:`Network pulse:` , es:`Pulso de la red:`, fr:`Pouls du réseau :`, zh:`网络脉搏：`},
     'set.loading':  { ru:`// СИНХРОНИЗАЦИЯ...`, en:`// SYNCING...` , es:`// SINCRONIZANDO...`, fr:`// SYNCHRONISATION...`, zh:`// 同步中……`},
+    'set.resetView':{ ru:`Показать всю Сеть`, en:`Show the whole Network`, es:`Mostrar toda la Red`, fr:`Montrer tout le Réseau`, zh:`显示整个网络`},
     'set.popupTag': { ru:`// УЗЕЛ СЕТИ`,   en:`// NETWORK NODE` , es:`// NODO DE LA RED`, fr:`// NŒUD DU RÉSEAU`, zh:`// 网络节点`},
     'set.popupSpiral':{ru:`Спираль →`,     en:`Spiral →` , es:`Espiral →`, fr:`Spirale →`, zh:`螺旋 →`},
     'set.yourNode': { ru:`// ТВОЙ УЗЕЛ`,   en:`// YOUR NODE` , es:`// TU NODO`, fr:`// VOTRE NŒUD`, zh:`// 你的节点`},

@@ -57,6 +57,22 @@ transition: opacity 0.3s;
 pointer-events: none;
 }
 #loading.visible { opacity: 1; }
+/* Один тап — назад к виду «вся Сеть». Тап по узлу/кластеру приближает
+   (это делает сам markercluster), а обратно раньше можно было только
+   обновлением страницы или щипком много раз подряд. */
+#mapReset {
+position: fixed; z-index: 1000;
+right: calc(env(safe-area-inset-right,0px) + 0.8rem);
+bottom: calc(env(safe-area-inset-bottom,0px) + 1.2rem);
+width: 40px; height: 40px;
+display: flex; align-items: center; justify-content: center;
+background: rgba(0,0,0,0.85);
+border: 1px solid rgba(0,255,136,0.35);
+color: var(--accent);
+font-size: 1.1rem; line-height: 1;
+cursor: pointer;
+}
+#mapReset:active { background: rgba(0,255,136,0.15); }
 .node-marker {
 width: 10px; height: 10px;
 background: var(--accent); border-radius: 50%;
@@ -145,6 +161,7 @@ to { opacity: 0; }
 </div>
 
 <div id="map"></div>
+<button id="mapReset" data-i18n-aria="set.resetView" aria-label="Показать всю Сеть">⌖</button>
 <div id="loading" data-i18n="set.loading">// СИНХРОНИЗАЦИЯ...</div>
 
 <!-- Leaflet локально — без зависимости от CDN -->
@@ -508,6 +525,10 @@ const nodeMarkers = {};   // id -> Leaflet marker (для удаления)
 // карте появились координаты (из кэша или из первой загрузки), обрамляем
 // их fitBounds. didInitialFit — чтобы не дёргать карту повторно на каждой
 // фоновой подгрузке новых узлов (loadNodes/fullRefreshNodes по таймеру).
+// Единые опции обрамления — их же использует кнопка #mapReset, чтобы
+// «домой» вело ровно туда же, куда и первичное обрамление.
+const FIT_OPTS = { padding: [40, 40], maxZoom: 8 };
+
 let didInitialFit = false;
 function fitAllNodes() {
 if (didInitialFit) return;
@@ -520,8 +541,16 @@ didInitialFit = true;
 // кадр, а смысл карты — вся Сеть разом, даже если это пол-континента.
 // maxZoom — иначе на плотном кластере (сейчас почти все узлы в одном
 // городе) fitBounds зашёл бы на уровень улиц, а не «вся сеть».
-map.fitBounds(coords, { padding: [40, 40], maxZoom: 8 });
+map.fitBounds(coords, FIT_OPTS);
 }
+
+// Тап по узлу/кластеру приближает (это делает сам markercluster), а
+// обратно раньше можно было только обновлением страницы или щипком много
+// раз подряд — один тап по кнопке возвращает камеру к виду «вся Сеть».
+document.getElementById('mapReset').addEventListener('click', function() {
+const coords = Object.values(nodeCoords);
+if (coords.length) map.fitBounds(coords, FIT_OPTS);
+});
 
 function showLoading(visible) {
 document.getElementById('loading').classList.toggle('visible', visible);
