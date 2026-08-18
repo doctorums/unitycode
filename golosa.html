@@ -232,6 +232,13 @@ h1{
   function renderForm(){
     stateEl.innerHTML = '';
 
+    // Заголовок объяснял условие входа («если вплёл достаточно шума…») —
+    // как только форма открыта, это уже прошедший факт, а не условие, и
+    // voice.unlockedLead ниже говорит по сути то же самое настоящим
+    // временем. Оставляем заголовок только для locked/checking.
+    var h1 = document.querySelector('h1');
+    if (h1) h1.style.display = 'none';
+
     var draft = readDraft();
     if (draft) {
       var dn = document.createElement('div');
