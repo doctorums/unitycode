@@ -139,7 +139,11 @@
 
   // ── Связи ─────────────────────────────────────────────────────────────
 
-  async function allConnections(select = 'from_node_id,to_node_id') {
+  // created_by — в select по умолчанию: любой код, читающий связи для
+  // анализа/отображения, должен знать авторство сразу, не выясняя постфактум,
+  // почему все связи выглядят «человеческими» (см. фикс 18.08, implant.html —
+  // personal-анализ молчал про created_by и Связующий читался как человек).
+  async function allConnections(select = 'from_node_id,to_node_id,created_by') {
     const rows = await get('connections?select=' + select + '&status=eq.accepted');
     return Array.isArray(rows) ? rows : [];
   }
@@ -148,7 +152,7 @@
   // PostgREST не умеет OR по двум колонкам в простом виде, поэтому два
   // запроса в обе стороны и склейка — ровно как это делали implant.html
   // и log.html по отдельности.
-  async function connectionsFor(ids, select = 'from_node_id,to_node_id') {
+  async function connectionsFor(ids, select = 'from_node_id,to_node_id,created_by') {
     if (!Array.isArray(ids) || !ids.length) return [];
     const list = '(' + ids.join(',') + ')';
     const [from, to] = await Promise.all([
@@ -157,14 +161,19 @@
     ]);
     const a = Array.isArray(from) ? from : [];
     const b = Array.isArray(to) ? to : [];
-    // Дедуп: связь внутри собственного графа попадёт в оба ответа.
-    const seen = new Set();
-    return [...a, ...b].filter(c => {
+    // Дедуп: связь внутри собственного графа попадёт в оба ответа. Иногда
+    // одна и та же пара узлов соединена дважды — человеком и отдельно
+    // Связующим (перелинковка). При дубле пары человеческая версия важнее:
+    // выбор человека не отменяется тем, что Связующий позже предположил то
+    // же самое (тот же принцип, что в computeDegrees unitycode-analyze.js).
+    const byKey = new Map();
+    [...a, ...b].forEach(c => {
       const k = c.from_node_id + '|' + c.to_node_id;
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
+      const existing = byKey.get(k);
+      if (!existing) { byKey.set(k, c); return; }
+      if (String(c.created_by || '') !== 'linker') existing.created_by = c.created_by;
     });
+    return Array.from(byKey.values());
   }
 
   global.UCData = {
