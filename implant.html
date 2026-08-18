@@ -1167,8 +1167,8 @@ async function loadPersonal() {
   window._myConns = [];
   try {
     const [connsFromRes, connsToRes] = await Promise.all([
-      ucFetchRetry(`${SUPABASE_URL}/rest/v1/connections?from_node_id=in.${idList}&status=eq.accepted&select=from_node_id,to_node_id`, { headers }),
-      ucFetchRetry(`${SUPABASE_URL}/rest/v1/connections?to_node_id=in.${idList}&status=eq.accepted&select=from_node_id,to_node_id`, { headers }),
+      ucFetchRetry(`${SUPABASE_URL}/rest/v1/connections?from_node_id=in.${idList}&status=eq.accepted&select=from_node_id,to_node_id,created_by`, { headers }),
+      ucFetchRetry(`${SUPABASE_URL}/rest/v1/connections?to_node_id=in.${idList}&status=eq.accepted&select=from_node_id,to_node_id,created_by`, { headers }),
     ]);
     const connsFrom = await connsFromRes.json();
     const connsTo = await connsToRes.json();
