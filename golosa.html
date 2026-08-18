@@ -351,8 +351,16 @@ h1{
     // ═══════════════════════════════════════════════
     // РЕЖИМ ВОДЫ (Apple Pencil) — тот же ta.value, только форма ввода
     // меняется под перо. Никакого сниффинга устройств: ждём фактический
-    // pointerType==='pen'. Факт запоминаем — второй раз кнопка доступна
-    // сразу. Перенесено из прежнего отдельного прототипа water_test.html.
+    // pointerType==='pen'.
+    //
+    // ФИКС 18.08: прототип запоминал перо в localStorage навсегда («второй
+    // раз кнопка доступна сразу»). На деле это значило, что кнопка сообщает
+    // не «перо в руке», а «у этого устройства когда-то было перо»: на iPad
+    // флаг вставал при первом же касании и потом висел всегда — при
+    // разряженном, неспаренном или просто лежащем на столе Pencil. Человек
+    // видит предложение писать по воде и не понимает, чем. Память убрана:
+    // кнопка появляется, когда перо коснулось экрана в ЭТОТ заход, и
+    // исчезать ей не нужно — раз коснулось, перо в руке.
     // ═══════════════════════════════════════════════
     var toWater = document.createElement('button');
     toWater.type = 'button';
@@ -361,10 +369,11 @@ h1{
     toWater.textContent = t('voice.waterToggle');
     form.insertBefore(toWater, ta);
 
-    var PEN_KEY = 'uc_pen_seen';
+    // Чистим флаг прежнего прототипа — иначе он молча живёт в браузерах,
+    // где уже успел встать, и ничего не значит.
+    try { localStorage.removeItem('uc_pen_seen'); } catch(e){}
+
     var penSeen = false;
-    try { penSeen = localStorage.getItem(PEN_KEY) === '1'; } catch(e){}
-    if (penSeen) toWater.classList.add('avail');
     var lastPen = { x: 0, y: 0, t: -1e9 };
     function notePen(e){
       if (!e || e.pointerType !== 'pen') return;
@@ -372,7 +381,6 @@ h1{
       if (penSeen) return;
       penSeen = true;
       toWater.classList.add('avail');
-      try { localStorage.setItem(PEN_KEY, '1'); } catch(e2){}
     }
     document.addEventListener('pointerdown', notePen, { passive: true });
     document.addEventListener('pointermove', notePen, { passive: true });
