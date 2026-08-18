@@ -81,9 +81,9 @@ h1{
    Тот же текст, что в обычной textarea выше: вход/выход просто синхронизируют
    значения, гейт/Turnstile/отправка остаются едиными. Кнопка перехода скрыта,
    пока не увидели перо (прогрессивное усиление, как было в прототипе). ═══ */
-#toWater{display:none;margin-bottom:0.8rem;}
-#toWater.avail{display:inline-flex;}
-#loadFile{margin-bottom:0.8rem;}
+/* Один слот на оба способа ввода: по умолчанию «загрузить файл», с пером
+   в руке — «писать по воде». Две кнопки разом смотрелись грузно. */
+#voiceAction{margin-bottom:0.8rem;}
 #water{position:fixed;inset:0;z-index:900;display:none;background:#00040a;}
 #water.on{display:block;}
 #waterCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
@@ -370,10 +370,10 @@ h1{
         updateCounter();
         btn.textContent = t('voice.sent');
         idem = genIdem(); // готовим отдельный голос к следующей отправке
-        // Голос ушёл — писать больше нечего, и это единственный момент, когда
-        // про перо можно судить наверняка, а не по тишине событий. Гасим
-        // кнопку сразу; захочешь писать пером ещё раз — касание её вернёт.
-        if (toWater) { penSeen = false; toWater.classList.remove('avail'); clearTimeout(penIdleTimer); }
+        // Голос ушёл — писать больше нечего. Возвращаем кнопку в исходное;
+        // захочешь писать пером ещё раз — касание пером её переключит.
+        clearTimeout(penIdleTimer);
+        setPenMode(false);
         setTimeout(function(){ btn.textContent = t('voice.send'); sending = false; updateCounter(); }, 2400);
       } catch(e) {
         // Текст остаётся в textarea и в черновике — обрыв связи ничего не стирает.
@@ -385,19 +385,19 @@ h1{
     btn.addEventListener('click', send);
 
     // ═══════════════════════════════════════════════
-    // ЗАГРУЗКА ГОТОВОГО ФАЙЛА
-    // Голос — длинный текст, а набрать 4000 символов пальцем на телефоне
-    // нереально; у человека он уже написан в заметках. Читаем локально,
-    // ничего никуда не отправляя: содержимое просто ложится в поле, дальше
-    // обычный путь — счётчик, проверка, отправка. Доступно всегда и всем,
-    // в отличие от воды (той нужно перо).
+    // ОДНА КНОПКА НА ДВА СПОСОБА ВВОДА
+    // По умолчанию — «загрузить файл»: голос длинный, набрать 4000 символов
+    // пальцем на телефоне нереально, а в заметках он уже написан. Читаем
+    // локально, ничего никуда не отправляя. Взял перо — та же кнопка
+    // становится «писать по воде». Две кнопки разом смотрелись грузно, а
+    // нужны они никогда не одновременно: либо перо в руке, либо файл.
     // ═══════════════════════════════════════════════
-    var fileBtn = document.createElement('button');
-    fileBtn.type = 'button';
-    fileBtn.id = 'loadFile';
-    fileBtn.className = 'voice-btn';
-    fileBtn.textContent = t('voice.fileLoad');
-    form.insertBefore(fileBtn, ta);
+    var actionBtn = document.createElement('button');
+    actionBtn.type = 'button';
+    actionBtn.id = 'voiceAction';
+    actionBtn.className = 'voice-btn';
+    actionBtn.textContent = t('voice.fileLoad');
+    form.insertBefore(actionBtn, ta);
 
     var fileInput = document.createElement('input');
     fileInput.type = 'file';
@@ -405,7 +405,15 @@ h1{
     fileInput.style.display = 'none';
     form.appendChild(fileInput);
 
-    fileBtn.addEventListener('click', function(){
+    var penMode = false;
+    function setPenMode(on){
+      if (penMode === on) return;
+      penMode = on;
+      actionBtn.textContent = on ? t('voice.waterToggle') : t('voice.fileLoad');
+    }
+
+    actionBtn.addEventListener('click', function(){
+      if (penMode) { enterWater(); return; }
       fileInput.value = '';   // иначе повторный выбор того же файла молчит
       fileInput.click();
     });
@@ -433,57 +441,52 @@ h1{
     });
 
     // ═══════════════════════════════════════════════
-    // РЕЖИМ ВОДЫ (Apple Pencil) — тот же ta.value, только форма ввода
-    // меняется под перо. Никакого сниффинга устройств: ждём фактический
-    // pointerType==='pen'.
+    // ЧТО В РУКЕ — ПЕРО ИЛИ ПАЛЕЦ
+    // Никакого сниффинга устройств: смотрим фактический pointerType.
+    // Перо коснулось — кнопка становится «писать по воде». Палец или мышь —
+    // возвращается к «загрузить файл»: значит, перо отложили, и предлагать
+    // воду нечем. Так переключение мгновенно в обе стороны.
     //
     // ФИКС 18.08: прототип запоминал перо в localStorage навсегда («второй
     // раз кнопка доступна сразу»). На деле это значило, что кнопка сообщает
     // не «перо в руке», а «у этого устройства когда-то было перо»: на iPad
     // флаг вставал при первом же касании и потом висел всегда — при
-    // разряженном, неспаренном или просто лежащем на столе Pencil. Человек
-    // видит предложение писать по воде и не понимает, чем. Память убрана:
-    // кнопка появляется, когда перо коснулось экрана в ЭТОТ заход, и
-    // исчезать ей не нужно — раз коснулось, перо в руке.
+    // разряженном, неспаренном или просто лежащем на столе Pencil.
     // ═══════════════════════════════════════════════
-    var toWater = document.createElement('button');
-    toWater.type = 'button';
-    toWater.id = 'toWater';
-    toWater.className = 'voice-btn';
-    toWater.textContent = t('voice.waterToggle');
-    form.insertBefore(toWater, ta);
 
     // Чистим флаг прежнего прототипа — иначе он молча живёт в браузерах,
     // где уже успел встать, и ничего не значит.
     try { localStorage.removeItem('uc_pen_seen'); } catch(e){}
 
-    var penSeen = false;
     var lastPen = { x: 0, y: 0, t: -1e9 };
-    function notePen(e){
-      if (!e || e.pointerType !== 'pen') return;
-      lastPen.x = e.clientX; lastPen.y = e.clientY; lastPen.t = performance.now();
-      penIdleReset();
-      if (penSeen) return;
-      penSeen = true;
-      toWater.classList.add('avail');
+    function notePointer(e){
+      if (!e) return;
+      if (e.pointerType === 'pen') {
+        lastPen.x = e.clientX; lastPen.y = e.clientY; lastPen.t = performance.now();
+        penIdleReset();
+        setPenMode(true);
+        return;
+      }
+      // Палец/мышь по самой кнопке не считаем «перо отложили»: иначе тап по
+      // «писать по воде» успел бы переключить её в файл до срабатывания click.
+      if (water.classList.contains('on') || actionBtn.contains(e.target)) return;
+      clearTimeout(penIdleTimer);
+      setPenMode(false);
     }
-    document.addEventListener('pointerdown', notePen, { passive: true });
-    document.addEventListener('pointermove', notePen, { passive: true });
+    document.addEventListener('pointerdown', notePointer, { passive: true });
+    document.addEventListener('pointermove', notePointer, { passive: true });
 
-    // Перо убрали (легло на базу, разрядилось, просто отложили) — предлагать
-    // писать по воде больше нечем. Отследить сам факт «легло на базу» нельзя:
-    // в вебе такого события нет, видно только что события пера перестали
-    // приходить. Поэтому гасим кнопку по простою, а любое касание пером
-    // возвращает её мгновенно. В самой воде не гасим: там человек пером и
-    // пишет, а вычислять простой во время письма — прятать нужное.
+    // Перо убрали молча (легло на базу, разрядилось), пальцем при этом не
+    // касались — событий просто нет. Отследить «легло на базу» в вебе нечем,
+    // поэтому возвращаем кнопку к файлу по простою. В самой воде не трогаем:
+    // там человек пером и пишет.
     var PEN_IDLE_MS = 60000;
     var penIdleTimer = null;
     function penIdleReset(){
       clearTimeout(penIdleTimer);
       penIdleTimer = setTimeout(function(){
         if (water.classList.contains('on')) { penIdleReset(); return; }
-        penSeen = false;
-        toWater.classList.remove('avail');
+        setPenMode(false);
       }, PEN_IDLE_MS);
     }
 
@@ -577,8 +580,11 @@ h1{
       try { wInput.blur(); } catch(e){}
       updateCounter();
       writeDraft(ta.value);
+      // Вышли из воды — всё в исходное: кнопка снова «загрузить файл».
+      // Захочешь обратно в воду — коснись экрана пером, она вернётся.
+      clearTimeout(penIdleTimer);
+      setPenMode(false);
     }
-    toWater.addEventListener('click', enterWater);
     document.getElementById('exitWater').addEventListener('click', exitWater);
 
     var prevLen = 0;
