@@ -305,6 +305,7 @@
     'voice.charCount':    { ru:`{n} / {max}`, en:`{n} / {max}`, es:`{n} / {max}`, fr:`{n} / {max}`, zh:`{n} / {max}`},
     'voice.waterToggle':  { ru:`[ ПИСАТЬ ПО ВОДЕ ]`, en:`[ WRITE ON WATER ]`, es:`[ ESCRIBIR EN EL AGUA ]`, fr:`[ ÉCRIRE SUR L'EAU ]`, zh:`[ 在水面书写 ]`},
     'voice.waterExit':    { ru:`← выйти`, en:`← exit`, es:`← salir`, fr:`← sortir`, zh:`← 退出`},
+    'voice.waterDone':    { ru:`[ ГОТОВО ]`, en:`[ DONE ]`, es:`[ LISTO ]`, fr:`[ TERMINÉ ]`, zh:`[ 完成 ]`},
     'voice.send':         { ru:`[ ОТПРАВИТЬ ]`, en:`[ SEND ]`, es:`[ ENVIAR ]`, fr:`[ ENVOYER ]`, zh:`[ 发送 ]`},
     'voice.sending':      { ru:`[ ОТПРАВЛЯЕТСЯ... ]`, en:`[ SENDING... ]`, es:`[ ENVIANDO... ]`, fr:`[ ENVOI EN COURS... ]`, zh:`[ 发送中…… ]`},
     'voice.sent':         { ru:`[ ✓ ОТПРАВЛЕНО ]`, en:`[ ✓ SENT ]`, es:`[ ✓ ENVIADO ]`, fr:`[ ✓ ENVOYÉ ]`, zh:`[ ✓ 已发送 ]`},

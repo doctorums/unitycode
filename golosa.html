@@ -116,7 +116,7 @@ h1{
     <button class="voice-btn" id="exitWater" type="button" data-i18n="voice.waterExit">← выйти</button>
     <span class="wcount"><span id="wCount">0</span> / <span id="wCountMax">4000</span></span>
   </div>
-  <button class="voice-btn wsend" id="wSend" type="button" data-i18n="voice.send">[ ОТПРАВИТЬ ]</button>
+  <button class="voice-btn wsend" id="wSend" type="button" data-i18n="voice.waterDone">[ ГОТОВО ]</button>
 </div>
 
 <script src="js/uc-data.js"></script>
@@ -516,11 +516,16 @@ h1{
       }
     });
 
+    // «Готово» — не отправка, а возвращение текста в окно (с всплеском).
+    // На сервер уходит только из обычного поля: там видно счётчик, минимум
+    // и подсказку, а в воде их нет. Раньше здесь звалось send(), и текст
+    // короче минимума молча не уходил никуда — вода закрывалась, и человек
+    // не узнавал почему.
     document.getElementById('wSend').addEventListener('click', function(){
       for (var i = 0; i < 7; i++) {
         setTimeout(function(){ addRipple(W/2+(Math.random()*160-80), H*0.5+(Math.random()*120-60), 0.7); }, i*70);
       }
-      setTimeout(function(){ exitWater(); send(); }, 700);
+      setTimeout(exitWater, 700);
     });
   }
 
