@@ -74,6 +74,7 @@ h1{
    пока не увидели перо (прогрессивное усиление, как было в прототипе). ═══ */
 #toWater{display:none;margin-bottom:0.8rem;}
 #toWater.avail{display:inline-flex;}
+#loadFile{margin-bottom:0.8rem;}
 #water{position:fixed;inset:0;z-index:900;display:none;background:#00040a;}
 #water.on{display:block;}
 #waterCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
@@ -351,6 +352,54 @@ h1{
       }
     }
     btn.addEventListener('click', send);
+
+    // ═══════════════════════════════════════════════
+    // ЗАГРУЗКА ГОТОВОГО ФАЙЛА
+    // Голос — длинный текст, а набрать 4000 символов пальцем на телефоне
+    // нереально; у человека он уже написан в заметках. Читаем локально,
+    // ничего никуда не отправляя: содержимое просто ложится в поле, дальше
+    // обычный путь — счётчик, проверка, отправка. Доступно всегда и всем,
+    // в отличие от воды (той нужно перо).
+    // ═══════════════════════════════════════════════
+    var fileBtn = document.createElement('button');
+    fileBtn.type = 'button';
+    fileBtn.id = 'loadFile';
+    fileBtn.className = 'voice-btn';
+    fileBtn.textContent = t('voice.fileLoad');
+    form.insertBefore(fileBtn, ta);
+
+    var fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.txt,.md,.markdown,text/plain,text/markdown';
+    fileInput.style.display = 'none';
+    form.appendChild(fileInput);
+
+    fileBtn.addEventListener('click', function(){
+      fileInput.value = '';   // иначе повторный выбор того же файла молчит
+      fileInput.click();
+    });
+    fileInput.addEventListener('change', function(){
+      var f = fileInput.files && fileInput.files[0];
+      if (!f) return;
+      // .docx и прочее readAsText превратит в кашу — лучше сказать сразу.
+      var okType = /^text\//.test(f.type || '') || /\.(txt|md|markdown)$/i.test(f.name || '');
+      if (!okType) { hint.textContent = t('voice.fileWrongType'); return; }
+      // Уже написанное не затираем без спроса — черновик тоже чей-то труд.
+      if (ta.value.trim() && !window.confirm(t('voice.fileReplace'))) return;
+
+      var reader = new FileReader();
+      reader.onload = function(){
+        var text = String(reader.result || '').replace(/\r\n/g, '\n').trim();
+        if (!text) { hint.textContent = t('voice.fileEmpty'); return; }
+        // Длиннее лимита не режем молча: покажем «слишком длинно» и дадим
+        // решить самому, что убрать — обрезка потеряла бы чужие слова.
+        ta.value = text;
+        updateCounter();
+        writeDraft(ta.value);
+      };
+      reader.onerror = function(){ hint.textContent = t('voice.fileError'); };
+      reader.readAsText(f);
+    });
 
     // ═══════════════════════════════════════════════
     // РЕЖИМ ВОДЫ (Apple Pencil) — тот же ta.value, только форма ввода
