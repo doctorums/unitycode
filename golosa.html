@@ -378,12 +378,30 @@ h1{
     function notePen(e){
       if (!e || e.pointerType !== 'pen') return;
       lastPen.x = e.clientX; lastPen.y = e.clientY; lastPen.t = performance.now();
+      penIdleReset();
       if (penSeen) return;
       penSeen = true;
       toWater.classList.add('avail');
     }
     document.addEventListener('pointerdown', notePen, { passive: true });
     document.addEventListener('pointermove', notePen, { passive: true });
+
+    // Перо убрали (легло на базу, разрядилось, просто отложили) — предлагать
+    // писать по воде больше нечем. Отследить сам факт «легло на базу» нельзя:
+    // в вебе такого события нет, видно только что события пера перестали
+    // приходить. Поэтому гасим кнопку по простою, а любое касание пером
+    // возвращает её мгновенно. В самой воде не гасим: там человек пером и
+    // пишет, а вычислять простой во время письма — прятать нужное.
+    var PEN_IDLE_MS = 60000;
+    var penIdleTimer = null;
+    function penIdleReset(){
+      clearTimeout(penIdleTimer);
+      penIdleTimer = setTimeout(function(){
+        if (water.classList.contains('on')) { penIdleReset(); return; }
+        penSeen = false;
+        toWater.classList.remove('avail');
+      }, PEN_IDLE_MS);
+    }
 
     var water = document.getElementById('water');
     var waterCanvas = document.getElementById('waterCanvas');
