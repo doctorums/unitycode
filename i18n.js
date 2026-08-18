@@ -303,6 +303,8 @@
     'voice.unlockedLead': { ru:`Ворота открыты. Пиши — свободно, до 4000 символов.`, en:`The gate is open. Write — freely, up to 4000 characters.`, es:`La puerta está abierta. Escribe — libremente, hasta 4000 caracteres.`, fr:`La porte est ouverte. Écrivez — librement, jusqu'à 4000 caractères.`, zh:`门已开启。自由书写——最多 4000 字。`},
     'voice.placeholder':  { ru:`Что накопилось...`, en:`What's been building up...`, es:`Lo que se ha ido acumulando...`, fr:`Ce qui s'est accumulé...`, zh:`积攒下来的……`},
     'voice.charCount':    { ru:`{n} / {max}`, en:`{n} / {max}`, es:`{n} / {max}`, fr:`{n} / {max}`, zh:`{n} / {max}`},
+    'voice.waterToggle':  { ru:`[ ПИСАТЬ ПО ВОДЕ ]`, en:`[ WRITE ON WATER ]`, es:`[ ESCRIBIR EN EL AGUA ]`, fr:`[ ÉCRIRE SUR L'EAU ]`, zh:`[ 在水面书写 ]`},
+    'voice.waterExit':    { ru:`← выйти`, en:`← exit`, es:`← salir`, fr:`← sortir`, zh:`← 退出`},
     'voice.send':         { ru:`[ ОТПРАВИТЬ ]`, en:`[ SEND ]`, es:`[ ENVIAR ]`, fr:`[ ENVOYER ]`, zh:`[ 发送 ]`},
     'voice.sending':      { ru:`[ ОТПРАВЛЯЕТСЯ... ]`, en:`[ SENDING... ]`, es:`[ ENVIANDO... ]`, fr:`[ ENVOI EN COURS... ]`, zh:`[ 发送中…… ]`},
     'voice.sent':         { ru:`[ ✓ ОТПРАВЛЕНО ]`, en:`[ ✓ SENT ]`, es:`[ ✓ ENVIADO ]`, fr:`[ ✓ ENVOYÉ ]`, zh:`[ ✓ 已发送 ]`},

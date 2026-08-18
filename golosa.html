@@ -67,6 +67,33 @@ h1{
 .voice-btn:disabled{opacity:0.55;cursor:default;}
 .voice-note{font-size:0.6rem;color:rgba(200,210,220,0.35);line-height:1.8;text-align:center;max-width:460px;margin-top:1.4rem;}
 .voice-draft{font-size:0.6rem;color:rgba(160,215,255,0.5);letter-spacing:0.05em;text-align:center;margin-bottom:0.8rem;}
+
+/* ═══ РЕЖИМ ВОДЫ (Apple Pencil) — слияние с прежним прототипом water_test.html.
+   Тот же текст, что в обычной textarea выше: вход/выход просто синхронизируют
+   значения, гейт/Turnstile/отправка остаются едиными. Кнопка перехода скрыта,
+   пока не увидели перо (прогрессивное усиление, как было в прототипе). ═══ */
+#toWater{display:none;margin-bottom:0.8rem;}
+#toWater.avail{display:inline-flex;}
+#water{position:fixed;inset:0;z-index:900;display:none;background:#00040a;}
+#water.on{display:block;}
+#waterCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+#waterInput{
+  position:absolute;inset:0;width:100%;height:100%;
+  background:transparent;border:none;outline:none;resize:none;
+  color:rgba(200,225,255,0.92);font-family:'Share Tech Mono',monospace;
+  font-size:clamp(20px,3.4vw,34px);line-height:1.75;letter-spacing:0.02em;
+  text-align:center;padding:22vh 8vw calc(18vh + env(safe-area-inset-bottom,0px));
+  caret-color:rgba(160,215,255,0.95);
+  text-shadow:0 0 18px rgba(90,170,255,0.35),0 0 4px rgba(200,230,255,0.25);
+}
+#waterInput::placeholder{color:rgba(150,190,230,0.28);}
+.wbar{position:absolute;top:0;left:0;right:0;z-index:2;
+  padding:calc(0.9rem + env(safe-area-inset-top,0px)) 1.2rem 0.9rem;
+  display:flex;justify-content:space-between;align-items:center;gap:0.8rem;pointer-events:none;}
+.wbar > *{pointer-events:auto;}
+.wcount{font-size:0.55rem;color:rgba(255,255,255,0.35);letter-spacing:0.1em;}
+.wsend{position:absolute;left:50%;transform:translateX(-50%);z-index:2;
+  bottom:calc(5.5rem + env(safe-area-inset-bottom,0px));}
 </style>
 </head>
 <body>
@@ -81,6 +108,16 @@ h1{
 </div>
 
 <div id="ts-box" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:4000;"></div>
+
+<div id="water">
+  <canvas id="waterCanvas"></canvas>
+  <textarea id="waterInput" maxlength="4000"></textarea>
+  <div class="wbar">
+    <button class="voice-btn" id="exitWater" type="button" data-i18n="voice.waterExit">← выйти</button>
+    <span class="wcount"><span id="wCount">0</span> / <span id="wCountMax">4000</span></span>
+  </div>
+  <button class="voice-btn wsend" id="wSend" type="button" data-i18n="voice.send">[ ОТПРАВИТЬ ]</button>
+</div>
 
 <script src="js/uc-data.js"></script>
 <script src="i18n.js"></script>
@@ -303,6 +340,151 @@ h1{
       }
     }
     btn.addEventListener('click', send);
+
+    // ═══════════════════════════════════════════════
+    // РЕЖИМ ВОДЫ (Apple Pencil) — тот же ta.value, только форма ввода
+    // меняется под перо. Никакого сниффинга устройств: ждём фактический
+    // pointerType==='pen'. Факт запоминаем — второй раз кнопка доступна
+    // сразу. Перенесено из прежнего отдельного прототипа water_test.html.
+    // ═══════════════════════════════════════════════
+    var toWater = document.createElement('button');
+    toWater.type = 'button';
+    toWater.id = 'toWater';
+    toWater.className = 'voice-btn';
+    toWater.textContent = t('voice.waterToggle');
+    form.insertBefore(toWater, ta);
+
+    var PEN_KEY = 'uc_pen_seen';
+    var penSeen = false;
+    try { penSeen = localStorage.getItem(PEN_KEY) === '1'; } catch(e){}
+    if (penSeen) toWater.classList.add('avail');
+    var lastPen = { x: 0, y: 0, t: -1e9 };
+    function notePen(e){
+      if (!e || e.pointerType !== 'pen') return;
+      lastPen.x = e.clientX; lastPen.y = e.clientY; lastPen.t = performance.now();
+      if (penSeen) return;
+      penSeen = true;
+      toWater.classList.add('avail');
+      try { localStorage.setItem(PEN_KEY, '1'); } catch(e2){}
+    }
+    document.addEventListener('pointerdown', notePen, { passive: true });
+    document.addEventListener('pointermove', notePen, { passive: true });
+
+    var water = document.getElementById('water');
+    var waterCanvas = document.getElementById('waterCanvas');
+    var wCtx = waterCanvas.getContext('2d');
+    var wInput = document.getElementById('waterInput');
+    var wCount = document.getElementById('wCount');
+    document.getElementById('wCountMax').textContent = VOICE_MAX;
+    wInput.placeholder = t('voice.placeholder');
+    var W = 0, H = 0, DPR = 1;
+    var ripples = [];
+    var RIPPLE_MAX = 26;
+    var running = false;
+    var t0 = 0, idleTimer = null;
+
+    function sizeCanvas(){
+      DPR = Math.min(window.devicePixelRatio || 1, 2);
+      W = document.body.clientWidth; H = document.body.clientHeight;
+      waterCanvas.width = Math.round(W * DPR); waterCanvas.height = Math.round(H * DPR);
+      wCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      wCtx.fillStyle = '#00040a'; wCtx.fillRect(0, 0, W, H);
+    }
+    var rzT = null;
+    window.addEventListener('resize', function(){ clearTimeout(rzT); rzT = setTimeout(sizeCanvas, 250); });
+
+    function addRipple(x, y, strength){
+      if (ripples.length >= RIPPLE_MAX) ripples.shift();
+      ripples.push({ x: x, y: y, r: 2, max: 60 + Math.random()*90,
+        v: 0.55 + Math.random()*0.5, a: strength || 0.5, rings: 2 + (Math.random()*2|0) });
+    }
+    function inkPoint(){
+      if (performance.now() - lastPen.t < 1600) return { x: lastPen.x, y: lastPen.y };
+      return { x: W*(0.35+Math.random()*0.3), y: H*(0.42+Math.random()*0.16) };
+    }
+    function frame(ts){
+      if (!running) return;
+      if (!t0) t0 = ts;
+      var tt = (ts - t0) / 1000;
+      wCtx.fillStyle = 'rgba(0,4,10,0.13)';
+      wCtx.fillRect(0, 0, W, H);
+      wCtx.lineWidth = 1;
+      for (var b = 0; b < 3; b++) {
+        var yb = H*(0.3+b*0.2);
+        wCtx.strokeStyle = 'rgba(70,140,210,0.05)';
+        wCtx.beginPath();
+        for (var x = 0; x <= W; x += 14) {
+          var y = yb + Math.sin(x*0.006 + tt*0.35 + b*1.7)*(10+b*5);
+          if (x === 0) wCtx.moveTo(x, y); else wCtx.lineTo(x, y);
+        }
+        wCtx.stroke();
+      }
+      for (var i = ripples.length - 1; i >= 0; i--) {
+        var r = ripples[i];
+        r.r += r.v; r.v *= 0.995;
+        var p = r.r / r.max;
+        if (p >= 1) { ripples.splice(i, 1); continue; }
+        var a = r.a * (1-p) * (1-p);
+        for (var k = 0; k < r.rings; k++) {
+          var rr = r.r - k*9;
+          if (rr <= 0) continue;
+          wCtx.strokeStyle = 'rgba(140,205,255,' + (a*(1-k*0.32)).toFixed(3) + ')';
+          wCtx.lineWidth = 1.3 - k*0.3;
+          wCtx.beginPath(); wCtx.arc(r.x, r.y, rr, 0, 6.2832); wCtx.stroke();
+        }
+      }
+      requestAnimationFrame(frame);
+    }
+    function idleLoop(){
+      if (!running) return;
+      addRipple(Math.random()*W, H*(0.2+Math.random()*0.6), 0.13);
+      idleTimer = setTimeout(idleLoop, 2600 + Math.random()*3500);
+    }
+
+    function enterWater(){
+      wInput.value = ta.value;
+      wCount.textContent = wInput.value.length;
+      water.classList.add('on');
+      sizeCanvas();
+      running = true; t0 = 0;
+      requestAnimationFrame(frame);
+      idleLoop();
+      setTimeout(function(){ try { wInput.focus(); } catch(e){} }, 60);
+    }
+    function exitWater(){
+      running = false;
+      clearTimeout(idleTimer);
+      ripples.length = 0;
+      ta.value = wInput.value;
+      water.classList.remove('on');
+      try { wInput.blur(); } catch(e){}
+      updateCounter();
+      writeDraft(ta.value);
+    }
+    toWater.addEventListener('click', enterWater);
+    document.getElementById('exitWater').addEventListener('click', exitWater);
+
+    var prevLen = 0;
+    wInput.addEventListener('input', function(){
+      var len = wInput.value.length;
+      var delta = len - prevLen;
+      prevLen = len;
+      wCount.textContent = len;
+      ta.value = wInput.value; // единый источник правды для draft/counter/send
+      var p = inkPoint();
+      var s = Math.min(0.85, 0.28 + Math.abs(delta)*0.06);
+      addRipple(p.x, p.y, s);
+      if (Math.abs(delta) > 3) {
+        setTimeout(function(){ addRipple(p.x+(Math.random()*40-20), p.y+(Math.random()*30-15), s*0.5); }, 90);
+      }
+    });
+
+    document.getElementById('wSend').addEventListener('click', function(){
+      for (var i = 0; i < 7; i++) {
+        setTimeout(function(){ addRipple(W/2+(Math.random()*160-80), H*0.5+(Math.random()*120-60), 0.7); }, i*70);
+      }
+      setTimeout(function(){ exitWater(); send(); }, 700);
+    });
   }
 
   // ── Вход ────────────────────────────────────────────────────────────────
