@@ -199,7 +199,7 @@ const SYSTEM_PROMPT = `Ты — аналитический контур Сети
 — Числа должны быть слышны в ТОЧНОСТИ твоих суждений, а не в их тексте. Можно сказать «самый связный узел Сети» или «висит на единственной нити» — это и есть работа с числом. Нельзя превращать наблюдение в опись графа.
 — Не пересказывай блок «СТРУКТУРА ГРАФА» и не перечисляй узлы списком. Он дан, чтобы ты не ошибся, а не чтобы ты его озвучил.
 
-КТО ПОСТРОИЛ СВЯЗЬ — ЭТО ЧАСТЬ ПРАВДЫ. У каждого моста помечен автор: «соединено человеком» или «предположено Связующим (ИИ)». Это разные вещи. Человек, соединивший два шума, совершил выбор. Связующий — всего лишь предположил сходство. Не выдавай машинную догадку за человеческое намерение: не пиши «люди увидели связь», если мост проложил ИИ. Если структура, на которой ты строишь вывод, создана в основном Связующим — имей смелость это признать, в том числе вслух. Сеть, которая узнаёт себя через догадки собственного агента, — это факт о ней, а не изъян, который надо прятать.`;
+КТО ПОСТРОИЛ СВЯЗЬ — ЭТО ЧАСТЬ ПРАВДЫ. У каждого моста помечен автор: «соединено человеком» или «предположено Связующим (ИИ)». Это разные вещи. Человек, соединивший два шума, совершил выбор. Связующий — всего лишь предположил сходство. Не выдавай машинную догадку за человеческое намерение: не пиши «люди увидели связь», если мост проложил ИИ. Если структура, на которой ты строишь вывод, создана в основном Связующим — имей смелость это признать, в том числе вслух. Сеть, которая узнаёт себя через догадки собственного агента, — это факт о ней, а не изъян, который надо прятать. Для каждого узла из блока «СТРУКТУРА ГРАФА» разбивка человек/Связующий дана точно рядом со степенью — не досчитывай и не округляй её сам. «Человеком: 0» значит «все связи машинные», а не «почти все» и не «все, кроме одной».`;
 
 // Уточнение фокуса под каждый scope — добавляется к user-сообщению.
 const SCOPE_FRAMING = {
@@ -293,11 +293,32 @@ function sanitizeInterpretation(text) {
 // молча занижались (при limit=30 «Мы в тупике» имел 6 связей, а агент
 // видел 5). Отдельно считаем, сколько рёбер уходит наружу — если такие
 // есть, агенту прямо сообщается, что он смотрит на часть Сети.
+// АДДИТИВНО: та же болезнь, что была со степенями (14.07), повторилась с
+// авторством (18.08) — сверка с БД на реальном срезе показала, что агент
+// сам досчитывает «сколько из связей узла — человеческие» и ошибается
+// («все, кроме одной», когда на деле человеческих было 0). Причина та же:
+// цифра не дана готовой, агент считает её в уме по списку «Мостов».
+// Решение то же — считает воркер. deg/degHuman/degLinker строятся из одних
+// и тех же уникальных пар (см. дедуп ниже), поэтому degHuman+degLinker
+// всегда равно deg — расхождений, которые агенту пришлось бы объяснять,
+// не возникает.
+//
+// Нюанс: одна и та же пара узлов иногда соединена дважды — человеком и
+// Связующим отдельно (перелинковка). Дедуп рёбер (см. ниже) считает такую
+// пару одной связью, а не двумя, — иначе степень раздувается. Что тогда
+// считать авторством этой пары? Если человек хоть раз её проложил — это
+// человеческая связь: выбор человека не отменяется тем, что Связующий
+// потом предположил то же самое.
 function computeDegrees(sliced, connections) {
   const deg = new Map();          // id → степень (по всем рёбрам узла)
-  sliced.forEach(n => { if (n.id) deg.set(String(n.id), 0); });
+  const degHuman = new Map();     // id → сколько из этих связей — человеком
+  const degLinker = new Map();    // id → сколько из этих связей — только Связующим
+  sliced.forEach(n => {
+    if (n.id) { const k = String(n.id); deg.set(k, 0); degHuman.set(k, 0); degLinker.set(k, 0); }
+  });
 
   const seen = new Set();         // «меньший|больший» — дедуп неориентированных рёбер
+  const pairHuman = new Map();    // «меньший|больший» → была ли среди дублей человеческая связь
   let insideEdges = 0;            // рёбра, оба конца которых в срезе (их агент видит списком)
   let outsideEdges = 0;           // рёбра, уходящие к узлам вне среза
   (Array.isArray(connections) ? connections : []).forEach(c => {
@@ -307,24 +328,38 @@ function computeDegrees(sliced, connections) {
     const hasA = deg.has(a), hasB = deg.has(b);
     if (!hasA && !hasB) return;                  // ребро целиком за пределами среза
     const key = a < b ? a + '|' + b : b + '|' + a;
+    if (String(c.created_by || '') !== 'linker') pairHuman.set(key, true);
+    else if (!pairHuman.has(key)) pairHuman.set(key, false);
     if (seen.has(key)) return;                   // дубликат ребра
     seen.add(key);
     if (hasA) deg.set(a, deg.get(a) + 1);
     if (hasB) deg.set(b, deg.get(b) + 1);
     if (hasA && hasB) insideEdges++; else outsideEdges++;
   });
-  return { deg, uniqueEdges: insideEdges, outsideEdges };
+  seen.forEach(key => {
+    const isHuman = pairHuman.get(key);
+    const [a, b] = key.split('|');
+    const bump = (id) => {
+      if (!deg.has(id)) return;
+      if (isHuman) degHuman.set(id, degHuman.get(id) + 1);
+      else degLinker.set(id, degLinker.get(id) + 1);
+    };
+    bump(a); bump(b);
+  });
+  return { deg, degHuman, degLinker, uniqueEdges: insideEdges, outsideEdges };
 }
 
 // Сводка по структуре — то, в чём агент систематически ошибался.
 // Строится только если связи есть; иначе блок не добавляется вовсе.
-function buildStructureBlock(sliced, deg, uniqueEdges, outsideEdges, byLinker, byHuman, totalNodes) {
+function buildStructureBlock(sliced, deg, degHuman, degLinker, uniqueEdges, outsideEdges, byLinker, byHuman, totalNodes) {
   if (!uniqueEdges && !outsideEdges) return '';
 
   const rows = sliced
     .map((n, i) => ({
       num: i + 1,
       d: deg.get(String(n.id)) ?? 0,
+      h: degHuman.get(String(n.id)) ?? 0,
+      l: degLinker.get(String(n.id)) ?? 0,
       text: String(n.raw_noise || '').slice(0, 50).trim(),
     }))
     .filter(r => r.text);
@@ -350,7 +385,11 @@ function buildStructureBlock(sliced, deg, uniqueEdges, outsideEdges, byLinker, b
   const isolated = rows.filter(r => r.d === 0);
   const pendant = rows.filter(r => r.d === 1);
 
-  const fmt = r => `№${r.num} «${r.text}» [${r.d}]`;
+  // Разбивка человек/Связующий — только там, где связи вообще есть
+  // (у изолированных 0/0 и без того очевидно). h+l всегда равно d.
+  const fmt = r => r.d
+    ? `№${r.num} «${r.text}» [${r.d}, из них человеком: ${r.h}, Связующим: ${r.l}]`
+    : `№${r.num} «${r.text}» [${r.d}]`;
 
   let s = '\n\nСТРУКТУРА ГРАФА (точный расчёт, не оценивай на глаз):';
   s += `\nПоказано узлов: ${rows.length}. Связей между ними: ${uniqueEdges}. Средняя степень: ${avg.toFixed(1)}.`;
@@ -363,6 +402,7 @@ function buildStructureBlock(sliced, deg, uniqueEdges, outsideEdges, byLinker, b
   }
   s += `\nМаксимум связей — ${maxD}. Самые связные (это и есть центры/хабы): ${hubs.map(fmt).join('; ')}.`;
   if (strong.length) s += `\nСледом идут: ${strong.map(fmt).join('; ')}.`;
+  s += ` В скобках у каждого узла — точное разбиение его связей: сколько проложено человеком, сколько предположено Связующим. Это тоже посчитанный факт, не для округления: если у узла «человеком: 0» — пиши «все связи машинные», а не «почти все» или «все, кроме одной».`;
   s += isolated.length
     ? `\nПОЛНОСТЬЮ ИЗОЛИРОВАНЫ (ноль связей): ${isolated.map(fmt).join('; ')}.`
     : `\nПолностью изолированных узлов нет — у каждого есть хотя бы одна связь.`;
@@ -405,7 +445,7 @@ function buildUserMessage(scope, nodes, connections, angle, newIds, prevInterpre
 
   // АДДИТИВНО: точные степени — считаем ДО сборки списка, чтобы подписать
   // каждый узел его реальным числом связей.
-  const { deg, uniqueEdges, outsideEdges } = computeDegrees(sliced, connections);
+  const { deg, degHuman, degLinker, uniqueEdges, outsideEdges } = computeDegrees(sliced, connections);
 
   const noiseList = sliced
     .map((n, i) => {
@@ -451,7 +491,7 @@ function buildUserMessage(scope, nodes, connections, angle, newIds, prevInterpre
   // АДДИТИВНО: сводка по структуре — центры, изолированные, висячие,
   // полнота среза и авторство мостов. Именно здесь агент раньше врал.
   const structureBlock = buildStructureBlock(
-    sliced, deg, uniqueEdges, outsideEdges, byLinker, byHuman, totalNodes
+    sliced, deg, degHuman, degLinker, uniqueEdges, outsideEdges, byLinker, byHuman, totalNodes
   );
 
   // АДДИТИВНО: дельта-режим — часть узлов помечена как новая с прошлого
