@@ -338,6 +338,10 @@ h1{
         updateCounter();
         btn.textContent = t('voice.sent');
         idem = genIdem(); // готовим отдельный голос к следующей отправке
+        // Голос ушёл — писать больше нечего, и это единственный момент, когда
+        // про перо можно судить наверняка, а не по тишине событий. Гасим
+        // кнопку сразу; захочешь писать пером ещё раз — касание её вернёт.
+        if (toWater) { penSeen = false; toWater.classList.remove('avail'); clearTimeout(penIdleTimer); }
         setTimeout(function(){ btn.textContent = t('voice.send'); sending = false; updateCounter(); }, 2400);
       } catch(e) {
         // Текст остаётся в textarea и в черновике — обрыв связи ничего не стирает.
