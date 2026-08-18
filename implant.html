@@ -1174,12 +1174,20 @@ async function loadPersonal() {
     const connsTo = await connsToRes.json();
     const a = Array.isArray(connsFrom) ? connsFrom : [];
     const b = Array.isArray(connsTo) ? connsTo : [];
-    // Дедуп: связь могла попасть в оба запроса (оба конца мои)
-    const seen = new Set();
+    // Дедуп: связь могла попасть в оба запроса (оба конца мои), а иногда
+    // одна и та же пара узлов соединена дважды — человеком и отдельно
+    // Связующим (перелинковка). Тот же принцип, что в computeDegrees
+    // воркера-аналитика: человеческий выбор не отменяется тем, что
+    // Связующий позже предположил то же самое — при дубле пары сохраняем
+    // human-версию, а не первую попавшуюся.
+    const byKey = new Map();
     [...a, ...b].forEach(c => {
       const key = c.from_node_id + '|' + c.to_node_id;
-      if (!seen.has(key)) { seen.add(key); window._myConns.push(c); }
+      const existing = byKey.get(key);
+      if (!existing) { byKey.set(key, c); return; }
+      if (String(c.created_by || '') !== 'linker') existing.created_by = c.created_by;
     });
+    window._myConns = Array.from(byKey.values());
     totalConnections = window._myConns.length;
   } catch (e) {
     console.warn('Ошибка подсчёта связей:', e);
