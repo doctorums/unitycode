@@ -160,6 +160,16 @@ async function checkEnv(){
   // реальная проверка: пинг до воркера записи
   rows.push(['Воркер вплетения', '<span id="ping-w" class="loading">проверяю…</span>']);
 
+  // размер сети и окно, в котором Связующий видит кандидатов на связь —
+  // рядом друг с другом специально: как только первое приблизится ко
+  // второму, Связующий начнёт терять из виду старые узлы при поиске
+  // резонанса. Это и есть содержательный триггер для разговора про
+  // pgvector/семантический recall, не факт существования отдельных
+  // таблиц. Окно — не живой запрос, это константа кода (gatherLinkCandidates,
+  // limit=60 в unitycode-write.js), меняется только правкой кода.
+  rows.push(['Узлов в сети', '<span id="node-count" class="loading">проверяю…</span>']);
+  rows.push(['Окно кандидатов Связующего', 'последние 60 узлов']);
+
   // геолокация: только статус разрешения, без запроса координат
   rows.push(['Геолокация', '<span id="geo-st" class="loading">проверяю…</span>']);
 
@@ -184,6 +194,15 @@ async function checkEnv(){
       p.innerHTML = r.ok ? '<span class="ok">доступна ('+ms+' мс)</span>' : '<span class="bad">отвечает ошибкой '+r.status+'</span>';
       p.className = '';
     } catch(e){ p.innerHTML = '<span class="bad">недоступна с этой сети</span>'; p.className=''; }
+  })();
+
+  // число узлов — переиспользуем UCData.countNodes() (тот же count=exact,
+  // без строк, только Content-Range), а не отдельный fetch
+  (async () => {
+    const p = document.getElementById('node-count');
+    const n = await UCData.countNodes();
+    p.innerHTML = n == null ? '<span class="bad">не удалось посчитать</span>' : String(n);
+    p.className = '';
   })();
 
   // пинг воркера (OPTIONS/HEAD не гарантированы — шлём лёгкий GET, любой ответ = жив)
