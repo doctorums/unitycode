@@ -492,11 +492,14 @@ if(entry) entry.letters=Array.from(el.querySelectorAll('span'));
 document.addEventListener('mousemove',e=>drop(e.clientX,e.clientY,.15,1,12));
 document.addEventListener('click',e=>{addRing(e.clientX,e.clientY);});
 document.addEventListener('touchstart',e=>{
-if(e.target.closest('nav,a,.btn'))return;
+if(e.target.closest('nav,a,.btn,#uc-guide'))return;
 for(const t of e.touches){addRing(t.clientX,t.clientY);}
 },{passive:true});
+// #uc-guide — АДДИТИВНО: без исключения e.preventDefault() ниже глушил
+// нативный скролл пальцем внутри модалки гида (текст длиннее экрана,
+// а листать было нечем).
 document.addEventListener('touchmove',e=>{
-if(e.target.closest('nav,a,.btn'))return;
+if(e.target.closest('nav,a,.btn,#uc-guide'))return;
 for(const t of e.touches)drop(t.clientX,t.clientY,.8,1,8);
 e.preventDefault();
 },{passive:false});
