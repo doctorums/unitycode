@@ -96,6 +96,10 @@ pointer-events:none;
 #uc-guide{position:fixed;inset:0;z-index:500;background:rgba(2,6,12,0.88);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:2rem;opacity:0;pointer-events:none;transition:opacity 0.4s ease;}
 #uc-guide.show{opacity:1;pointer-events:all;}
 #uc-guide-box{max-width:560px;width:100%;max-height:78vh;overflow-y:auto;background:rgba(9,20,35,0.94);border:1px solid rgba(160,215,255,0.22);border-radius:10px;padding:2.2rem 1.8rem;font-family:'Share Tech Mono',monospace;font-size:0.82rem;line-height:1.8;color:rgba(255,255,255,0.75);box-shadow:0 0 50px rgba(0,0,0,0.55);}
+/* «Назад» теперь плавает поверх box (см. #uc-guide #btn ниже), а не
+   резервирует место в потоке — без запаса снизу последние строки гида
+   утыкаются под неё и не проскролливаются выше. */
+#uc-guide-body{padding-bottom:5.5rem;}
 #uc-guide-box h2{font-family:'Unbounded',sans-serif;font-weight:400;font-size:1rem;color:rgba(170,215,255,0.92);margin:1.8rem 0 0.7rem;}
 #uc-guide-box h2:first-child{margin-top:0;}
 #uc-guide-box h3{font-family:'Unbounded',sans-serif;font-weight:400;font-size:0.85rem;color:rgba(200,225,255,0.75);margin:1.3rem 0 0.5rem;}
