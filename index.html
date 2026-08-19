@@ -63,7 +63,13 @@ pointer-events:none;
 50%{opacity:0;}
 }
 .label{font-size:0.8rem;letter-spacing:0.18em;color:rgba(255,255,255,0.32);text-transform:uppercase;margin-bottom:1rem;will-change:transform;opacity:0;animation:fi 1.2s ease 0.2s forwards;text-shadow:0 0 8px rgba(255,255,255,0.3),0 0 20px rgba(160,210,255,0.2);}
-.question{font-family:'Unbounded',sans-serif;font-weight:400;font-size:clamp(0.95rem,2.6vw,1.4rem);line-height:1.8;color:rgba(255,255,255,0.9);margin-bottom:1rem;text-shadow:0 2px 30px rgba(0,20,60,0.9);will-change:transform;opacity:0;animation:fi 1.5s ease 0.6s forwards;}
+.question{font-family:'Unbounded',sans-serif;font-weight:400;font-size:clamp(0.95rem,2.6vw,1.4rem);line-height:1.8;color:rgba(255,255,255,0.9);margin-bottom:1rem;text-shadow:0 2px 30px rgba(0,20,60,0.9);will-change:transform;opacity:0;animation:fi 1.5s ease 0.6s forwards;
+/* Safari по умолчанию сам «раздувает» видимый размер текста
+   (text-size-adjust:auto) в зависимости от объёма и момента вставки —
+   текст подсказки приходит позже через innerHTML, не в исходной
+   разметке, и мог получать другую эвристику при том же CSS font-size.
+   Отключаем автоподбор, чтобы рендерился ровно заданный размер всегда. */
+-webkit-text-size-adjust:100%;text-size-adjust:100%;}
 .question em{font-style:normal;color:rgba(160,215,255,0.92);}
 .btn{display:inline-block;padding:0.6rem 1.6rem;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.65);font-family:'Share Tech Mono',monospace;font-size:0.65rem;letter-spacing:0.2em;text-transform:uppercase;text-decoration:none;background:rgba(255,255,255,0.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);opacity:0;animation:fi 1.5s ease 1.3s forwards;transition:all 0.3s;will-change:transform;cursor:pointer;pointer-events:all;border-radius:6px;}
 #btn{font-family:'Unbounded',sans-serif;font-size:clamp(0.95rem,2.6vw,1.4rem);letter-spacing:normal;text-transform:none;padding:0.6rem 1.6rem;border:1px solid rgba(255,255,255,0.22);background:rgba(255,255,255,0.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:rgba(160,215,255,0.92);}
