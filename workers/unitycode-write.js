@@ -15,8 +15,10 @@
 //   SUPABASE_URL          (var)    https://lukyyqabkxzrgdixzphs.supabase.co
 //   SUPABASE_SERVICE_KEY  (secret) service_role ключ Supabase — НИКОГДА не отдавать клиенту
 //   TURNSTILE_SECRET      (secret) секрет виджета Cloudflare Turnstile
-//   MIMO_API_KEY          (secret) ключ шлюза DotPoin — включает ИИ-привратника при вплетении.
-//                                  Если секрета нет — привратник выключен, всё вплетается.
+//   MIMO_API_KEY          (secret) ключ шлюза DotPoin — включает ИИ-привратника при вплетении,
+//                                  а также фоновую оценку Голосов (reviewVoice). Если секрета
+//                                  нет — привратник выключен (всё вплетается), Голоса пишутся
+//                                  без review_score (остаётся null).
 //   RATE_KV               (KV)     опционально; лимит частоты по token/IP
 //   VOICE_THRESHOLD       (var)    опционально; порог шумов для «вторых ворот» (см. voice_*
 //                                  ниже). Без переменной — дефолт 50.
@@ -671,6 +673,77 @@ async function countUserNodes(env, token) {
   return Number.isFinite(total) ? total : 0;
 }
 
+// ── ВНУТРЕННИЙ РЕЙТИНГ ГОЛОСОВ (review_score) ──────────────────────
+// Чисто измерительный слой, не фильтр: право писать уже заработано
+// порогом в voiceThreshold(), оценка ничего не отклоняет и не блокирует —
+// только данные для будущей аналитики/сортировки. Срабатывает один раз
+// после успешной записи голоса, фоново (ctx.waitUntil), тем же образом,
+// что Связующий после вплетения узла (см. runLinker). Любая ошибка (сеть,
+// парсинг, таймаут) тихо проглатывается — голос остаётся с
+// review_score = null, ретрая нет: это не критичный путь, голос уже
+// сохранён и виден человеку независимо от оценки.
+// Критерии рубрики: без «искренности» как отдельного пункта — эта
+// формулировка штрафовала бы тон, а не мысль. Голоса рождаются из
+// общения с другими умными мозгами, в том числе с ИИ (DECISIONS.md,
+// 15.08) — юмор и философское фехтование там органичны, не отклонение
+// от жанра, и не должны занижать оценку.
+const REVIEW_PROMPT = `Ты — тихий рецензент Сети Код Единства. Тебе дают текст Голоса — осознанный текст, который человек написал, набрав достаточно шумов в Сети. Голоса рождаются из живого общения, в том числе с ИИ — юмор, ирония и философская игра там так же уместны, как серьёзность, и не должны занижать оценку.
+
+Оцени резонанс текста с идеей Сети по шкале 0-10. Это не фильтр и не вердикт — оценка никогда не приводит к отказу, чисто внутренняя аналитика.
+
+Что повышает оценку:
+— развитие мысли: виден поворот, сомнение, столкновение идей — не готовый лозунг (юмор и философское фехтование это тоже развитие, не помеха ему);
+— резонанс с темами Сети: связность, смысл между людьми и мыслями, самоорганизация, неопределённость — по сути, не по ключевым словам;
+— переработка, а не пересказ: пропущено через собственный взгляд, а не скопировано без переосмысления;
+— открытость, а не проповедь: недогматичность, в том числе ироничная.
+
+Ответь СТРОГО одним JSON без markdown и пояснений:
+{"score": 0-10, "note": "краткое обоснование, 1-2 предложения"}`;
+
+async function reviewVoice(env, voice) {
+  if (!env.MIMO_API_KEY) return;
+  try {
+    const r = await fetch(MIMO_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + env.MIMO_API_KEY },
+      body: JSON.stringify({
+        model: MIMO_MODEL_FAST,
+        temperature: 0.3,
+        max_tokens: 400,
+        messages: [
+          { role: 'system', content: REVIEW_PROMPT },
+          { role: 'user', content: voice.text },
+        ],
+      }),
+    });
+    if (!r.ok) return;
+    const d = await r.json();
+    const msg = d?.choices?.[0]?.message || {};
+    let raw = (msg.content || '').replace(/```json|```/g, '').trim();
+    if (!raw && msg.reasoning_content) {
+      const rc = String(msg.reasoning_content);
+      const m = rc.match(/\{[^{}]*"score"[^{}]*\}/);
+      if (m) raw = m[0];
+    }
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    const score = Math.round(Number(parsed.score));
+    if (!Number.isFinite(score) || score < 0 || score > 10) return;
+    const note = String(parsed.note || '').slice(0, 500);
+
+    await fetch(`${env.SUPABASE_URL}/rest/v1/voices?id=eq.${voice.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: env.SUPABASE_SERVICE_KEY,
+        Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY,
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify({ review_score: score, review_note: note, reviewed_at: new Date().toISOString() }),
+    });
+  } catch (e) { /* тихо: не критичный путь, ретрая нет */ }
+}
+
 // ── КООРДИНАТЫ, КОГДА БРАУЗЕР ИХ НЕ ДАЛ (25.07) ──────────────────
 // Предложение Вити: не оставлять узел совсем без места на карте, если
 // человек не разрешил геолокацию (отказ, таймаут, выключенные службы —
@@ -938,7 +1011,11 @@ export default {
         if (typeof body.client_id === 'string' && body.client_id.length > 0 && body.client_id.length <= 100) {
           row.client_id = body.client_id.slice(0, 100);
         }
-        await sbInsert(env, 'voices', row, false, 'resolution=ignore-duplicates');
+        const created = await sbInsert(env, 'voices', row, true, 'resolution=ignore-duplicates');
+        // На дублирующей отправке (та же client_id, офлайн-ретрай) sbInsert
+        // с ignore-duplicates возвращает пусто — created?.id ложный, оценка
+        // повторно не запускается. Тот же приём, что у node/created?.id выше.
+        if (created?.id) ctx.waitUntil(reviewVoice(env, { id: created.id, text }));
         return json({ ok: true }, 200, origin);
       }
 
