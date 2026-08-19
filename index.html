@@ -80,6 +80,32 @@ pointer-events:none;
 .choice-btns{display:flex;flex-direction:column;gap:1rem;align-items:center;}
 .choice-btn{padding:0.6rem 1.6rem;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.65);font-family:'Share Tech Mono',monospace;font-size:0.65rem;letter-spacing:0.2em;text-transform:uppercase;background:rgba(255,255,255,0.04);cursor:pointer;transition:all 0.3s;text-align:center;border-radius:6px;min-width:220px;}
 .choice-btn:hover,.choice-btn:active{border-color:rgba(90,185,250,0.5);color:rgba(90,185,250,0.9);}
+
+/* АДДИТИВНО: подсказка для зависших новичков (guide.md в модалке).
+   Палитра — своя, локальная для index.html: страница не подключает
+   shared.css и нигде не объявляет --accent/--border/--dim, у неё
+   отдельный визуальный язык (мягкий синий на тёмно-синем), тот же,
+   что уже использован в этом файле — заимствуем его, а не чужой
+   зелёный акцент из shared.css. */
+#uc-guide{position:fixed;inset:0;z-index:500;background:rgba(2,6,12,0.88);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:2rem;opacity:0;pointer-events:none;transition:opacity 0.4s ease;}
+#uc-guide.show{opacity:1;pointer-events:all;}
+#uc-guide-box{max-width:560px;width:100%;max-height:78vh;overflow-y:auto;background:rgba(9,20,35,0.94);border:1px solid rgba(160,215,255,0.22);border-radius:10px;padding:2.2rem 1.8rem;font-family:'Share Tech Mono',monospace;font-size:0.82rem;line-height:1.8;color:rgba(255,255,255,0.75);box-shadow:0 0 50px rgba(0,0,0,0.55);}
+#uc-guide-box h2{font-family:'Unbounded',sans-serif;font-weight:400;font-size:1rem;color:rgba(170,215,255,0.92);margin:1.8rem 0 0.7rem;}
+#uc-guide-box h2:first-child{margin-top:0;}
+#uc-guide-box h3{font-family:'Unbounded',sans-serif;font-weight:400;font-size:0.85rem;color:rgba(200,225,255,0.75);margin:1.3rem 0 0.5rem;}
+#uc-guide-box p{margin-bottom:0.9rem;}
+#uc-guide-box strong{color:rgba(255,255,255,0.95);}
+#uc-guide-box a{color:rgba(160,215,255,0.9);}
+#uc-guide-box code{background:rgba(255,255,255,0.08);padding:0.1em 0.4em;border-radius:3px;font-size:0.92em;}
+#uc-guide-box hr{border:none;border-top:1px solid rgba(255,255,255,0.1);margin:1.6rem 0;}
+#uc-guide-box ul{margin:0 0 0.9rem 1.2rem;}
+#uc-guide-box li{margin-bottom:0.35rem;}
+/* #btn на время внутри модалки — тот же узел, приклеен к верху блока,
+   пока текст под ним прокручивается. Непрозрачный фон — иначе сквозь
+   родной полупрозрачный фон кнопки просвечивает уезжающий вверх текст.
+   animation:none — в модалке уже не часть входной сцены, повторный fi
+   ей ни к чему. */
+#uc-guide-box #btn{position:sticky;top:0;display:inline-block;margin-bottom:1.3rem;background:rgba(9,20,35,0.97);z-index:1;animation:none;opacity:1;}
 </style>
 </head>
 <body>
@@ -776,6 +802,9 @@ d.style.color='';
   } catch(e){}
   var hasTrace = false;
   try { hasTrace = !!localStorage.getItem('uc_token') || visits > 0; } catch(e){}
+  // АДДИТИВНО: выставляем наружу — им пользуется отдельный блок подсказки
+  // для зависших новичков (см. </body>, работает по признаку !hasTrace).
+  window.__ucHasTrace = hasTrace;
   // Гейт по hasTrace относится ТОЛЬКО к Выходу (новичку нечего выходить) —
   // пункты меню это навигация, не уход, и видны с первого визита.
   // Раньше ранний return здесь выключал вообще всё, включая меню, до
@@ -1058,6 +1087,218 @@ d.style.color='';
       }
     });
   });
+})();
+</script>
+<script>
+// ═══════════════════════════════════════════════════════
+// АДДИТИВНО: подсказка для зависших новичков.
+// Если человек новый (!window.__ucHasTrace — выставлено в блоке «ВЫХОД
+// И МЕНЮ» выше) и за 20с после того, как «Услышать себя» стала видна и
+// интерактивна, так и не нажал её — кнопка тихо меняется на «Смотри
+// здесь», и клик по ней открывает короткий гид (guide.md) вместо
+// туннеля. Возвращающихся это не касается: у них уже есть свой путь —
+// слова меню с тем же признаком следа.
+//
+// Самостоятельный компонент: своя загрузка и свой рендер markdown (тот
+// же приём, что loadLocalized()/рендер в materials.html — тот же метод,
+// не общий код), ничего из implant.html (oracle) не используется.
+// ═══════════════════════════════════════════════════════
+(function(){
+  if (window.__ucHasTrace) return; // подсказка только для новичков
+
+  var btn = document.getElementById('btn');
+  if (!btn) return;
+
+  var t = function(key){ return (window.UC_I18N ? UC_I18N.t(key) : key); };
+
+  // ── момент готовности: конец CSS-анимации fi у #btn (1.3s+1.5s=2.8s
+  // по текущим значениям в стилях выше). Событие точнее фиксированного
+  // времени — не разъедется, если тайминг в CSS когда-нибудь подвинут.
+  // setTimeout — подстраховка на случай, если animationend не придёт
+  // (например, анимации отключены настройками доступности).
+  var started = false;
+  function onReady(){
+    if (started) return;
+    started = true;
+    startIdle();
+  }
+  btn.addEventListener('animationend', function(e){
+    if (!e || e.animationName === 'fi') onReady();
+  });
+  setTimeout(onReady, 3000);
+
+  // ── таймер простоя: 20с, на паузе пока вкладка в фоне. Перезапуск при
+  // возврате со скрытия НЕ теряет прогресс (idleRemain), а полный сброс
+  // состояния при возврате из bfcache уже делает существующий обработчик
+  // pageshow (location.reload()) — отдельно его не трогаем.
+  var IDLE_MS = 20000;
+  var idleTimer = null, idleStart = 0, idleRemain = IDLE_MS;
+  var armed = false;   // таймер сейчас тикает
+  var hinted = false;  // подсказка уже сработала (или отменена кликом) — второй раз не пробуем
+
+  function startIdle(){
+    if (armed || hinted) return;
+    armed = true;
+    idleStart = performance.now();
+    idleTimer = setTimeout(onIdle, idleRemain);
+  }
+  function pauseIdle(){
+    if (!armed) return;
+    clearTimeout(idleTimer);
+    idleRemain = Math.max(0, idleRemain - (performance.now() - idleStart));
+    armed = false;
+  }
+  function resumeIdle(){
+    if (armed || hinted || idleRemain <= 0) return;
+    startIdle();
+  }
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden) pauseIdle(); else resumeIdle();
+  });
+
+  // клик по кнопке раньше срабатывания подсказки — человек уже пошёл
+  // своим путём, подсказка больше не нужна вовсе
+  function cancelIdle(){
+    hinted = true;
+    clearTimeout(idleTimer);
+  }
+  btn.addEventListener('click', cancelIdle);
+  btn.addEventListener('touchend', cancelIdle);
+
+  function onIdle(){
+    armed = false;
+    hinted = true;
+    showHint();
+  }
+
+  // ── смена текста кнопки БЕЗ пересборки .wl-обвязки: волновая физика
+  // текста (animText/waveLines) держит ссылку на конкретный span.wl —
+  // замена btn.innerHTML оборвала бы эту ссылку и текст перестал бы
+  // качаться вместе с водой. Меняем textContent на месте.
+  function setBtnText(key){
+    var wl = btn.querySelector('.wl');
+    if (wl) wl.textContent = t(key); else btn.textContent = t(key);
+  }
+
+  function showHint(){
+    setBtnText('index.btnHint');
+    btn.onclick = function(e){ if (e && e.preventDefault) e.preventDefault(); openGuide(); };
+    btn.ontouchend = btn.onclick;
+  }
+
+  function restoreBtn(){
+    setBtnText('index.btn');
+    btn.onclick = function(e){ tunnelGo(e); };
+    btn.ontouchend = btn.onclick;
+  }
+
+  // ── видимость кнопки поверх подложки модалки ────────────────────────
+  // Первая версия поднимала #btn через z-index — не сработало по CSS: у
+  // .ui (родителя) свой контекст наложения (position:fixed+z-index:10), и
+  // z-index потомка из него не вырывается никаким числом. Подняли .ui
+  // целиком — кнопка оказалась не на том месте: её позиция в макете
+  // (вертикальный центр экрана) совпала с серединой прокручиваемого
+  // текста гида, «Назад» повисало прямо поверх абзацев.
+  // Решение проще: на время модалки кнопка физически переезжает внутрь
+  // #uc-guide-box, приклеенная к верху (position:sticky) — тот же самый
+  // узел (#btn), просто временно в другом месте DOM. Волновая физика
+  // текста (animText/waveLines) держит ссылку на элемент, не на его
+  // родителя — работать не перестаёт, даже покачивается внутри модалки.
+  // При закрытии — возвращаем в точности туда, откуда взяли.
+  var btnHome = btn.parentNode, btnNext = btn.nextSibling;
+  function restoreBtnPosition(){
+    if (btn.parentNode !== btnHome) btnHome.insertBefore(btn, btnNext);
+  }
+
+  // ── модалка: тёмная подложка, прокручиваемый блок текста; #btn — его
+  // первый потомок (см. выше), сам markdown — в отдельном узле body,
+  // чтобы innerHTML на нём не выкидывал #btn из документа.
+  var overlay = null, box = null, body = null, loaded = false;
+  function ensureModal(){
+    if (overlay) return;
+    overlay = document.createElement('div');
+    overlay.id = 'uc-guide';
+    box = document.createElement('div');
+    box.id = 'uc-guide-box';
+    body = document.createElement('div');
+    body.id = 'uc-guide-body';
+    box.appendChild(body);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    // тап по подложке вне текста — закрывает, тот же паттерн, что в
+    // js/uc-door.js; клик по самому тексту не должен всплывать наружу
+    overlay.addEventListener('click', closeGuide);
+    overlay.addEventListener('touchend', closeGuide);
+    box.addEventListener('click', function(e){ e.stopPropagation(); });
+    box.addEventListener('touchend', function(e){ e.stopPropagation(); });
+  }
+
+  // Загрузка md с учётом языка — тот же приём, что loadLocalized() в
+  // materials.html: пробуем guide_<lang>.md, откат на guide.md.
+  function loadGuide(){
+    var lang = (window.UC_I18N ? UC_I18N.lang : 'ru');
+    var list = (lang && lang !== 'ru') ? ['guide_'+lang+'.md', 'guide.md'] : ['guide.md'];
+    var i = 0;
+    function tryNext(){
+      if (i >= list.length) return Promise.resolve(null);
+      var url = list[i++];
+      return fetch(url).then(function(res){
+        return res.ok ? res.text() : tryNext();
+      }).catch(tryNext);
+    }
+    return tryNext();
+  }
+
+  // Тот же минимальный markdown → HTML, что уже используется в
+  // materials.html — переиспользуем метод, без сторонних библиотек.
+  function renderMarkdown(md){
+    var esc = function(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+    var inline = function(s){
+      return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2">$1</a>');
+    };
+    var html = '', inList = false;
+    var closeList = function(){ if (inList){ html += '</ul>'; inList = false; } };
+    md.split('\n').forEach(function(raw){
+      var line = raw.replace(/\s+$/,'');
+      if (/^\s*$/.test(line)){ closeList(); return; }
+      if (/^#\s/.test(line)){ closeList(); return; }
+      if (/^##\s/.test(line)){ closeList(); html += '<h2>'+inline(line.replace(/^##\s/,''))+'</h2>'; return; }
+      if (/^###\s/.test(line)){ closeList(); html += '<h3>'+inline(line.replace(/^###\s/,''))+'</h3>'; return; }
+      if (/^---+$/.test(line)){ closeList(); html += '<hr>'; return; }
+      if (/^\s*[-*]\s/.test(line)){ if (!inList){ html += '<ul>'; inList = true; } html += '<li>'+inline(line.replace(/^\s*[-*]\s/,''))+'</li>'; return; }
+      closeList();
+      html += '<p>'+inline(line)+'</p>';
+    });
+    closeList();
+    return html;
+  }
+
+  function openGuide(){
+    ensureModal();
+    box.insertBefore(btn, body); // тот же узел #btn, теперь первым в модалке
+    overlay.classList.add('show');
+    setBtnText('index.btnBack');
+    btn.onclick = closeGuide;
+    btn.ontouchend = closeGuide;
+    if (loaded) return;
+    body.innerHTML = '<p>'+t('index.guideLoading')+'</p>';
+    // fail-safe: обрыв сети не блокирует закрытие — окно уже открыто,
+    // «Назад»/тап по подложке работают независимо от того, загрузилось ли
+    loadGuide().then(function(md){
+      if (md == null){ body.innerHTML = '<p>'+t('index.guideError')+'</p>'; return; }
+      loaded = true;
+      body.innerHTML = renderMarkdown(md);
+    });
+  }
+
+  function closeGuide(e){
+    if (e && e.preventDefault) e.preventDefault();
+    if (overlay) overlay.classList.remove('show');
+    restoreBtnPosition();
+    restoreBtn();
+  }
 })();
 </script>
 </body>
