@@ -824,7 +824,22 @@ d.style.color='';
     localStorage.setItem('uc_visits', String(visits+1));
   } catch(e){}
   var hasTrace = false;
-  try { hasTrace = !!localStorage.getItem('uc_token') || visits > 0; } catch(e){}
+  try {
+    // sessionStorage переживает location.reload() (в т.ч. смену языка —
+    // она именно так и устроена) и обычное обновление страницы в этой же
+    // вкладке, но пуст при первом её открытии. Решение фиксируем один раз
+    // на вкладку: без этого собственный visits++ строкой выше задним
+    // числом делал бы новичка «вернувшимся» после первого же обновления
+    // или смены языка — и подсказка для зависших новичков (см. </body>)
+    // больше никогда не срабатывала бы для него.
+    var cachedTrace = sessionStorage.getItem('uc_hasTrace');
+    if (cachedTrace !== null) {
+      hasTrace = cachedTrace === '1' || !!localStorage.getItem('uc_token');
+    } else {
+      hasTrace = !!localStorage.getItem('uc_token') || visits > 0;
+      sessionStorage.setItem('uc_hasTrace', hasTrace ? '1' : '0');
+    }
+  } catch(e){}
   // АДДИТИВНО: выставляем наружу — им пользуется отдельный блок подсказки
   // для зависших новичков (см. </body>, работает по признаку !hasTrace).
   window.__ucHasTrace = hasTrace;
