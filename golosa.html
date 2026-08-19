@@ -10,6 +10,11 @@
 <noscript><link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400&display=swap" rel="stylesheet"></noscript>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
+/* Фон только на body давал белую вспышку при оттяжке/сжатии страницы —
+   резиновый откат (overscroll) на миг показывает фон html, а он по
+   умолчанию белый. Тёмный фон нужен и здесь, тем же цветом, что нижняя
+   точка градиента body — переход не режет глаз. */
+html{background:#040d1a;}
 html,body{width:100%;min-height:100%;}
 body{
   font-family:'Share Tech Mono',monospace;
