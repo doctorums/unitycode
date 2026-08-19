@@ -63,12 +63,7 @@ pointer-events:none;
 50%{opacity:0;}
 }
 .label{font-size:0.8rem;letter-spacing:0.18em;color:rgba(255,255,255,0.32);text-transform:uppercase;margin-bottom:1rem;will-change:transform;opacity:0;animation:fi 1.2s ease 0.2s forwards;text-shadow:0 0 8px rgba(255,255,255,0.3),0 0 20px rgba(160,210,255,0.2);}
-.question{font-family:'Unbounded',sans-serif;font-weight:400;font-size:clamp(0.95rem,2.6vw,1.4rem);line-height:1.8;color:rgba(255,255,255,0.9);margin-bottom:1rem;text-shadow:0 2px 30px rgba(0,20,60,0.9);will-change:transform;opacity:0;animation:fi 1.5s ease 0.6s forwards;
-/* АДДИТИВНО: резерв под 5 строк (высота исходного текста) — у
-   index.qHint строк меньше (3), без этого .center мельчает и весь блок
-   (в т.ч. кнопка и текст про эксперимент ниже) перецентровывается
-   внутри .ui, будто подвал страницы «едет». */
-min-height:9em;}
+.question{font-family:'Unbounded',sans-serif;font-weight:400;font-size:clamp(0.95rem,2.6vw,1.4rem);line-height:1.8;color:rgba(255,255,255,0.9);margin-bottom:1rem;text-shadow:0 2px 30px rgba(0,20,60,0.9);will-change:transform;opacity:0;animation:fi 1.5s ease 0.6s forwards;}
 .question em{font-style:normal;color:rgba(160,215,255,0.92);}
 .btn{display:inline-block;padding:0.6rem 1.6rem;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.65);font-family:'Share Tech Mono',monospace;font-size:0.65rem;letter-spacing:0.2em;text-transform:uppercase;text-decoration:none;background:rgba(255,255,255,0.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);opacity:0;animation:fi 1.5s ease 1.3s forwards;transition:all 0.3s;will-change:transform;cursor:pointer;pointer-events:all;border-radius:6px;}
 #btn{font-family:'Unbounded',sans-serif;font-size:clamp(0.95rem,2.6vw,1.4rem);letter-spacing:normal;text-transform:none;padding:0.6rem 1.6rem;border:1px solid rgba(255,255,255,0.22);background:rgba(255,255,255,0.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:rgba(160,215,255,0.92);}
@@ -1128,6 +1123,7 @@ d.style.color='';
   function onReady(){
     if (started) return;
     started = true;
+    if (qEl) qReservedHeight = qEl.getBoundingClientRect().height;
     startIdle();
   }
   btn.addEventListener('animationend', function(e){
@@ -1190,20 +1186,35 @@ d.style.color='';
 
   // ── смена заголовка #q. В отличие от кнопки, здесь нельзя просто
   // поменять textContent на месте: у index.q и index.qHint разное число
-  // строк (5 и 3), готовых .wl-слотов под новый текст нет. Поэтому
-  // innerHTML меняется целиком, а место старых waveLines-записей (их
-  // узлы после замены уже не в DOM, animText на них просто вхолостую
-  // дёргает style — безвредно, но и без толку) занимают новые: каждый
-  // свежий .wl/.em.wl внутри #q регистрируется в waveLines заново, чтобы
-  // текст не застыл. waveLines — const в соседнем <script>, но массивы
-  // изменяемы через push даже так; оба тега делят один глобальный scope.
+  // строк, готовых .wl-слотов под новый текст нет. Поэтому innerHTML
+  // меняется целиком, а место старых waveLines-записей (их узлы после
+  // замены уже не в DOM, animText на них просто вхолостую дёргает style —
+  // безвредно, но и без толку) занимают новые: каждый свежий .wl/.em.wl
+  // внутри #q регистрируется в waveLines заново, чтобы текст не застыл.
+  // waveLines — const в соседнем <script>, но массивы изменяемы через
+  // push даже так; оба тега делят один глобальный scope.
   var qEl = document.getElementById('q');
+  // высота исходного текста (сколько бы строк он ни занял на конкретном
+  // экране — тут не гадаем в em, а меряем факт) меряется один раз в
+  // onReady(), пока в #q ещё живёт index.q. index.qHint короче, поэтому
+  // без брони под эту высоту .center мельчает и весь блок (в т.ч. кнопка
+  // и текст про эксперимент ниже) перецентровывается внутри .ui, будто
+  // подвал страницы «едет». Дальше короткий текст не просто резервирует
+  // столько же места, а прижимается к НИЗУ этого места (padding-top),
+  // чтобы его последняя строка совпала с тем местом, где заканчивалась
+  // исходная — а не висела вверху с пустотой под собой.
+  var qReservedHeight = 0;
   function setHeadingHTML(html){
     if (!qEl) return;
+    qEl.style.paddingTop = '0px';
     qEl.innerHTML = html;
     Array.prototype.forEach.call(qEl.querySelectorAll('.wl'), function(el){
       waveLines.push({ el: el, phase: Math.random()*6.28, freq: 0.28+Math.random()*0.14, amp: 0.5, cx:0, cy:0 });
     });
+    if (qReservedHeight){
+      var pad = qReservedHeight - qEl.scrollHeight;
+      if (pad > 0) qEl.style.paddingTop = pad + 'px';
+    }
     if (typeof invalidateRectCache === 'function') invalidateRectCache();
   }
 
