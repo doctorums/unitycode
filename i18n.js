@@ -48,9 +48,9 @@
     // — тихая подсказка новичку, зависшему на 20с без клика —
     'index.btnHint':   { ru:`Смотри здесь`, en:`Look here` , es:`Mira aquí`, fr:`Regarde ici`, zh:`看这里`},
     'index.qHint': {
-      ru:`<span class="wl">Если ты не понимаешь куда и зачем попал,</span><br><span class="wl">дави кнопку ниже</span>`,
-      en:`<span class="wl">If you don't understand where you are or why,</span><br><span class="wl">press the button below</span>`
-    , es:`<span class="wl">Si no entiendes dónde estás ni por qué,</span><br><span class="wl">pulsa el botón de abajo</span>`, fr:`<span class="wl">Si tu ne comprends pas où tu es ni pourquoi,</span><br><span class="wl">appuie sur le bouton ci-dessous</span>`, zh:`<span class="wl">如果你不明白自己在哪里、为什么在这里，</span><br><span class="wl">按下面的按钮</span>`},
+      ru:`<span class="wl">Если ты не понимаешь</span><br><span class="wl hint-mid">куда и зачем попал,</span><br><span class="wl">дави кнопку ниже</span>`,
+      en:`<span class="wl">If you don't understand</span><br><span class="wl hint-mid">where you are or why,</span><br><span class="wl">press the button below</span>`
+    , es:`<span class="wl">Si no entiendes</span><br><span class="wl hint-mid">dónde estás ni por qué,</span><br><span class="wl">pulsa el botón de abajo</span>`, fr:`<span class="wl">Si tu ne comprends pas</span><br><span class="wl hint-mid">où tu es ni pourquoi,</span><br><span class="wl">appuie sur le bouton ci-dessous</span>`, zh:`<span class="wl">如果你不明白</span><br><span class="wl hint-mid">自己在哪里、为什么在这里，</span><br><span class="wl">按下面的按钮</span>`},
     'index.btnBack':   { ru:`Назад`, en:`Back` , es:`Atrás`, fr:`Retour`, zh:`返回`},
     'index.guideLoading': { ru:`Загрузка…`, en:`Loading…` , es:`Cargando…`, fr:`Chargement…`, zh:`加载中…`},
     'index.guideError': { ru:`Не получилось загрузить — попробуй ещё раз чуть позже. Окно можно закрыть в любой момент.`, en:`Couldn't load it — try again in a bit. You can close this window any time.` , es:`No se pudo cargar — inténtalo de nuevo en un momento. Puedes cerrar esta ventana cuando quieras.`, fr:`Impossible de charger — réessayez dans un instant. Vous pouvez fermer cette fenêtre à tout moment.`, zh:`加载失败——过一会儿再试试。这个窗口随时可以关闭。`},

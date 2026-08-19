@@ -87,6 +87,11 @@ pointer-events:none;
    отдельный визуальный язык (мягкий синий на тёмно-синем), тот же,
    что уже использован в этом файле — заимствуем его, а не чужой
    зелёный акцент из shared.css. */
+/* Средняя строка подсказки (index.qHint) — жёлтая, отдельно от
+   .question em (тот синий, для «Здесь помогают тебе»): цвет
+   «первоисточника» в uc-door.js (216,166,74) тоже не подходит — он
+   смысловой, про другое, путать нельзя. */
+.hint-mid{color:rgba(255,209,102,0.92);}
 #uc-guide{position:fixed;inset:0;z-index:500;background:rgba(2,6,12,0.88);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:2rem;opacity:0;pointer-events:none;transition:opacity 0.4s ease;}
 #uc-guide.show{opacity:1;pointer-events:all;}
 #uc-guide-box{max-width:560px;width:100%;max-height:78vh;overflow-y:auto;background:rgba(9,20,35,0.94);border:1px solid rgba(160,215,255,0.22);border-radius:10px;padding:2.2rem 1.8rem;font-family:'Share Tech Mono',monospace;font-size:0.82rem;line-height:1.8;color:rgba(255,255,255,0.75);box-shadow:0 0 50px rgba(0,0,0,0.55);}
