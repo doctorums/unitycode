@@ -1315,6 +1315,24 @@ d.style.color='';
   // вынимается из waveLines (btnWaveEntry её держит) и возвращается на
   // закрытии — сам объект не пересоздаётся, чтобы phase/amp не сбились.
   var btnWaveEntry = null;
+  // CSS max-height:78vh на #uc-guide-box (осталась запасным вариантом,
+  // если JS почему-то не отработает) — на iOS Safari vh считается от
+  // «большого» viewport (с уже свёрнутыми адресной строкой и нижней
+  // панелью), а не от того, что реально видно, когда они ещё на экране:
+  // box рендерится выше видимой области, и «Назад» — уже правильно
+  // прижатая к настоящему низу экрана — оказывается поверх текста,
+  // сколько запаса снизу ни добавляй. document.body.clientHeight здесь
+  // уже используется для канваса (см. выше) именно по этой причине —
+  // применяем тот же приём и к высоте модалки.
+  function updateGuideMaxHeight(){
+    if (box) box.style.maxHeight = Math.round(document.body.clientHeight * 0.78) + 'px';
+  }
+  var _guideRT;
+  window.addEventListener('resize', function(){
+    if (!overlay) return;
+    clearTimeout(_guideRT);
+    _guideRT = setTimeout(updateGuideMaxHeight, 250);
+  });
   function ensureModal(){
     if (overlay) return;
     overlay = document.createElement('div');
@@ -1378,6 +1396,7 @@ d.style.color='';
 
   function openGuide(){
     ensureModal();
+    updateGuideMaxHeight(); // на случай, если панели браузера свернулись/развернулись со времени прошлого открытия
     box.insertBefore(btn, body); // тот же узел #btn, теперь первым в модалке
     if (!btnWaveEntry) {
       var wi = waveLines.findIndex(function(e){ return e.el === btn; });
