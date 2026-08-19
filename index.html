@@ -1183,14 +1183,35 @@ d.style.color='';
     if (wl) wl.textContent = t(key); else btn.textContent = t(key);
   }
 
+  // ── смена заголовка #q. В отличие от кнопки, здесь нельзя просто
+  // поменять textContent на месте: у index.q и index.qHint разное число
+  // строк (5 и 3), готовых .wl-слотов под новый текст нет. Поэтому
+  // innerHTML меняется целиком, а место старых waveLines-записей (их
+  // узлы после замены уже не в DOM, animText на них просто вхолостую
+  // дёргает style — безвредно, но и без толку) занимают новые: каждый
+  // свежий .wl/.em.wl внутри #q регистрируется в waveLines заново, чтобы
+  // текст не застыл. waveLines — const в соседнем <script>, но массивы
+  // изменяемы через push даже так; оба тега делят один глобальный scope.
+  var qEl = document.getElementById('q');
+  function setHeadingHTML(html){
+    if (!qEl) return;
+    qEl.innerHTML = html;
+    Array.prototype.forEach.call(qEl.querySelectorAll('.wl'), function(el){
+      waveLines.push({ el: el, phase: Math.random()*6.28, freq: 0.28+Math.random()*0.14, amp: 0.5, cx:0, cy:0 });
+    });
+    if (typeof invalidateRectCache === 'function') invalidateRectCache();
+  }
+
   function showHint(){
     setBtnText('index.btnHint');
+    setHeadingHTML(t('index.qHint'));
     btn.onclick = function(e){ if (e && e.preventDefault) e.preventDefault(); openGuide(); };
     btn.ontouchend = btn.onclick;
   }
 
   function restoreBtn(){
     setBtnText('index.btn');
+    setHeadingHTML(t('index.q'));
     btn.onclick = function(e){ tunnelGo(e); };
     btn.ontouchend = btn.onclick;
   }
