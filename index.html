@@ -63,7 +63,12 @@ pointer-events:none;
 50%{opacity:0;}
 }
 .label{font-size:0.8rem;letter-spacing:0.18em;color:rgba(255,255,255,0.32);text-transform:uppercase;margin-bottom:1rem;will-change:transform;opacity:0;animation:fi 1.2s ease 0.2s forwards;text-shadow:0 0 8px rgba(255,255,255,0.3),0 0 20px rgba(160,210,255,0.2);}
-.question{font-family:'Unbounded',sans-serif;font-weight:400;font-size:clamp(0.95rem,2.6vw,1.4rem);line-height:1.8;color:rgba(255,255,255,0.9);margin-bottom:1rem;text-shadow:0 2px 30px rgba(0,20,60,0.9);will-change:transform;opacity:0;animation:fi 1.5s ease 0.6s forwards;}
+.question{font-family:'Unbounded',sans-serif;font-weight:400;font-size:clamp(0.95rem,2.6vw,1.4rem);line-height:1.8;color:rgba(255,255,255,0.9);margin-bottom:1rem;text-shadow:0 2px 30px rgba(0,20,60,0.9);will-change:transform;opacity:0;animation:fi 1.5s ease 0.6s forwards;
+/* АДДИТИВНО: резерв под 5 строк (высота исходного текста) — у
+   index.qHint строк меньше (3), без этого .center мельчает и весь блок
+   (в т.ч. кнопка и текст про эксперимент ниже) перецентровывается
+   внутри .ui, будто подвал страницы «едет». */
+min-height:9em;}
 .question em{font-style:normal;color:rgba(160,215,255,0.92);}
 .btn{display:inline-block;padding:0.6rem 1.6rem;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.65);font-family:'Share Tech Mono',monospace;font-size:0.65rem;letter-spacing:0.2em;text-transform:uppercase;text-decoration:none;background:rgba(255,255,255,0.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);opacity:0;animation:fi 1.5s ease 1.3s forwards;transition:all 0.3s;will-change:transform;cursor:pointer;pointer-events:all;border-radius:6px;}
 #btn{font-family:'Unbounded',sans-serif;font-size:clamp(0.95rem,2.6vw,1.4rem);letter-spacing:normal;text-transform:none;padding:0.6rem 1.6rem;border:1px solid rgba(255,255,255,0.22);background:rgba(255,255,255,0.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:rgba(160,215,255,0.92);}
@@ -1202,16 +1207,35 @@ d.style.color='';
     if (typeof invalidateRectCache === 'function') invalidateRectCache();
   }
 
+  // ── кроссфейд при смене текста — резкая мгновенная замена бросалась
+  // в глаза. animation:none снимает intro-разовую fi (уже отыграла и
+  // держится forwards) — без этого её слой в каскаде мог бы заглушить
+  // инлайновый opacity; следом же явно фиксируем текущую видимость
+  // (opacity:1), иначе базовое правило класса (opacity:0 до анимации)
+  // само перехватит и мигнёт пустотой раньше, чем сработает fade.
+  function fadeSwap(el, apply, halfMs){
+    if (!el) { apply(); return; }
+    el.style.animation = 'none';
+    el.style.opacity = '1';
+    el.style.transition = 'opacity ' + (halfMs/1000) + 's ease';
+    requestAnimationFrame(function(){ el.style.opacity = '0'; });
+    setTimeout(function(){
+      apply();
+      requestAnimationFrame(function(){ el.style.opacity = '1'; });
+    }, halfMs);
+  }
+  var FADE_HALF_MS = 700; // туда+обратно ≈ 1.4с
+
   function showHint(){
-    setBtnText('index.btnHint');
-    setHeadingHTML(t('index.qHint'));
+    fadeSwap(btn, function(){ setBtnText('index.btnHint'); }, FADE_HALF_MS);
+    fadeSwap(qEl, function(){ setHeadingHTML(t('index.qHint')); }, FADE_HALF_MS);
     btn.onclick = function(e){ if (e && e.preventDefault) e.preventDefault(); openGuide(); };
     btn.ontouchend = btn.onclick;
   }
 
   function restoreBtn(){
-    setBtnText('index.btn');
-    setHeadingHTML(t('index.q'));
+    fadeSwap(btn, function(){ setBtnText('index.btn'); }, FADE_HALF_MS);
+    fadeSwap(qEl, function(){ setHeadingHTML(t('index.q')); }, FADE_HALF_MS);
     btn.onclick = function(e){ tunnelGo(e); };
     btn.ontouchend = btn.onclick;
   }
