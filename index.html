@@ -100,12 +100,22 @@ pointer-events:none;
 #uc-guide-box hr{border:none;border-top:1px solid rgba(255,255,255,0.1);margin:1.6rem 0;}
 #uc-guide-box ul{margin:0 0 0.9rem 1.2rem;}
 #uc-guide-box li{margin-bottom:0.35rem;}
-/* #btn на время внутри модалки — тот же узел, приклеен к верху блока,
-   пока текст под ним прокручивается. Непрозрачный фон — иначе сквозь
-   родной полупрозрачный фон кнопки просвечивает уезжающий вверх текст.
-   animation:none — в модалке уже не часть входной сцены, повторный fi
-   ей ни к чему. */
-#uc-guide-box #btn{position:sticky;top:0;display:inline-block;margin-bottom:1.3rem;background:rgba(9,20,35,0.97);z-index:1;animation:none;opacity:1;}
+/* #btn на время внутри модалки — тот же узел, вынесен из потока box
+   вовсе (position:fixed, а не sticky): вариант со sticky зависел от
+   высоты box (та скачет, пока «Загрузка…» сменяется полным текстом —
+   кнопка дёргалась следом) и от качества sticky-в-overflow на мобильных
+   браузерах (пропадала при скролле). Fixed игнорирует и то, и другое —
+   держащая опора (containing block) для fixed здесь всё равно #uc-guide
+   (у него backdrop-filter), так что кнопка стоит в углу подложки, а не
+   уезжает с текстом. Непрозрачный фон — на случай, если что-то окажется
+   под ней. opacity:0 по умолчанию — проявляется классом .uc-ready уже
+   после того, как текст встал на место (см. openGuide), чтобы не было
+   видно скачок при росте box. animation:none — в модалке уже не часть
+   входной сцены, повторный fi ей ни к чему. Угол — нижний правый: верхний
+   правый занят языковым переключателем #uc-lang (top:12px), нижний ещё и
+   удобнее пальцем на телефоне. */
+#uc-guide #btn{position:fixed;bottom:1.2rem;right:1.2rem;margin:0;background:rgba(9,20,35,0.97);z-index:2;animation:none;opacity:0;transition:opacity 0.5s ease;}
+#uc-guide #btn.uc-ready{opacity:1;}
 </style>
 </head>
 <body>
@@ -1273,6 +1283,13 @@ d.style.color='';
   // первый потомок (см. выше), сам markdown — в отдельном узле body,
   // чтобы innerHTML на нём не выкидывал #btn из документа.
   var overlay = null, box = null, body = null, loaded = false;
+  // #btn изначально зарегистрирован в waveLines («кнопка качается как
+  // часть текста» — см. соседний <script>) — на главном экране это
+  // уместно, но внутри модалки та же непрерывная синусоида читалась как
+  // «Назад» мечется по экрану. Пока модалка открыта, запись временно
+  // вынимается из waveLines (btnWaveEntry её держит) и возвращается на
+  // закрытии — сам объект не пересоздаётся, чтобы phase/amp не сбились.
+  var btnWaveEntry = null;
   function ensureModal(){
     if (overlay) return;
     overlay = document.createElement('div');
@@ -1337,18 +1354,29 @@ d.style.color='';
   function openGuide(){
     ensureModal();
     box.insertBefore(btn, body); // тот же узел #btn, теперь первым в модалке
+    if (!btnWaveEntry) {
+      var wi = waveLines.findIndex(function(e){ return e.el === btn; });
+      if (wi !== -1) btnWaveEntry = waveLines.splice(wi, 1)[0];
+    }
+    btn.style.transform = 'none'; // снимаем застывший на паузе оффсет качания
+    // инлайновые opacity/transition остались от fadeSwap на главном экране
+    // и перебивали бы новое CSS-правило #uc-guide #btn — очищаем, чтобы
+    // .uc-ready снова управляла видимостью
+    btn.style.opacity = '';
+    btn.style.transition = '';
+    btn.classList.remove('uc-ready'); // спрятана, пока текст не встал на место — см. .uc-ready в стилях
     overlay.classList.add('show');
     setBtnText('index.btnBack');
     btn.onclick = closeGuide;
     btn.ontouchend = closeGuide;
-    if (loaded) return;
+    if (loaded) { btn.classList.add('uc-ready'); return; }
     body.innerHTML = '<p>'+t('index.guideLoading')+'</p>';
     // fail-safe: обрыв сети не блокирует закрытие — окно уже открыто,
     // «Назад»/тап по подложке работают независимо от того, загрузилось ли
     loadGuide().then(function(md){
-      if (md == null){ body.innerHTML = '<p>'+t('index.guideError')+'</p>'; return; }
-      loaded = true;
-      body.innerHTML = renderMarkdown(md);
+      if (md == null){ body.innerHTML = '<p>'+t('index.guideError')+'</p>'; }
+      else { loaded = true; body.innerHTML = renderMarkdown(md); }
+      btn.classList.add('uc-ready');
     });
   }
 
@@ -1356,6 +1384,7 @@ d.style.color='';
     if (e && e.preventDefault) e.preventDefault();
     if (overlay) overlay.classList.remove('show');
     restoreBtnPosition();
+    if (btnWaveEntry) { waveLines.push(btnWaveEntry); btnWaveEntry = null; }
     restoreBtn();
   }
 })();
