@@ -61,7 +61,7 @@ const RETENTION_DAYS_DEFAULT = 21;
 // Язык дистиллята — явно русский: столбец echoes.lang по умолчанию 'ru',
 // мультиязычные источники в этой итерации не проектируются (см. ТЗ,
 // «Что НЕ делать» — geocoding и подобное расширение откладывается).
-const ECHO_PROMPT = `Ты — дистиллятор «Эха мира» Сети Код Единства. Тебе дают заголовок и краткое содержание новости или научной публикации. Сделай короткий дистиллят — пересказ своими словами, не цитата (до ~400 символов), на русском языке независимо от языка источника.
+const ECHO_PROMPT = `Ты — дистиллятор «Эха мира» Сети Код Единства. Тебе дают заголовок и краткое содержание новости или научной публикации. Сделай короткий дистиллят — ОДНО предложение (не больше ~150 символов), пересказ своими словами, не цитата, на русском языке независимо от языка источника.
 
 Определи одну доминирующую категорию: politics (политика), science (наука), culture (искусство/культура), sport (спорт), tech (технологии), economy (экономика).
 
@@ -163,7 +163,7 @@ async function distillEcho(env, item) {
       body: JSON.stringify({
         model: MIMO_MODEL,
         temperature: 0.4,
-        max_tokens: 500,
+        max_tokens: 200, // одно предложение — с запасом хватает и на JSON-обвязку
         messages: [
           { role: 'system', content: ECHO_PROMPT },
           { role: 'user', content: `Заголовок: ${item.title}\n\nСодержание: ${item.desc || '—'}` },
@@ -181,7 +181,7 @@ async function distillEcho(env, item) {
     }
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    const text = String(parsed.text || '').trim().slice(0, 500);
+    const text = String(parsed.text || '').trim().slice(0, 220); // страховка поверх ~150-символьного промпта, не 500 (DB check) — иначе слипшийся абзац всё равно проскочит
     if (!text) return null;
     let category = String(parsed.category || '').toLowerCase().trim();
     if (!VALID_CATEGORIES.includes(category)) category = null; // модель ошиблась — не блокирует вставку
