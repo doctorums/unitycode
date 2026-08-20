@@ -223,7 +223,7 @@ function sourceHost(url) {
 // диагностическому запросу (fetch, см. ниже). Возвращает сводку для
 // отладки: без неё «отработало или нет» было видно только по счёту
 // строк в echoes, ни разу не объясняя причину нуля.
-async function runEchoCollection(env) {
+async function runEchoCollection(env, opts = {}) {
   const summary = { ranAt: new Date().toISOString(), skipped: null, sources: [], inserted: 0 };
 
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
@@ -241,12 +241,18 @@ async function runEchoCollection(env) {
     return summary;
   }
 
-  const sources = parseSources(env);
+  let sources = parseSources(env);
   if (!sources.length) {
     summary.skipped = 'no_sources';
     return summary;
   }
-  const perSource = maxPerSource(env);
+  // opts.maxSources/perSourceOverride — быстрый режим для ручной проверки
+  // через fetch(): полный прогон (6 источников × до 4 записи, каждая — вызов
+  // LLM синхронно) может тянуться минуты, для проверки «работает ли вообще
+  // цепочка» это неоправданно долго. Cron (scheduled) вызывает без opts —
+  // всегда полный прогон.
+  if (opts.maxSources) sources = sources.slice(0, opts.maxSources);
+  const perSource = opts.perSourceOverride != null ? opts.perSourceOverride : maxPerSource(env);
   const disabled = disabledCategories(env);
 
   for (const url of sources) {
@@ -289,12 +295,16 @@ export default {
   // интерфейсе Cloudflare у Cron Triggers нет кнопки ручного теста).
   // Закрыт секретным параметром — открытый URL без него не должен уметь
   // тратить вызовы LLM по любому чужому запросу.
+  // По умолчанию — быстрый режим (1 источник, 1 запись): проверить, что вся
+  // цепочка вообще работает, за секунды, а не минуты. ?full=1 — настоящий
+  // полный прогон по всем источникам, как у cron.
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     if (!env.ECHO_TEST_KEY || url.searchParams.get('key') !== env.ECHO_TEST_KEY) {
       return new Response('not found', { status: 404 });
     }
-    const summary = await runEchoCollection(env);
+    const full = url.searchParams.get('full') === '1';
+    const summary = await runEchoCollection(env, full ? {} : { maxSources: 1, perSourceOverride: 1 });
     return new Response(JSON.stringify(summary, null, 2), {
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
     });
