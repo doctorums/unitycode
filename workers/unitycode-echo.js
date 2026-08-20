@@ -300,15 +300,27 @@ export default {
   // Закрыт секретным параметром — открытый URL без него не должен уметь
   // тратить вызовы LLM по любому чужому запросу.
   // По умолчанию — быстрый режим (1 источник, 1 запись): проверить, что вся
-  // цепочка вообще работает, за секунды, а не минуты. ?full=1 — настоящий
-  // полный прогон по всем источникам, как у cron.
+  // цепочка вообще работает, за секунды, а не минуты, ответ ждём и отдаём
+  // сразу. ?full=1 — настоящий полный прогон по всем источникам (как у
+  // cron) — небыстрый (6 источников × N вызовов LLM), поэтому запускается
+  // в фоне (ctx.waitUntil) и НЕ ждётся: клиент (особенно мобильный Safari)
+  // иначе решает, что соединение оборвалось, и показывает ошибку — а
+  // прогон при этом на сервере всё равно продолжается и пишет в базу,
+  // просто без видимого отчёта. Полный отчёт для full=1 в ответе поэтому
+  // не работает — итог смотрим потом в самой таблице echoes.
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     if (!env.ECHO_TEST_KEY || url.searchParams.get('key') !== env.ECHO_TEST_KEY) {
       return new Response('not found', { status: 404 });
     }
     const full = url.searchParams.get('full') === '1';
-    const summary = await runEchoCollection(env, full ? {} : { maxSources: 1, perSourceOverride: 1 });
+    if (full) {
+      ctx.waitUntil(runEchoCollection(env));
+      return new Response(JSON.stringify({ started: true, note: 'полный прогон запущен в фоне — результат смотри в echoes через минуту-другую' }, null, 2), {
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      });
+    }
+    const summary = await runEchoCollection(env, { maxSources: 1, perSourceOverride: 1 });
     return new Response(JSON.stringify(summary, null, 2), {
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
     });
