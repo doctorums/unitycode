@@ -453,6 +453,17 @@ const USE_STUB = false;
 const SUPABASE_URL = 'https://lukyyqabkxzrgdixzphs.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
 
+// Эхо мира (set.html → «откликнуться»): ?echo_id=<uuid> в адресе — форма
+// вплетения не меняется, просто едет вместе с шумом и после успешной
+// записи узла отмечается связь echo→node (echo_responses, в unitycode-write).
+// Валидируем формат сразу — мусор в query-параметре не долетает дальше.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+let ucEchoId = '';
+try {
+  const q = new URLSearchParams(location.search).get('echo_id') || '';
+  if (UUID_RE.test(q)) ucEchoId = q;
+} catch(e) {}
+
 // ── Запись через воркер-шлюз + защита ──────────────────────────────────
 const WRITE_WORKER_URL = 'https://unitycode-write.sv2txxznjm.workers.dev/';
 // ⚠️ ВСТАВЬ URL voice-воркера (unitycode-voice) после деплоя:
@@ -1264,6 +1275,7 @@ ucQueueUpsert({
   lng: payload.lng,
   tz: payload.tz,
   lang: payload.lang,
+  echo_id: ucEchoId || undefined,
 });
 
 const ts = await takeTurnstileToken();
@@ -1281,6 +1293,7 @@ lat: payload.lat,
 lng: payload.lng,
 tz: payload.tz,
 lang: payload.lang,
+echo_id: ucEchoId || undefined,
 }),
 });
 
@@ -1437,6 +1450,7 @@ async function ucTrySyncQueue() {
           lng: item.lng,
           tz: item.tz,
           lang: item.lang,
+          echo_id: item.echo_id,
         }),
       });
       if (res.ok) {
