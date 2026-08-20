@@ -11,8 +11,11 @@
 // собственные таблицы (migrations/echoes.sql). Тот же принцип, что у Голосов —
 // необратимость смешивания популяций: отдельная таблица, а не nodes с меткой.
 //
-// Запускается ТОЛЬКО по Cron Trigger (Cloudflare Dashboard → Triggers) — в коде
-// намеренно только scheduled(), никакого fetch()/HTTP-эндпоинта.
+// Основной вход — Cron Trigger (Cloudflare Dashboard → Settings → Trigger
+// events). Плюс диагностический fetch() (правка 20.08 — в этой версии
+// интерфейса Cloudflare у Cron Triggers нет кнопки ручного теста): заход по
+// адресу воркера с ?key=<ECHO_TEST_KEY> запускает тот же сбор немедленно и
+// возвращает JSON-сводку, вместо ожидания расписания.
 //
 // Переменные/секреты воркера (Cloudflare → Settings):
 //   SUPABASE_URL                (var)    https://lukyyqabkxzrgdixzphs.supabase.co
@@ -35,6 +38,9 @@
 //                                        предохранитель: выключить одну категорию
 //                                        (например politics) без деплоя, если пересказ
 //                                        начнёт читаться предвзято.
+//   ECHO_TEST_KEY                (secret) произвольная строка — без неё диагностический
+//                                        fetch() всегда отвечает 404, ручной прогон
+//                                        по URL недоступен.
 //
 // Cron-интервал — не переменная, а сам Cron Trigger в Cloudflare Dashboard
 // (например каждые 3-6 часов) — настраивает Витя, в коде не хардкожен.
@@ -213,42 +219,84 @@ function sourceHost(url) {
   try { return new URL(url).hostname; } catch (e) { return null; }
 }
 
+// Общее тело сбора — вызывается и по cron (scheduled), и по ручному
+// диагностическому запросу (fetch, см. ниже). Возвращает сводку для
+// отладки: без неё «отработало или нет» было видно только по счёту
+// строк в echoes, ни разу не объясняя причину нуля.
+async function runEchoCollection(env) {
+  const summary = { ranAt: new Date().toISOString(), skipped: null, sources: [], inserted: 0 };
+
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    summary.skipped = 'no_supabase_config';
+    return summary;
+  }
+  // Прунинг перед вставкой новых записей — шаг из ТЗ. Данные не
+  // пересекаются (старые по created_at, новые получат created_at=now()),
+  // поэтому не блокирует сбор — но здесь ждём явно (await, не waitUntil),
+  // чтобы диагностический вызов успел его застать до ответа.
+  await pruneOld(env);
+
+  if (!env.MIMO_API_KEY) {
+    summary.skipped = 'no_mimo_key'; // нечем дистиллировать — весь прогон бессмысленен
+    return summary;
+  }
+
+  const sources = parseSources(env);
+  if (!sources.length) {
+    summary.skipped = 'no_sources';
+    return summary;
+  }
+  const perSource = maxPerSource(env);
+  const disabled = disabledCategories(env);
+
+  for (const url of sources) {
+    const s = { url, fetched: 0, distilled: 0, inserted: 0, skippedDisabled: 0 };
+    const items = (await fetchFeed(url)).slice(0, perSource);
+    s.fetched = items.length;
+    for (const item of items) {
+      const dist = await distillEcho(env, item);
+      if (!dist) continue;
+      s.distilled++;
+      if (dist.category && disabled.has(dist.category)) { s.skippedDisabled++; continue; }
+
+      const seed = item.link || `${url}|${item.pub || item.title}`;
+      const client_id = await hashId(seed);
+      const eventTime = item.pub && !isNaN(Date.parse(item.pub)) ? new Date(item.pub).toISOString() : null;
+
+      const ok = await sbInsertEcho(env, {
+        client_id,
+        text: dist.text,
+        category: dist.category,
+        place: dist.place,
+        source_url: item.link || url,
+        source_name: sourceHost(url),
+        event_time: eventTime,
+      });
+      if (ok) { s.inserted++; summary.inserted++; }
+    }
+    summary.sources.push(s);
+  }
+  return summary;
+}
+
 export default {
   async scheduled(event, env, ctx) {
-    if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return;
-    // Прунинг перед вставкой новых записей — шаг из ТЗ. Данные не
-    // пересекаются (старые по created_at, новые получат created_at=now()),
-    // поэтому фоново, не блокируя сбор.
-    ctx.waitUntil(pruneOld(env));
+    await runEchoCollection(env);
+  },
 
-    if (!env.MIMO_API_KEY) return; // нечем дистиллировать — весь прогон бессмысленен
-
-    const sources = parseSources(env);
-    if (!sources.length) return;
-    const perSource = maxPerSource(env);
-    const disabled = disabledCategories(env);
-
-    for (const url of sources) {
-      const items = (await fetchFeed(url)).slice(0, perSource);
-      for (const item of items) {
-        const dist = await distillEcho(env, item);
-        if (!dist) continue;
-        if (dist.category && disabled.has(dist.category)) continue;
-
-        const seed = item.link || `${url}|${item.pub || item.title}`;
-        const client_id = await hashId(seed);
-        const eventTime = item.pub && !isNaN(Date.parse(item.pub)) ? new Date(item.pub).toISOString() : null;
-
-        await sbInsertEcho(env, {
-          client_id,
-          text: dist.text,
-          category: dist.category,
-          place: dist.place,
-          source_url: item.link || url,
-          source_name: sourceHost(url),
-          event_time: eventTime,
-        });
-      }
+  // Диагностика: ручной прогон без ожидания cron, с отчётом в браузере —
+  // добавлено 20.08 по факту (в ТЗ был только scheduled(), но в новом
+  // интерфейсе Cloudflare у Cron Triggers нет кнопки ручного теста).
+  // Закрыт секретным параметром — открытый URL без него не должен уметь
+  // тратить вызовы LLM по любому чужому запросу.
+  async fetch(req, env, ctx) {
+    const url = new URL(req.url);
+    if (!env.ECHO_TEST_KEY || url.searchParams.get('key') !== env.ECHO_TEST_KEY) {
+      return new Response('not found', { status: 404 });
     }
+    const summary = await runEchoCollection(env);
+    return new Response(JSON.stringify(summary, null, 2), {
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    });
   },
 };
