@@ -61,13 +61,15 @@ const RETENTION_DAYS_DEFAULT = 21;
 // Язык дистиллята — явно русский: столбец echoes.lang по умолчанию 'ru',
 // мультиязычные источники в этой итерации не проектируются (см. ТЗ,
 // «Что НЕ делать» — geocoding и подобное расширение откладывается).
-const ECHO_PROMPT = `Ты — дистиллятор «Эха мира» Сети Код Единства. Тебе дают заголовок и краткое содержание новости или научной публикации. Сделай короткий дистиллят — ОДНО предложение (не больше ~150 символов), пересказ своими словами, не цитата, на русском языке независимо от языка источника.
+const ECHO_PROMPT = `Ты — дистиллятор «Эха мира» Сети Код Единства. Тебе дают заголовок и краткое содержание новости или научной публикации. Сожми до объективной сути — короткая фраза (5-10 слов), на русском языке независимо от языка источника.
+
+Это не пересказ и не художественная искра (как квинтэссенция человеческих мыслей внутри Сети) — это сухой факт события, сжатый до предела. Без оценки, без интерпретации, без эмоциональной окраски: голый сигнал из шума информационного поля мира, а не мнение о нём.
 
 Определи одну доминирующую категорию: politics (политика), science (наука), culture (искусство/культура), sport (спорт), tech (технологии), economy (экономика).
 
 Если в тексте есть узнаваемая география (город, регион, страна) — укажи place, иначе null.
 
-ВАЖНО для category=politics: дистиллят — пересказ события («что произошло»), не оценка и не позиция одной из сторон. Не выдавай мнение источника за факт, не занимай сторону, опиши событие, не интерпретируй его правоту.
+ВАЖНО для category=politics: фраза — что произошло, не оценка и не позиция одной из сторон. Не выдавай мнение источника за факт, не занимай сторону.
 
 Ответь СТРОГО одним JSON без markdown и пояснений:
 {"text":"...", "category":"...", "place":"..." или null}`;
@@ -163,7 +165,7 @@ async function distillEcho(env, item) {
       body: JSON.stringify({
         model: MIMO_MODEL,
         temperature: 0.4,
-        max_tokens: 200, // одно предложение — с запасом хватает и на JSON-обвязку
+        max_tokens: 120, // 5-10 слов — с запасом хватает и на JSON-обвязку
         messages: [
           { role: 'system', content: ECHO_PROMPT },
           { role: 'user', content: `Заголовок: ${item.title}\n\nСодержание: ${item.desc || '—'}` },
@@ -181,13 +183,29 @@ async function distillEcho(env, item) {
     }
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    const text = String(parsed.text || '').trim().slice(0, 220); // страховка поверх ~150-символьного промпта, не 500 (DB check) — иначе слипшийся абзац всё равно проскочит
+    const text = String(parsed.text || '').trim().slice(0, 120); // страховка поверх фразы в 5-10 слов, не 500 (DB check) — иначе абзац всё равно проскочит
     if (!text) return null;
     let category = String(parsed.category || '').toLowerCase().trim();
     if (!VALID_CATEGORIES.includes(category)) category = null; // модель ошиблась — не блокирует вставку
     const place = parsed.place ? String(parsed.place).trim().slice(0, 200) : null;
     return { text, category, place };
   } catch (e) { return null; }
+}
+
+// Дешёвая проверка ПЕРЕД платным вызовом LLM — без неё каждый прогон
+// заново дистиллировал бы одни и те же заголовки (RSS за 4 часа обновляется
+// частично, не целиком), а дедуп на INSERT (ignore-duplicates) отбрасывал бы
+// результат уже ПОСЛЕ того, как за него заплачено. Один дешёвый select
+// вместо одного дорогого вызова модели на каждый уже виденный item.
+async function echoExists(env, client_id) {
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/echoes?client_id=eq.${encodeURIComponent(client_id)}&select=id&limit=1`, {
+      headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY },
+    });
+    if (!r.ok) return false; // не смогли проверить — не блокируем сбор, просто заплатим за один лишний вызов
+    const d = await r.json();
+    return Array.isArray(d) && d.length > 0;
+  } catch (e) { return false; }
 }
 
 async function sbInsertEcho(env, row) {
@@ -260,17 +278,22 @@ async function runEchoCollection(env, opts = {}) {
   const disabled = disabledCategories(env);
 
   for (const url of sources) {
-    const s = { url, fetched: 0, distilled: 0, inserted: 0, skippedDisabled: 0 };
+    const s = { url, fetched: 0, alreadySeen: 0, distilled: 0, inserted: 0, skippedDisabled: 0 };
     const items = (await fetchFeed(url)).slice(0, perSource);
     s.fetched = items.length;
     for (const item of items) {
+      // client_id и проверка «уже видели» — ДО вызова LLM, не после. Экономит
+      // платный вызов на каждом item, который уже есть в базе с прошлого
+      // прогона (RSS за 4 часа обновляется частично, не целиком).
+      const seed = item.link || `${url}|${item.pub || item.title}`;
+      const client_id = await hashId(seed);
+      if (await echoExists(env, client_id)) { s.alreadySeen++; continue; }
+
       const dist = await distillEcho(env, item);
       if (!dist) continue;
       s.distilled++;
       if (dist.category && disabled.has(dist.category)) { s.skippedDisabled++; continue; }
 
-      const seed = item.link || `${url}|${item.pub || item.title}`;
-      const client_id = await hashId(seed);
       const eventTime = item.pub && !isNaN(Date.parse(item.pub)) ? new Date(item.pub).toISOString() : null;
 
       const ok = await sbInsertEcho(env, {
