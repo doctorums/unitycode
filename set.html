@@ -131,16 +131,6 @@ cursor:pointer;
 }
 .echo-scope button.active { background:rgba(255,180,60,0.18); color:#ffb43c; border-color:#ffb43c; }
 .echo-scope button:disabled { opacity:0.3; cursor:default; }
-.echo-cats { display:flex; flex-wrap:wrap; gap:0.35rem; }
-.echo-cat {
-padding:0.25rem 0.5rem;
-border:1px solid rgba(255,180,60,0.3);
-color:rgba(255,180,60,0.5);
-font-family:'Share Tech Mono',monospace;
-font-size:0.55rem; letter-spacing:0.06em; text-transform:uppercase;
-cursor:pointer; background:transparent; user-select:none;
-}
-.echo-cat.active { background:rgba(255,180,60,0.18); color:#ffb43c; border-color:#ffb43c; }
 .popup-btn.echo-respond { border-color: rgba(255,180,60,0.4); color: #ffb43c; }
 .popup-btn.echo-respond:hover { background: #ffb43c; color: #000; }
 .marker-cluster { background: rgba(0,255,136,0.12) !important; border: 1px solid rgba(0,255,136,0.4) !important; }
@@ -227,14 +217,6 @@ to { opacity: 0; }
 <div class="echo-scope">
 <button id="echoScopeWorld" class="active" data-i18n="set.echoScopeWorld">весь мир</button>
 <button id="echoScopeNear" disabled data-i18n="set.echoScopeNear">рядом со мной</button>
-</div>
-<div class="echo-cats">
-<span class="echo-cat active" data-cat="politics" data-i18n="set.echoCatPolitics">политика</span>
-<span class="echo-cat active" data-cat="science" data-i18n="set.echoCatScience">наука</span>
-<span class="echo-cat active" data-cat="culture" data-i18n="set.echoCatCulture">культура</span>
-<span class="echo-cat active" data-cat="sport" data-i18n="set.echoCatSport">спорт</span>
-<span class="echo-cat active" data-cat="tech" data-i18n="set.echoCatTech">технологии</span>
-<span class="echo-cat active" data-cat="economy" data-i18n="set.echoCatEconomy">экономика</span>
 </div>
 </div>
 <div id="loading" data-i18n="set.loading">// СИНХРОНИЗАЦИЯ...</div>
@@ -922,7 +904,6 @@ let echoLoaded = false;
 let echoOn = false;
 try { echoOn = localStorage.getItem('uc_echo_layer_on') === '1'; } catch(e){}
 let echoScope = 'world'; // 'world' | 'near' — сессионный, не persist
-const echoCatsActive = new Set(['politics','science','culture','sport','tech','economy']);
 const ECHO_NEAR_RADIUS_KM = 400;
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -934,9 +915,9 @@ return 2 * R * Math.asin(Math.sqrt(a));
 
 // Фильтр — только про ПОКАЗ, не про сбор: unitycode-echo тянет источники
 // одинаково для всех, гео влияет только на то, что видит конкретный человек
-// прямо сейчас (см. ТЗ).
+// прямо сейчас (см. ТЗ). Категорий-чипов больше нет (упрощение по просьбе
+// Вити) — показываются все категории разом, фильтр остался только гео.
 function echoPassesFilters(e) {
-if (!e.category || !echoCatsActive.has(e.category)) return false;
 if (echoScope === 'near') {
 if (!userPos) return false; // нет разрешения — «рядом» и так недоступно кнопкой, но на всякий случай
 if (haversineKm(userPos[0], userPos[1], e.lat, e.lon) > ECHO_NEAR_RADIUS_KM) return false;
@@ -1006,15 +987,6 @@ map.removeLayer(echoLayer);
 }
 echoToggleBtn.addEventListener('click', () => setEchoOn(!echoOn));
 if (echoOn) setEchoOn(true); // восстановление состояния из localStorage при загрузке страницы
-
-document.querySelectorAll('.echo-cat').forEach(el => {
-el.addEventListener('click', () => {
-const cat = el.dataset.cat;
-if (echoCatsActive.has(cat)) { echoCatsActive.delete(cat); el.classList.remove('active'); }
-else { echoCatsActive.add(cat); el.classList.add('active'); }
-applyEchoFilters();
-});
-});
 
 const echoScopeWorldBtn = document.getElementById('echoScopeWorld');
 const echoScopeNearBtn = document.getElementById('echoScopeNear');

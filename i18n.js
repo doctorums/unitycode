@@ -147,12 +147,6 @@
     'set.echoRespond': { ru:`[ откликнуться ]`, en:`[ respond ]`, es:`[ responder ]`, fr:`[ répondre ]`, zh:`[ 回应 ]`},
     'set.echoScopeWorld': { ru:`весь мир`, en:`whole world`, es:`todo el mundo`, fr:`monde entier`, zh:`全世界`},
     'set.echoScopeNear': { ru:`рядом со мной`, en:`near me`, es:`cerca de mí`, fr:`près de moi`, zh:`我附近`},
-    'set.echoCatPolitics': { ru:`политика`, en:`politics`, es:`política`, fr:`politique`, zh:`政治`},
-    'set.echoCatScience': { ru:`наука`, en:`science`, es:`ciencia`, fr:`science`, zh:`科学`},
-    'set.echoCatCulture': { ru:`культура`, en:`culture`, es:`cultura`, fr:`culture`, zh:`文化`},
-    'set.echoCatSport': { ru:`спорт`, en:`sport`, es:`deporte`, fr:`sport`, zh:`体育`},
-    'set.echoCatTech': { ru:`технологии`, en:`tech`, es:`tecnología`, fr:`technologie`, zh:`科技`},
-    'set.echoCatEconomy': { ru:`экономика`, en:`economy`, es:`economía`, fr:`économie`, zh:`经济`},
     // — Паттерн (implant.html) —
     'implant.title': { ru:`UNITYCODE — Паттерн`, en:`UNITYCODE — Pattern` , es:`UNITYCODE — Patrón`, fr:`UNITYCODE — Motif`, zh:`UNITYCODE — 图案`},
     'implant.logo':  { ru:`UNITYCODE // Паттерн`, en:`UNITYCODE // PATTERN` , es:`UNITYCODE // PATRÓN`, fr:`UNITYCODE // MOTIF`, zh:`UNITYCODE // 图案`},
