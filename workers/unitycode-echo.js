@@ -106,7 +106,11 @@ function disabledCategories(env) {
 function stripCdata(s) {
   if (!s) return '';
   const m = s.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
-  return (m ? m[1] : s).replace(/<[^>]+>/g, '').trim();
+  // Тег → пробел, не пустая строка: иначе слова по разные стороны инлайновой
+  // разметки без своих пробелов («при <a>execution</a> угловых») слипаются
+  // в один токен, и модель на дистилляции иногда пытается это осмыслить,
+  // а не просто проигнорировать — отсюда обрывки вроде «при.execution».
+  return (m ? m[1] : s).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 function tag(block, name) {
   const m = block.match(new RegExp(`<${name}[^>]*>([\\s\\S]*?)<\\/${name}>`, 'i'));
