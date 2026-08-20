@@ -83,6 +83,66 @@ animation: node-pulse 2s ease-in-out infinite; cursor: pointer;
 0%,100% { box-shadow: 0 0 10px var(--accent); }
 50% { box-shadow: 0 0 20px var(--accent), 0 0 40px rgba(0,255,136,0.2); }
 }
+/* Эхо мира — отдельный, по умолчанию выключенный слой (см. секцию
+   #echoControls ниже). Визуально не похож на узел человека: ромб вместо
+   круга, янтарный вместо зелёного — сигнал другого человека и срез
+   новостей не должны путаться на глаз. */
+.echo-marker {
+width: 9px; height: 9px;
+background: #ffb43c;
+transform: rotate(45deg);
+box-shadow: 0 0 8px #ffb43c, 0 0 16px rgba(255,180,60,0.3);
+cursor: pointer;
+}
+#echoToggle {
+position: fixed; z-index: 1000;
+right: calc(env(safe-area-inset-right,0px) + 0.8rem);
+bottom: calc(env(safe-area-inset-bottom,0px) + 4.5rem);
+padding: 0.4rem 0.7rem;
+display: flex; align-items: center; gap: 0.4rem;
+background: rgba(0,0,0,0.85);
+border: 1px solid rgba(255,180,60,0.35);
+color: #ffb43c;
+font-family: 'Share Tech Mono', monospace;
+font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase;
+cursor: pointer;
+}
+#echoToggle::before { content:''; width:7px; height:7px; border-radius:50%; background: rgba(255,180,60,0.25); flex-shrink:0; }
+#echoToggle.on::before { background: #ffb43c; box-shadow: 0 0 6px #ffb43c; }
+#echoToggle.on { background: rgba(255,180,60,0.12); }
+#echoControls {
+position: fixed; z-index: 1000;
+right: calc(env(safe-area-inset-right,0px) + 0.8rem);
+bottom: calc(env(safe-area-inset-bottom,0px) + 7.9rem);
+max-width: min(260px, calc(100vw - 1.6rem));
+background: rgba(0,0,0,0.9);
+border: 1px solid rgba(255,180,60,0.25);
+padding: 0.7rem 0.8rem;
+display: none;
+}
+#echoControls.show { display: block; }
+.echo-scope { display:flex; gap:0.4rem; margin-bottom:0.6rem; }
+.echo-scope button {
+flex:1; padding:0.3rem 0.4rem;
+background:transparent; border:1px solid rgba(255,180,60,0.3);
+color:rgba(255,180,60,0.6); font-family:'Share Tech Mono',monospace;
+font-size:0.55rem; letter-spacing:0.08em; text-transform:uppercase;
+cursor:pointer;
+}
+.echo-scope button.active { background:rgba(255,180,60,0.18); color:#ffb43c; border-color:#ffb43c; }
+.echo-scope button:disabled { opacity:0.3; cursor:default; }
+.echo-cats { display:flex; flex-wrap:wrap; gap:0.35rem; }
+.echo-cat {
+padding:0.25rem 0.5rem;
+border:1px solid rgba(255,180,60,0.3);
+color:rgba(255,180,60,0.5);
+font-family:'Share Tech Mono',monospace;
+font-size:0.55rem; letter-spacing:0.06em; text-transform:uppercase;
+cursor:pointer; background:transparent; user-select:none;
+}
+.echo-cat.active { background:rgba(255,180,60,0.18); color:#ffb43c; border-color:#ffb43c; }
+.popup-btn.echo-respond { border-color: rgba(255,180,60,0.4); color: #ffb43c; }
+.popup-btn.echo-respond:hover { background: #ffb43c; color: #000; }
 .marker-cluster { background: rgba(0,255,136,0.12) !important; border: 1px solid rgba(0,255,136,0.4) !important; }
 .marker-cluster div { background: rgba(0,255,136,0.2) !important; color: #00ff88 !important; font-family: 'Share Tech Mono', monospace !important; font-size: 11px !important; font-weight: normal !important; border: 1px solid rgba(0,255,136,0.6) !important; }
 .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large { background: rgba(0,255,136,0.08) !important; }
@@ -162,6 +222,21 @@ to { opacity: 0; }
 
 <div id="map"></div>
 <button id="mapReset" data-i18n-aria="set.resetView" aria-label="Показать всю Сеть">⌖</button>
+<button id="echoToggle" data-i18n-aria="set.echoToggleAria" aria-label="Показать/скрыть слой Эха мира"><span data-i18n="set.echoToggle">Эхо мира</span></button>
+<div id="echoControls">
+<div class="echo-scope">
+<button id="echoScopeWorld" class="active" data-i18n="set.echoScopeWorld">весь мир</button>
+<button id="echoScopeNear" disabled data-i18n="set.echoScopeNear">рядом со мной</button>
+</div>
+<div class="echo-cats">
+<span class="echo-cat active" data-cat="politics" data-i18n="set.echoCatPolitics">политика</span>
+<span class="echo-cat active" data-cat="science" data-i18n="set.echoCatScience">наука</span>
+<span class="echo-cat active" data-cat="culture" data-i18n="set.echoCatCulture">культура</span>
+<span class="echo-cat active" data-cat="sport" data-i18n="set.echoCatSport">спорт</span>
+<span class="echo-cat active" data-cat="tech" data-i18n="set.echoCatTech">технологии</span>
+<span class="echo-cat active" data-cat="economy" data-i18n="set.echoCatEconomy">экономика</span>
+</div>
+</div>
 <div id="loading" data-i18n="set.loading">// СИНХРОНИЗАЦИЯ...</div>
 
 <!-- Leaflet локально — без зависимости от CDN -->
@@ -479,6 +554,10 @@ zoomControl: false, attributionControl: false
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
 
+// АДДИТИВНО: та же геопозиция, что уже запрашивалась для центрирования
+// карты, переиспользуется для фильтра «рядом со мной» у Эха мира (см.
+// ниже) — второго запроса разрешения на геолокацию не будет никогда.
+let userPos = null;
 if (navigator.geolocation) {
 navigator.geolocation.getCurrentPosition(pos => {
 // Геолокация резолвится не мгновенно — если к этому моменту карта уже
@@ -486,6 +565,9 @@ navigator.geolocation.getCurrentPosition(pos => {
 // разрешение на геолокацию не значит «покажи только мою точку».
 // Как запасной центр (сеть ещё совсем пустая, узлов нет) — по-прежнему полезно.
 if (!didInitialFit) map.setView([pos.coords.latitude, pos.coords.longitude], 5);
+userPos = [pos.coords.latitude, pos.coords.longitude];
+const nearBtn = document.getElementById('echoScopeNear');
+if (nearBtn) nearBtn.disabled = false;
 });
 }
 
@@ -822,6 +904,133 @@ writeCache(CACHE_CONNS, conns);
 // Если узлы уже из кэша — линии можно рисовать почти сразу
 setTimeout(loadConnections, cachedNodes ? 200 : 2000);
 setInterval(loadConnections, 30000);
+
+// ═══════════════════════════════════════════════════════
+// ЭХО МИРА — независимый слой поверх карты (см. migrations/echoes.sql,
+// workers/unitycode-echo.js). НЕ узлы графа: echoes читается отдельным
+// select, свой layerGroup, свой маркер (ромб/янтарный, см. CSS), выключен
+// по умолчанию. Только точки с lat/lon — без geocoding (пока не сделан)
+// список может быть пуст, это ожидаемо, не баг.
+// Три независимых переключателя (слой / гео-охват / категория) свободно
+// комбинируются: слой — persist в localStorage, охват и категории — только
+// на сессию, сбрасываются на дефолт («всё включено», «весь мир») при
+// перезагрузке.
+// ═══════════════════════════════════════════════════════
+const echoLayer = L.layerGroup(); // не добавлен на карту, пока слой не включат
+const echoMarkers = {};
+let echoLoaded = false;
+let echoOn = false;
+try { echoOn = localStorage.getItem('uc_echo_layer_on') === '1'; } catch(e){}
+let echoScope = 'world'; // 'world' | 'near' — сессионный, не persist
+const echoCatsActive = new Set(['politics','science','culture','sport','tech','economy']);
+const ECHO_NEAR_RADIUS_KM = 400;
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+const R = 6371, toRad = d => d * Math.PI / 180;
+const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Фильтр — только про ПОКАЗ, не про сбор: unitycode-echo тянет источники
+// одинаково для всех, гео влияет только на то, что видит конкретный человек
+// прямо сейчас (см. ТЗ).
+function echoPassesFilters(e) {
+if (!e.category || !echoCatsActive.has(e.category)) return false;
+if (echoScope === 'near') {
+if (!userPos) return false; // нет разрешения — «рядом» и так недоступно кнопкой, но на всякий случай
+if (haversineKm(userPos[0], userPos[1], e.lat, e.lon) > ECHO_NEAR_RADIUS_KM) return false;
+}
+return true;
+}
+
+// Чисто клиентская фильтрация уже загрученных точек — без повторного
+// запроса к Supabase на каждое переключение категории/охвата.
+function applyEchoFilters() {
+Object.values(echoMarkers).forEach(m => {
+const show = echoPassesFilters(m._echo);
+const has = echoLayer.hasLayer(m);
+if (show && !has) echoLayer.addLayer(m);
+if (!show && has) echoLayer.removeLayer(m);
+});
+}
+
+const echoIcon = () => L.divIcon({
+className: '', html: '<div class="echo-marker"></div>',
+iconSize: [9, 9], iconAnchor: [4, 4]
+});
+
+function addEchoMarker(e) {
+if (e.lat == null || e.lon == null || echoMarkers[e.id]) return;
+const marker = L.marker([e.lat, e.lon], { icon: echoIcon() });
+marker._echo = e;
+const srcHtml = e.source_url
+? `<a href="${esc(e.source_url)}" target="_blank" rel="noopener" style="color:#ffb43c;">${esc(e.source_name || e.source_url)}</a>`
+: esc(e.source_name || '');
+marker.bindPopup(`
+<div class="popup-content">
+<div class="popup-tag" style="color:#ffb43c;">${UC_I18N.t('set.echoPopupTag')}</div>
+<div class="popup-text">${esc(e.text)}</div>
+<div class="popup-time">${srcHtml}</div>
+<div class="popup-btns">
+<a href="petlya.html?echo_id=${encodeURIComponent(e.id)}" class="popup-btn echo-respond">${UC_I18N.t('set.echoRespond')}</a>
+</div>
+</div>`, { className: '' });
+echoMarkers[e.id] = marker;
+}
+
+async function loadEchoes() {
+try {
+const url = `${SUPABASE_URL}/rest/v1/echoes?select=id,text,category,place,lat,lon,source_name,source_url,created_at&lat=not.is.null&lon=not.is.null&order=created_at.desc&limit=500`;
+const res = await UCData.fetchRetry(url, { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
+if (!res.ok) return;
+const rows = await res.json();
+rows.forEach(addEchoMarker);
+applyEchoFilters();
+} catch (e) { console.warn('Echo load error', e); }
+}
+
+const echoToggleBtn = document.getElementById('echoToggle');
+const echoControlsEl = document.getElementById('echoControls');
+function setEchoOn(on) {
+echoOn = on;
+try { localStorage.setItem('uc_echo_layer_on', on ? '1' : '0'); } catch(e){}
+echoToggleBtn.classList.toggle('on', on);
+echoControlsEl.classList.toggle('show', on);
+if (on) {
+if (!echoLoaded) { echoLoaded = true; loadEchoes(); }
+map.addLayer(echoLayer);
+} else {
+map.removeLayer(echoLayer);
+}
+}
+echoToggleBtn.addEventListener('click', () => setEchoOn(!echoOn));
+if (echoOn) setEchoOn(true); // восстановление состояния из localStorage при загрузке страницы
+
+document.querySelectorAll('.echo-cat').forEach(el => {
+el.addEventListener('click', () => {
+const cat = el.dataset.cat;
+if (echoCatsActive.has(cat)) { echoCatsActive.delete(cat); el.classList.remove('active'); }
+else { echoCatsActive.add(cat); el.classList.add('active'); }
+applyEchoFilters();
+});
+});
+
+const echoScopeWorldBtn = document.getElementById('echoScopeWorld');
+const echoScopeNearBtn = document.getElementById('echoScopeNear');
+echoScopeWorldBtn.addEventListener('click', () => {
+echoScope = 'world';
+echoScopeWorldBtn.classList.add('active');
+echoScopeNearBtn.classList.remove('active');
+applyEchoFilters();
+});
+echoScopeNearBtn.addEventListener('click', () => {
+if (echoScopeNearBtn.disabled) return; // нет геолокации — откат на «весь мир» без ошибки
+echoScope = 'near';
+echoScopeNearBtn.classList.add('active');
+echoScopeWorldBtn.classList.remove('active');
+applyEchoFilters();
+});
 
 let pulseState = true;
 setInterval(() => {
