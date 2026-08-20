@@ -24,7 +24,7 @@
 //                                  ниже). Без переменной — дефолт 50.
 //
 // Клиент шлёт POST JSON:
-//   { action:'node',        token, turnstile, raw_noise, ai_interpretation, lat?, lng? }
+//   { action:'node',        token, turnstile, raw_noise, ai_interpretation, lat?, lng?, echo_id? }
 //   { action:'connection',  token, turnstile, from_node_id, to_node_id }
 //   { action:'voice_check', token, turnstile, user_token }
 //   { action:'voice_write', token, turnstile, user_token, text, lang?, client_id? }
@@ -645,6 +645,20 @@ async function sbExists(env, table, col, id) {
   return Array.isArray(d) && d.length > 0;
 }
 
+// ── ЭХО МИРА: echo_id → node_id (migrations/echoes.sql) ────────────
+// Если запрос на вплетение узла нёс echo_id (человек откликнулся из
+// set.html через попап эха) — фиксируем связь в echo_responses. Echo сюда
+// не попадает и не участвует: узел уже создан обычным путём (Привратник →
+// Distill → Связующий отработали как всегда) — это только маппинг для
+// статистики отклика. Фоново, тихо: несуществующий/устаревший echo_id
+// (например, эхо уже удалено прунингом retention) не критичен и не
+// блокирует ничего, что человек уже получил.
+async function recordEchoResponse(env, echoId, nodeId) {
+  try {
+    await sbInsert(env, 'echo_responses', { echo_id: echoId, node_id: nodeId }, false, 'resolution=ignore-duplicates');
+  } catch (e) { /* тихо: не критичный путь */ }
+}
+
 // ── «ВТОРЫЕ ВОРОТА» — ГОЛОСА ──────────────────────────────────────
 // Порог вплетённых шумов, дающий доступ к длинным осознанным текстам.
 // Голоса — отдельная таблица (migrations/voices.sql), не узлы графа.
@@ -964,6 +978,9 @@ export default {
           // и его можно отличить от полного исхода при подсчёте метрик.
           await logLinker(env, created.id, 'started');
           ctx.waitUntil(runLinker(env, { id: created.id, raw_noise: t }));
+          if (typeof body.echo_id === 'string' && ID_RE.test(body.echo_id)) {
+            ctx.waitUntil(recordEchoResponse(env, body.echo_id, created.id));
+          }
         } else if (row.client_id) {
           ctx.waitUntil(logEvent(env, 'node_duplicate_retry', { clientId: row.client_id }));
         }
