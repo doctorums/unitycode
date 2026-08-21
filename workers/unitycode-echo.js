@@ -330,19 +330,54 @@ async function runEchoCollection(env, opts = {}) {
   const perSource = opts.perSourceOverride != null ? opts.perSourceOverride : maxPerSource(env);
   const disabled = disabledCategories(env);
 
+  // Free-план Workers режет ЛЮБОЙ вызов, начиная с 51-го исходящего fetch()
+  // за один инвок (включая всё, что происходит внутри ctx.waitUntil) — жёсткий
+  // потолок платформы, не наш лимит. При 6+ источниках и до 4 записей с
+  // каждой (до 4 подзапросов на новую запись: проверка/дистилляция/геокодинг/
+  // вставка) бюджет кончается на середине списка источников — без учёта
+  // этого fetch() дальше просто падает с ошибкой, try/catch её гасит, и
+  // прогон выглядит так, будто «почти ничего не сделал», без объяснения
+  // почему. STOP_AT — с запасом от 50, а не впритык: сама платформа тоже
+  // тратит подзапросы не только на явные fetch() в этом файле.
+  const SUBREQUEST_STOP_AT = 45;
+  let used = 1; // pruneOld уже потратил один fetch выше
+  const budgetLeft = () => SUBREQUEST_STOP_AT - used;
+
+  // Без ротации источники в начале списка (politics) выедали весь бюджет
+  // каждый прогон, а хвост списка (economy) не получал ни одного шанса.
+  // Перемешивание перед каждым прогоном — самый простой способ дать всем
+  // источникам примерно равный шанс на бюджет, без отдельного хранилища
+  // состояния «на чём остановились в прошлый раз».
+  for (let i = sources.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [sources[i], sources[j]] = [sources[j], sources[i]];
+  }
+
   for (const url of sources) {
-    const s = { url, fetched: 0, alreadySeen: 0, distilled: 0, geocoded: 0, inserted: 0, skippedDisabled: 0 };
+    if (budgetLeft() < 1) { summary.sources.push({ url, skippedBudget: true }); continue; }
+    const s = { url, fetched: 0, alreadySeen: 0, distilled: 0, geocoded: 0, inserted: 0, skippedDisabled: 0, skippedBudget: 0 };
     const items = (await fetchFeed(url)).slice(0, perSource);
+    used++;
     s.fetched = items.length;
     for (const item of items) {
+      // Каждому item на пути до вставки нужно ≤4 подзапроса (проверка,
+      // дистилляция, геокодинг, вставка) — не начинаем, если бюджета
+      // заведомо не хватит на все шаги: недописанная попытка (например
+      // потратились на дистилляцию, а вставка не прошла) не освобождает
+      // client_id, и следующий прогон честно попробует её заново.
+      if (budgetLeft() < 4) { s.skippedBudget++; break; }
+
       // client_id и проверка «уже видели» — ДО вызова LLM, не после. Экономит
       // платный вызов на каждом item, который уже есть в базе с прошлого
       // прогона (RSS за 4 часа обновляется частично, не целиком).
       const seed = item.link || `${url}|${item.pub || item.title}`;
       const client_id = await hashId(seed);
-      if (await echoExists(env, client_id)) { s.alreadySeen++; continue; }
+      const seen = await echoExists(env, client_id);
+      used++;
+      if (seen) { s.alreadySeen++; continue; }
 
       const dist = await distillEcho(env, item);
+      used++;
       if (!dist) continue;
       s.distilled++;
       if (dist.category && disabled.has(dist.category)) { s.skippedDisabled++; continue; }
@@ -354,6 +389,7 @@ async function runEchoCollection(env, opts = {}) {
       let lat = null, lon = null;
       if (dist.place) {
         const geo = await geocodePlace(dist.place);
+        used++;
         if (geo) {
           const spread = spreadEchoCoords(geo.lat, geo.lon, ECHO_SPREAD_KM);
           lat = spread.lat; lon = spread.lon;
@@ -373,10 +409,12 @@ async function runEchoCollection(env, opts = {}) {
         source_name: sourceHost(url),
         event_time: eventTime,
       });
+      used++;
       if (ok) { s.inserted++; summary.inserted++; }
     }
     summary.sources.push(s);
   }
+  summary.subrequestsUsed = used;
   return summary;
 }
 
