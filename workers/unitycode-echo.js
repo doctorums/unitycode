@@ -51,6 +51,11 @@ const MIMO_MODEL = 'mimo-v2.5'; // без reasoning — короткий стр�
 const VALID_CATEGORIES = ['politics', 'science', 'culture', 'sport', 'tech', 'economy'];
 const MAX_PER_SOURCE_DEFAULT = 4;
 const RETENTION_DAYS_DEFAULT = 21;
+// Сколько записей фида просматривать на дедуп за прогон (не сколько брать —
+// брать всё равно не больше MAX_PER_SOURCE_PER_RUN). Проверка идёт одним
+// batch-запросом, так что глубина стоит столько же, сколько верхушка, — но
+// длину URL с этими хэшами ограничить всё же надо.
+const FEED_SCAN_MAX = 30;
 
 // Требование нейтральности для politics — тем же способом, каким уже
 // сформулированы ограничения для Связующего/Аналитика: явная инструкция,
@@ -203,17 +208,27 @@ async function distillEcho(env, item) {
 // Дешёвая проверка ПЕРЕД платным вызовом LLM — без неё каждый прогон
 // заново дистиллировал бы одни и те же заголовки (RSS за 4 часа обновляется
 // частично, не целиком), а дедуп на INSERT (ignore-duplicates) отбрасывал бы
-// результат уже ПОСЛЕ того, как за него заплачено. Один дешёвый select
-// вместо одного дорогого вызова модели на каждый уже виденный item.
-async function echoExists(env, client_id) {
+// результат уже ПОСЛЕ того, как за него заплачено.
+//
+// Проверка ОДНИМ запросом на весь фид, а не по записи (правка 21.08). Раньше
+// было по одной на item, и это упиралось в потолок подзапросов Free-плана
+// (см. SUBREQUEST_STOP_AT ниже) самым обидным способом: уже отработанный
+// источник тратил 1+N подзапросов, чтобы узнать, что все N записей давно в
+// базе, и вернуть ноль новых строк. Девять таких источников выедали весь
+// бюджет прогона, и до нетронутых (например science) очередь не доходила
+// никогда — сколько прогонов ни запускай, результат один и тот же.
+// Возвращает Set уже известных client_id.
+async function knownEchoIds(env, clientIds) {
+  if (!clientIds.length) return new Set();
   try {
-    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/echoes?client_id=eq.${encodeURIComponent(client_id)}&select=id&limit=1`, {
+    const list = clientIds.map(id => `"${id}"`).join(',');
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/echoes?client_id=in.(${encodeURIComponent(list)})&select=client_id`, {
       headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY },
     });
-    if (!r.ok) return false; // не смогли проверить — не блокируем сбор, просто заплатим за один лишний вызов
+    if (!r.ok) return new Set(); // не смогли проверить — не блокируем сбор, дедуп на INSERT всё равно отловит
     const d = await r.json();
-    return Array.isArray(d) && d.length > 0;
-  } catch (e) { return false; }
+    return new Set(Array.isArray(d) ? d.map(x => x.client_id) : []);
+  } catch (e) { return new Set(); }
 }
 
 // ── ГЕОКОДИНГ (place → координаты) через Nominatim (OpenStreetMap) ────────
@@ -333,8 +348,8 @@ async function runEchoCollection(env, opts = {}) {
   // Free-план Workers режет ЛЮБОЙ вызов, начиная с 51-го исходящего fetch()
   // за один инвок (включая всё, что происходит внутри ctx.waitUntil) — жёсткий
   // потолок платформы, не наш лимит. При 6+ источниках и до 4 записей с
-  // каждой (до 4 подзапросов на новую запись: проверка/дистилляция/геокодинг/
-  // вставка) бюджет кончается на середине списка источников — без учёта
+  // каждой (2 подзапроса на источник + до 3 на каждую новую запись:
+  // дистилляция/геокодинг/вставка) бюджет кончается на списке — без учёта
   // этого fetch() дальше просто падает с ошибкой, try/catch её гасит, и
   // прогон выглядит так, будто «почти ничего не сделал», без объяснения
   // почему. STOP_AT — с запасом от 50, а не впритык: сама платформа тоже
@@ -354,27 +369,39 @@ async function runEchoCollection(env, opts = {}) {
   }
 
   for (const url of sources) {
-    if (budgetLeft() < 1) { summary.sources.push({ url, skippedBudget: true }); continue; }
-    const s = { url, fetched: 0, alreadySeen: 0, distilled: 0, geocoded: 0, inserted: 0, skippedDisabled: 0, skippedBudget: 0 };
-    const items = (await fetchFeed(url)).slice(0, perSource);
-    used++;
-    s.fetched = items.length;
-    for (const item of items) {
-      // Каждому item на пути до вставки нужно ≤4 подзапроса (проверка,
-      // дистилляция, геокодинг, вставка) — не начинаем, если бюджета
-      // заведомо не хватит на все шаги: недописанная попытка (например
-      // потратились на дистилляцию, а вставка не прошла) не освобождает
-      // client_id, и следующий прогон честно попробует её заново.
-      if (budgetLeft() < 4) { s.skippedBudget++; break; }
+    if (budgetLeft() < 2) { summary.sources.push({ url, skippedBudget: true }); continue; }
+    const s = { url, fetched: 0, alreadySeen: 0, fresh: 0, distilled: 0, geocoded: 0, inserted: 0, skippedDisabled: 0, skippedBudget: 0 };
 
-      // client_id и проверка «уже видели» — ДО вызова LLM, не после. Экономит
-      // платный вызов на каждом item, который уже есть в базе с прошлого
-      // прогона (RSS за 4 часа обновляется частично, не целиком).
+    // Смотрим ГЛУБЖЕ хвоста фида, а берём всё равно не больше perSource —
+    // но именно первые perSource ЕЩЁ НЕ ВИДЕННЫХ, а не первые perSource
+    // вообще (правка 21.08). Со срезом по верхушке фида источник намертво
+    // застревал: верхние записи попадали в базу на первом же прогоне, и
+    // дальше каждый следующий прогон смотрел ровно на них же и не находил
+    // ничего нового, пока сам источник не опубликует свежее. Теперь прогоны
+    // постепенно вычёрпывают фид вглубь.
+    const all = (await fetchFeed(url)).slice(0, FEED_SCAN_MAX);
+    used++;
+    s.fetched = all.length;
+
+    const withIds = [];
+    for (const item of all) {
       const seed = item.link || `${url}|${item.pub || item.title}`;
-      const client_id = await hashId(seed);
-      const seen = await echoExists(env, client_id);
-      used++;
-      if (seen) { s.alreadySeen++; continue; }
+      withIds.push({ item, client_id: await hashId(seed) }); // хэш локальный, подзапросов не тратит
+    }
+    const known = await knownEchoIds(env, withIds.map(x => x.client_id));
+    used++;
+    s.alreadySeen = known.size;
+
+    const items = withIds.filter(x => !known.has(x.client_id)).slice(0, perSource);
+    s.fresh = items.length;
+
+    for (const { item, client_id } of items) {
+      // Каждому item на пути до вставки нужно ≤3 подзапроса (дистилляция,
+      // геокодинг, вставка) — не начинаем, если бюджета заведомо не хватит
+      // на все шаги: недописанная попытка (например потратились на
+      // дистилляцию, а вставка не прошла) не освобождает client_id, и
+      // следующий прогон честно попробует её заново.
+      if (budgetLeft() < 3) { s.skippedBudget++; break; }
 
       const dist = await distillEcho(env, item);
       used++;
@@ -382,7 +409,7 @@ async function runEchoCollection(env, opts = {}) {
       s.distilled++;
       if (dist.category && disabled.has(dist.category)) { s.skippedDisabled++; continue; }
 
-      // Геокодинг — тоже только для новых (уже прошли echoExists выше),
+      // Геокодинг — тоже только для новых (отсеяны batch-проверкой выше),
       // как и дистилляция: Nominatim не тратится на то, что и так уже
       // в базе. Неудача (нет place, сервис недоступен, ничего не нашлось)
       // не блокирует вставку — echo просто останется без точки на карте.
