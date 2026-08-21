@@ -607,15 +607,23 @@ didInitialFit = true;
 // кадр, а смысл карты — вся Сеть разом, даже если это пол-континента.
 // maxZoom — иначе на плотном кластере (сейчас почти все узлы в одном
 // городе) fitBounds зашёл бы на уровень улиц, а не «вся сеть».
+map.stop();
 map.fitBounds(coords, FIT_OPTS);
 }
 
 // Тап по узлу/кластеру приближает (это делает сам markercluster), а
 // обратно раньше можно было только обновлением страницы или щипком много
 // раз подряд — один тап по кнопке возвращает камеру к виду «вся Сеть».
+//
+// map.stop() перед fitBounds — иначе если человек только что кликнул по
+// кластеру (тот запускает свою анимацию зума) и сразу жмёт «домой», второй
+// fitBounds попадает поверх ещё не завершившейся анимации и Leaflet его
+// тихо теряет: кнопка визуально нажимается, но камера никуда не едет.
+// Воспроизводилось у Вити именно так — работает первый раз, не работает
+// после того как «полазил по узлам».
 document.getElementById('mapReset').addEventListener('click', function() {
 const coords = Object.values(nodeCoords);
-if (coords.length) map.fitBounds(coords, FIT_OPTS);
+if (coords.length) { map.stop(); map.fitBounds(coords, FIT_OPTS); }
 });
 
 function showLoading(visible) {
@@ -989,6 +997,7 @@ function fitEchoes() {
 const coords = Object.values(echoMarkers).map(m => m.getLatLng());
 if (!coords.length) return;
 if (anyPopupOpen) { echoFitPending = true; return; }
+map.stop();
 map.fitBounds(coords, FIT_OPTS);
 }
 
