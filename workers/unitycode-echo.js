@@ -157,8 +157,15 @@ async function hashId(seed) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
 }
 
+// RSS description у некоторых источников — не пара предложений, а солидный
+// абзац (иногда почти вся статья). Для задачи «сожми до факта» полный текст
+// не нужен — начало несёт всю суть, а необрезанный вход раздувал бы
+// стоимость каждого вызова независимо от того, как часто крутится крон.
+const ECHO_DESC_MAX = 500;
+
 async function distillEcho(env, item) {
   try {
+    const desc = (item.desc || '').slice(0, ECHO_DESC_MAX);
     const r = await fetch(MIMO_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + env.MIMO_API_KEY },
@@ -168,7 +175,7 @@ async function distillEcho(env, item) {
         max_tokens: 120, // 5-10 слов — с запасом хватает и на JSON-обвязку
         messages: [
           { role: 'system', content: ECHO_PROMPT },
-          { role: 'user', content: `Заголовок: ${item.title}\n\nСодержание: ${item.desc || '—'}` },
+          { role: 'user', content: `Заголовок: ${item.title}\n\nСодержание: ${desc || '—'}` },
         ],
       }),
     });
