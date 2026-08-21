@@ -1041,7 +1041,14 @@ try { localStorage.setItem('uc_echo_layer_on', on ? '1' : '0'); } catch(e){}
 echoToggleBtn.classList.toggle('on', on);
 echoControlsEl.classList.toggle('show', on);
 if (on) {
+// loadEchoes() грузит данные только один раз (echoLoaded) — дальше их
+// обновляет фоновый опрос. Но обрамление карты раньше происходило ТОЛЬКО
+// внутри loadEchoes(), так что при повторном включении слоя (данные уже
+// есть, грузить нечего) камера никуда не переезжала — точки становились
+// видимыми там, где их и добавили, а не там, где сейчас смотрит человек.
+// fitEchoes() отдельно на каждое включение чинит именно это.
 if (!echoLoaded) { echoLoaded = true; loadEchoes(); }
+else { fitEchoes(); }
 map.addLayer(echoLayer);
 } else {
 map.removeLayer(echoLayer);
