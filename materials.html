@@ -173,6 +173,9 @@ const CONFIG = {
     bg:         "rgba(0,0,0,0.72)",   // фон кнопок
     border:     "1px solid rgba(255,255,255,0.08)",
     color:      "#555",        // цвет неактивной кнопки
+    pulseColor:    "#ffb43c",  // до какого цвета медленно пульсирует неактивный пункт (тот же жёлтый, что у Эха мира)
+    pulseDuration: 7,          // секунд на полный цикл одного пункта
+    pulseStagger:  1.4,        // сдвиг старта между соседними пунктами — бегущая волна, не вспышка разом
   },
 
   // ── Комета (как в индексе): периодически пролетает с хвостом ──────────
@@ -262,8 +265,14 @@ const CONFIG = {
   el.style[vert]=a; el.style[horz]=b;
   el.style.alignItems = horz==='right' ? 'flex-end' : 'flex-start';
   const css=document.createElement('style');
+  // Пульс — только у неактивных пунктов (:not(.cur)): открытый материал
+  // держит свой ровный акцентный цвет как чёткий «ты здесь», не мигает
+  // вместе с остальными. 50%-only keyframe — начало/конец не хардкожены,
+  // берутся из обычного цвета пункта (m.color) сами, без дублирования.
   css.textContent='.mat-item{font-size:'+m.fontSize+';padding:'+m.padding+';background:'+m.bg
-    +';border:'+m.border+';color:'+m.color+';}';
+    +';border:'+m.border+';color:'+m.color+';}'
+    +'@keyframes matPulse{50%{color:'+(m.pulseColor||'#ffb43c')+';}}'
+    +'.mat-item:not(.cur){animation:matPulse '+(m.pulseDuration||7)+'s ease-in-out infinite;}';
   document.head.appendChild(css);
 })();
 
@@ -304,13 +313,16 @@ async function loadLocalized(src){
 }
 const LAST_KEY="uc_materials_last";
 const reader=document.getElementById('reader'), readerBody=document.getElementById('readerBody');
-CONFIG.materials.forEach(m=>{
+CONFIG.materials.forEach((m,i)=>{
   const href = m.href==='@repo' ? CONFIG.repoUrl : m.href;
   const el=document.createElement(m.type==='reader'?'button':'a');
   el.className='mat-item'; el.dataset.id=m.id; el.textContent=(m.key && window.UC_I18N) ? (UC_I18N.t(m.key)||m.title) : m.title;
   if(m.type==='link') el.href=href;
   if(m.type==='ext'){ el.href=href; el.target='_blank'; el.rel='noopener'; }
   if(m.type==='reader') el.onclick=()=>toggleReader(m);
+  // Сдвиг старта пульса по порядку пункта — бегущая волна сверху вниз,
+  // а не все пять разом.
+  el.style.animationDelay=(i*(CONFIG.menu.pulseStagger||1.4))+'s';
   document.getElementById('menu').appendChild(el);
 });
 function markCurrent(id){ document.querySelectorAll('.mat-item').forEach(b=>b.classList.toggle('cur',b.dataset.id===id)); }
