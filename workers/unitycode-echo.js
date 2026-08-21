@@ -59,8 +59,9 @@ const RETENTION_DAYS_DEFAULT = 21;
 // редакционная позиция.
 //
 // Язык дистиллята — явно русский: столбец echoes.lang по умолчанию 'ru',
-// мультиязычные источники в этой итерации не проектируются (см. ТЗ,
-// «Что НЕ делать» — geocoding и подобное расширение откладывается).
+// мультиязычные источники в этой итерации не проектируются.
+// Geocoding (place → координаты) добавлен 21.08 — см. geocodePlace ниже,
+// отдельный разговор и решение (Nominatim/OSM, без ключа).
 const ECHO_PROMPT = `Ты — дистиллятор «Эха мира» Сети Код Единства. Тебе дают заголовок и краткое содержание новости или научной публикации. Сожми до объективной сути — короткая фраза (5-10 слов), на русском языке независимо от языка источника.
 
 Это не пересказ и не художественная искра (как квинтэссенция человеческих мыслей внутри Сети) — это сухой факт события, сжатый до предела. Без оценки, без интерпретации, без эмоциональной окраски: голый сигнал из шума информационного поля мира, а не мнение о нём.
@@ -215,6 +216,51 @@ async function echoExists(env, client_id) {
   } catch (e) { return false; }
 }
 
+// ── ГЕОКОДИНГ (place → координаты) через Nominatim (OpenStreetMap) ────────
+// Бесплатно, без ключа — тот же OSM, что уже даёт тайлы карты в set.html.
+// Политика Nominatim: не больше 1 запроса/сек и обязательный
+// идентифицирующий User-Agent — оба соблюдены ниже (глобальный throttle
+// через lastGeocodeAt, а не по счётчику: воркер stateless между
+// вызовами, но geocodePlace всегда вызывается последовательно внутри
+// одного прогона, так что module-level переменная переживает нужный
+// промежуток). place — обычно широкий текст («Великобритания»,
+// «Northern Ireland»), поэтому и точность результата — до страны/
+// региона, не улицы; этого достаточно, приватность людей на этой же
+// карте огрублена так же (см. spreadCoords в unitycode-write.js).
+let lastGeocodeAt = 0;
+async function geocodePlace(place) {
+  if (!place) return null;
+  const wait = 1100 - (Date.now() - lastGeocodeAt);
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  lastGeocodeAt = Date.now();
+  try {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(place);
+    const r = await fetch(url, { headers: { 'User-Agent': 'UnityCodeEcho/1.0 (unitycode.space, некоммерческий проект)' } });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (!Array.isArray(rows) || !rows.length) return null;
+    const lat = parseFloat(rows[0].lat), lon = parseFloat(rows[0].lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    return { lat, lon };
+  } catch (e) { return null; }
+}
+
+// Небольшой случайный разброс вокруг центра — не про приватность (место и
+// так не персональное, страна/регион), а про читаемость карты: без него
+// десятки эхо про одну страну легли бы в одну и ту же точку и визуально
+// схлопнулись в один пиксель. Тот же приём (равномерно по площади круга),
+// что spreadCoords в unitycode-write.js, но в километрах, не метрах —
+// здесь и разброс на порядки шире.
+const ECHO_SPREAD_KM = 40;
+function spreadEchoCoords(lat, lon, km) {
+  const r = km * Math.sqrt(Math.random());
+  const a = Math.random() * Math.PI * 2;
+  const dLat = (r * Math.cos(a)) / 111.32;
+  const cosLat = Math.cos(lat * Math.PI / 180) || 1e-6;
+  const dLon = (r * Math.sin(a)) / (111.32 * cosLat);
+  return { lat: lat + dLat, lon: lon + dLon };
+}
+
 async function sbInsertEcho(env, row) {
   try {
     const r = await fetch(`${env.SUPABASE_URL}/rest/v1/echoes`, {
@@ -285,7 +331,7 @@ async function runEchoCollection(env, opts = {}) {
   const disabled = disabledCategories(env);
 
   for (const url of sources) {
-    const s = { url, fetched: 0, alreadySeen: 0, distilled: 0, inserted: 0, skippedDisabled: 0 };
+    const s = { url, fetched: 0, alreadySeen: 0, distilled: 0, geocoded: 0, inserted: 0, skippedDisabled: 0 };
     const items = (await fetchFeed(url)).slice(0, perSource);
     s.fetched = items.length;
     for (const item of items) {
@@ -301,6 +347,20 @@ async function runEchoCollection(env, opts = {}) {
       s.distilled++;
       if (dist.category && disabled.has(dist.category)) { s.skippedDisabled++; continue; }
 
+      // Геокодинг — тоже только для новых (уже прошли echoExists выше),
+      // как и дистилляция: Nominatim не тратится на то, что и так уже
+      // в базе. Неудача (нет place, сервис недоступен, ничего не нашлось)
+      // не блокирует вставку — echo просто останется без точки на карте.
+      let lat = null, lon = null;
+      if (dist.place) {
+        const geo = await geocodePlace(dist.place);
+        if (geo) {
+          const spread = spreadEchoCoords(geo.lat, geo.lon, ECHO_SPREAD_KM);
+          lat = spread.lat; lon = spread.lon;
+          s.geocoded++;
+        }
+      }
+
       const eventTime = item.pub && !isNaN(Date.parse(item.pub)) ? new Date(item.pub).toISOString() : null;
 
       const ok = await sbInsertEcho(env, {
@@ -308,6 +368,7 @@ async function runEchoCollection(env, opts = {}) {
         text: dist.text,
         category: dist.category,
         place: dist.place,
+        lat, lon,
         source_url: item.link || url,
         source_name: sourceHost(url),
         event_time: eventTime,
