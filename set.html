@@ -965,6 +965,19 @@ marker.bindPopup(`
 echoMarkers[e.id] = marker;
 }
 
+// Пока открыт любой попап (читаешь узел, собираешь связь через пикер) —
+// фоновое обрамление эха откладывается, а не просто теряется: если его не
+// придержать, смена вида карты посреди действия дезориентирует, а на новом
+// зуме markercluster может схлопнуть нужный узел в кластер и закрыть попап
+// (а с ним и пикер связывания) прямо на середине выбора.
+let anyPopupOpen = false;
+let echoFitPending = false;
+map.on('popupopen', () => { anyPopupOpen = true; });
+map.on('popupclose', () => {
+anyPopupOpen = false;
+if (echoFitPending) { echoFitPending = false; fitEchoes(); }
+});
+
 // Тот же приём, что fitAllNodes у узлов: без него слой открывался на том
 // виде карты, что уже был выставлен под узлы — эхо в Африке могло просто
 // оказаться за кадром, хотя маркер честно на карте есть. В отличие от
@@ -975,6 +988,7 @@ echoMarkers[e.id] = marker;
 function fitEchoes() {
 const coords = Object.values(echoMarkers).map(m => m.getLatLng());
 if (!coords.length) return;
+if (anyPopupOpen) { echoFitPending = true; return; }
 map.fitBounds(coords, FIT_OPTS);
 }
 
