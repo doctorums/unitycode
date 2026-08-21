@@ -943,8 +943,11 @@ className: '', html: '<div class="echo-marker"></div>',
 iconSize: [9, 9], iconAnchor: [4, 4]
 });
 
+let lastEchoCreatedAt = null; // курсор для инкрементальной подгрузки — тот же приём, что lastCreatedAt у узлов
+
 function addEchoMarker(e) {
 if (e.lat == null || e.lon == null || echoMarkers[e.id]) return;
+if (!lastEchoCreatedAt || e.created_at > lastEchoCreatedAt) lastEchoCreatedAt = e.created_at;
 const marker = L.marker([e.lat, e.lon], { icon: echoIcon() });
 marker._echo = e;
 const srcHtml = e.source_url
@@ -964,28 +967,38 @@ echoMarkers[e.id] = marker;
 
 // Тот же приём, что fitAllNodes у узлов: без него слой открывался на том
 // виде карты, что уже был выставлен под узлы — эхо в Африке могло просто
-// оказаться за кадром, хотя маркер честно на карте есть. Один раз при
-// первой загрузке эхо, не при каждом фоновом обновлении.
-let didFitEchoes = false;
+// оказаться за кадром, хотя маркер честно на карте есть. В отличие от
+// fitAllNodes (разово) — эхо продолжают собираться в фоне пока человек
+// смотрит на карту, «лениво» ждать обновления страницы не должно быть
+// нужно: обрамляем заново каждый раз, когда реально добавились новые точки
+// (не на каждый опрос впустую — иначе камера дёргалась бы просто так).
 function fitEchoes() {
-if (didFitEchoes) return;
 const coords = Object.values(echoMarkers).map(m => m.getLatLng());
 if (!coords.length) return;
-didFitEchoes = true;
 map.fitBounds(coords, FIT_OPTS);
 }
 
+// initial=false — инкрементальный опрос по курсору lastEchoCreatedAt, тот же
+// принцип, что loadNodes у узлов.
 async function loadEchoes() {
 try {
-const url = `${SUPABASE_URL}/rest/v1/echoes?select=id,text,category,place,lat,lon,source_name,source_url,created_at&lat=not.is.null&lon=not.is.null&order=created_at.desc&limit=500`;
+let url = `${SUPABASE_URL}/rest/v1/echoes?select=id,text,category,place,lat,lon,source_name,source_url,created_at&lat=not.is.null&lon=not.is.null&order=created_at.desc&limit=500`;
+if (lastEchoCreatedAt) url += `&created_at=gt.${encodeURIComponent(lastEchoCreatedAt)}`;
 const res = await UCData.fetchRetry(url, { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
 if (!res.ok) return;
 const rows = await res.json();
+if (!rows.length) return;
 rows.forEach(addEchoMarker);
 applyEchoFilters();
 fitEchoes();
 } catch (e) { console.warn('Echo load error', e); }
 }
+
+// Опрос раз в ECHO_REFRESH_INTERVAL, но только пока слой реально включён —
+// эхо не участвуют в основном loadNodes-цикле узлов, и без своего таймера
+// новые записи появлялись бы только после ручного обновления страницы.
+const ECHO_REFRESH_INTERVAL = 15000;
+setInterval(() => { if (echoOn) loadEchoes(); }, ECHO_REFRESH_INTERVAL);
 
 const echoToggleBtn = document.getElementById('echoToggle');
 const echoControlsEl = document.getElementById('echoControls');
