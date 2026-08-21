@@ -169,6 +169,12 @@ async function hashId(seed) {
 // стоимость каждого вызова независимо от того, как часто крутится крон.
 const ECHO_DESC_MAX = 500;
 
+// Есть ли в строке хоть одна буква (любой алфавит). Отсекает вырожденные
+// ответы модели вроде «...» — см. distillEcho ниже.
+function hasLetters(s) {
+  return !!s && /\p{L}/u.test(s);
+}
+
 async function distillEcho(env, item) {
   try {
     const desc = (item.desc || '').slice(0, ECHO_DESC_MAX);
@@ -197,10 +203,16 @@ async function distillEcho(env, item) {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     const text = String(parsed.text || '').trim().slice(0, 120); // страховка поверх фразы в 5-10 слов, не 500 (DB check) — иначе абзац всё равно проскочит
-    if (!text) return null;
+    // Модель иногда возвращает шаблон ответа из промпта дословно, не заполнив
+    // его: {"text":"...", "category":"...", "place":"..."}. JSON при этом
+    // валидный, длина ненулевая — без явной проверки такое доезжало до карты
+    // как эхо из одних точек (21.08, одна запись в базе). Признак — в строке
+    // нет ни одной буквы.
+    if (!hasLetters(text)) return null;
     let category = String(parsed.category || '').toLowerCase().trim();
     if (!VALID_CATEGORIES.includes(category)) category = null; // модель ошиблась — не блокирует вставку
-    const place = parsed.place ? String(parsed.place).trim().slice(0, 200) : null;
+    let place = parsed.place ? String(parsed.place).trim().slice(0, 200) : null;
+    if (!hasLetters(place)) place = null; // тот же шаблон в поле place — не геокодим многоточие
     return { text, category, place };
   } catch (e) { return null; }
 }
@@ -470,6 +482,17 @@ export default {
       return new Response('not found', { status: 404 });
     }
     const full = url.searchParams.get('full') === '1';
+    // ?wait=1 — тот же полный прогон, но ДОЖДАТЬСЯ и отдать сводку. Нужен,
+    // когда фоновый режим отработал не так, как ожидалось: без сводки видно
+    // только число строк в echoes, и почему их мало — сказать нечем. Ценой
+    // долгого ответа (клиент может показать обрыв связи — прогон при этом
+    // всё равно доработает и запишет в базу).
+    if (full && url.searchParams.get('wait') === '1') {
+      const summary = await runEchoCollection(env);
+      return new Response(JSON.stringify(summary, null, 2), {
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      });
+    }
     if (full) {
       ctx.waitUntil(runEchoCollection(env));
       return new Response(JSON.stringify({ started: true, note: 'полный прогон запущен в фоне — результат смотри в echoes через минуту-другую' }, null, 2), {
