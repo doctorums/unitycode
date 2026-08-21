@@ -1014,6 +1014,16 @@ fitEchoes();
 const ECHO_REFRESH_INTERVAL = 15000;
 setInterval(() => { if (echoOn) loadEchoes(); }, ECHO_REFRESH_INTERVAL);
 
+// Мобильные браузеры (особенно Safari на iOS) замораживают таймеры фоновой
+// вкладки — 15-секундный опрос просто не выполняется, пока экран
+// заблокирован или человек переключился в другое приложение (например
+// запустить сбор эха вручную) и потом возвращается. Без этого догона зум
+// на новых точках мог выглядеть «сломанным»: данные-то пришли, а опрос,
+// который должен был это заметить, всё это время не тикал.
+document.addEventListener('visibilitychange', () => {
+if (document.visibilityState === 'visible' && echoOn) loadEchoes();
+});
+
 const echoToggleBtn = document.getElementById('echoToggle');
 const echoControlsEl = document.getElementById('echoControls');
 function setEchoOn(on) {
