@@ -962,6 +962,19 @@ marker.bindPopup(`
 echoMarkers[e.id] = marker;
 }
 
+// Тот же приём, что fitAllNodes у узлов: без него слой открывался на том
+// виде карты, что уже был выставлен под узлы — эхо в Африке могло просто
+// оказаться за кадром, хотя маркер честно на карте есть. Один раз при
+// первой загрузке эхо, не при каждом фоновом обновлении.
+let didFitEchoes = false;
+function fitEchoes() {
+if (didFitEchoes) return;
+const coords = Object.values(echoMarkers).map(m => m.getLatLng());
+if (!coords.length) return;
+didFitEchoes = true;
+map.fitBounds(coords, FIT_OPTS);
+}
+
 async function loadEchoes() {
 try {
 const url = `${SUPABASE_URL}/rest/v1/echoes?select=id,text,category,place,lat,lon,source_name,source_url,created_at&lat=not.is.null&lon=not.is.null&order=created_at.desc&limit=500`;
@@ -970,6 +983,7 @@ if (!res.ok) return;
 const rows = await res.json();
 rows.forEach(addEchoMarker);
 applyEchoFilters();
+fitEchoes();
 } catch (e) { console.warn('Echo load error', e); }
 }
 
