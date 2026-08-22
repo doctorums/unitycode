@@ -22,6 +22,12 @@
 //   RATE_KV               (KV)     опционально; лимит частоты по token/IP
 //   VOICE_THRESHOLD       (var)    опционально; порог шумов для «вторых ворот» (см. voice_*
 //                                  ниже). Без переменной — дефолт 50.
+//   ECHO_TEST_KEY         (secret) опционально; ТОТ ЖЕ секрет, что уже стоит у воркера
+//                                  unitycode-echo для его диагностического fetch(). Если задан
+//                                  здесь тоже — каждое успешное вплетение узла заодно будит
+//                                  unitycode-echo на один прогон сбора новостей (см.
+//                                  triggerEchoCollection). Без секрета — тихо пропускается,
+//                                  вплетение работает как раньше.
 //
 // Клиент шлёт POST JSON:
 //   { action:'node',        token, turnstile, raw_noise, ai_interpretation, lat?, lng?, echo_id? }
@@ -659,6 +665,31 @@ async function recordEchoResponse(env, echoId, nodeId) {
   } catch (e) { /* тихо: не критичный путь */ }
 }
 
+// ── ЭХО МИРА: разовый пинок сборщику при вплетении ─────────────────
+// Предложение Вити (22.08): «оставил шум → мир откликнулся» — каждое
+// успешное вплетение заодно будит unitycode-echo на один прогон сбора
+// новостей, вместо того чтобы полагаться только на Cron Trigger или
+// ручные заходы по диагностической ссылке.
+//
+// Секрет не новый: тот же ECHO_TEST_KEY, что уже стоит у unitycode-echo,
+// нужно продублировать сюда как переменную этого воркера — без неё вызов
+// молча пропускается, ничего не ломая.
+//
+// Не ждём результата (fetch без await результата тела) — у echo свой
+// full=1 сам не блокирует ответ (уходит в собственный ctx.waitUntil и
+// отвечает started:true почти сразу), так что здесь это лёгкий «толчок»,
+// а не долгий вызов. У unitycode-echo свой отдельный бюджет подзапросов
+// (SUBREQUEST_STOP_AT в его коде) — к бюджету ctx.waitUntil ЭТОГО воркера
+// (общему на runLinker/logEvent) это не имеет отношения, это отдельный
+// инвок отдельного воркера.
+const ECHO_WORKER_URL = 'https://unitycode-echo.sv2txxznjm.workers.dev/';
+async function triggerEchoCollection(env) {
+  if (!env.ECHO_TEST_KEY) return;
+  try {
+    await fetch(`${ECHO_WORKER_URL}?key=${encodeURIComponent(env.ECHO_TEST_KEY)}&full=1`);
+  } catch (e) { /* эхо не критично для вплетения — тихий fail-safe */ }
+}
+
 // ── «ВТОРЫЕ ВОРОТА» — ГОЛОСА ──────────────────────────────────────
 // Порог вплетённых шумов, дающий доступ к длинным осознанным текстам.
 // Голоса — отдельная таблица (migrations/voices.sql), не узлы графа.
@@ -978,6 +1009,7 @@ export default {
           // и его можно отличить от полного исхода при подсчёте метрик.
           await logLinker(env, created.id, 'started');
           ctx.waitUntil(runLinker(env, { id: created.id, raw_noise: t }));
+          ctx.waitUntil(triggerEchoCollection(env));
           if (typeof body.echo_id === 'string' && ID_RE.test(body.echo_id)) {
             ctx.waitUntil(recordEchoResponse(env, body.echo_id, created.id));
           }
