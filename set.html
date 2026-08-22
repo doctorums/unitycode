@@ -166,6 +166,12 @@ to { transform: translateX(-50%); }
 .marker-cluster div { background: rgba(0,255,136,0.2) !important; color: #00ff88 !important; font-family: 'Share Tech Mono', monospace !important; font-size: 11px !important; font-weight: normal !important; border: 1px solid rgba(0,255,136,0.6) !important; }
 .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large { background: rgba(0,255,136,0.08) !important; }
 .marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div { background: rgba(0,255,136,0.15) !important; }
+/* Кластер эха — тот же приём, что у узлов (тап приближает, не нужно
+   щипком раздвигать точки руками), но янтарный, не зелёный — тот же
+   принцип различения, что у одиночного .echo-marker (Витя, 22.08:
+   «много точек... сделай переход по тапу»). */
+.echo-marker-cluster { background: rgba(255,180,60,0.14) !important; border: 1px solid rgba(255,180,60,0.45) !important; }
+.echo-marker-cluster div { background: rgba(255,180,60,0.22) !important; color: #ffb43c !important; font-family: 'Share Tech Mono', monospace !important; font-size: 10px !important; font-weight: normal !important; border: 1px solid rgba(255,180,60,0.65) !important; }
 .leaflet-container { background: #050a05 !important; font-family: 'Share Tech Mono', monospace; }
 .leaflet-tile-pane { filter: brightness(0.5) saturate(0) hue-rotate(120deg); }
 .leaflet-popup-content-wrapper { background: rgba(0,0,0,0.95) !important; border: 1px solid rgba(0,255,136,0.3) !important; border-radius: 0 !important; color: #fff !important; padding: 0 !important; box-shadow: 0 0 20px rgba(0,255,136,0.1) !important; }
@@ -952,7 +958,23 @@ loadConnections();
 // на сессию, сбрасываются на дефолт («всё включено», «весь мир») при
 // перезагрузке.
 // ═══════════════════════════════════════════════════════
-const echoLayer = L.layerGroup(); // не добавлен на карту, пока слой не включат
+// Кластер, не просто layerGroup (правка 22.08) — раньше близкие точки
+// лежали внахлёст, и попасть тапом в нужную можно было только раздвинув их
+// пальцами (щипком-зумом). markerClusterGroup даёт то же самое, что уже
+// есть у узлов Сети: тап по кластеру сам приближает камеру к его границам,
+// щипок руками больше не обязателен. maxClusterRadius чуть меньше, чем у
+// узлов (40 против 50) — эха обычно и так реже, крупные кластеры менее
+// вероятны.
+const echoLayer = L.markerClusterGroup({
+maxClusterRadius: 40,
+iconCreateFunction: function(c) {
+return L.divIcon({
+html: `<div><span>${c.getChildCount()}</span></div>`,
+className: 'echo-marker-cluster',
+iconSize: [28, 28]
+});
+}
+}); // не добавлен на карту, пока слой не включат
 const echoMarkers = {};
 let echoLoaded = false;
 let echoOn = false;
