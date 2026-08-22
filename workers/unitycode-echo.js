@@ -484,33 +484,42 @@ async function runEchoCollection(env, opts = {}) {
     [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
   }
 
-  // ФАЗА 3 — дистилляция параллельно. distillEcho теперь делает до 2
-  // попыток на запись (см. её обёртку выше — шлюз периодически отвечает
-  // пустым телом, эмпирика 22.08 показала: 11 из 12 отказов подряд), а
-  // значит одна запись может стоить ДО 2 подзапросов, не 1. Резерв под
-  // бюджет пересчитан с учётом этого: -1 под финальную вставку (ФАЗА 5),
-  // /3 — на случай если КАЖДОЙ записи понадобятся оба фактора сразу:
-  // 2 попытки дистилляции + геокодинг.
-  const maxDistill = Math.max(0, Math.floor((budgetLeft() - 1) / 3));
-  const toDistill = candidates.slice(0, maxDistill);
-  // Пачками, не всё разом (правка 22.08, по факту с прода): большая
-  // параллельность сама по себе не была причиной пустых ответов шлюза
-  // (снижение DISTILL_CONCURRENCY не помогло — процент провалов не упал),
-  // но чанкование остаётся разумной осторожностью и не мешает повтору.
+  // ФАЗА 3 — дистилляция параллельно, пачками. distillEcho делает до 2
+  // попыток на запись (шлюз периодически отвечает пустым телом — см. её
+  // обёртку выше), а значит одна запись может стоить ДО 2 подзапросов.
+  //
+  // ПРАВКА 22.08 (вторая за день): первая версия резервировала бюджет на
+  // ХУДШИЙ случай сразу для ВСЕГО прогона (/3 на всё разом) — это
+  // подстраховывало от превышения лимита, но перестраховывало вслепую:
+  // типичный случай (первая попытка отвечает, геокодинга не нужно) втрое
+  // дешевле худшего, а бюджет резервировался так, будто худший случай
+  // гарантирован. Итог: из ~60+ найденных новых записей трогалось едва ли
+  // 8 — остальные просто не пытались, хотя бюджета на них реально хватало.
+  //
+  // Теперь бюджет проверяется ПЕРЕД каждой пачкой по фактическому остатку
+  // (used растёт по факту трат, не по прогнозу), а не резервируется на всё
+  // сразу — так что дешёвые пачки (все ответили с первого раза) освобождают
+  // место дорогим следующим, вместо того чтобы бюджет простаивал.
   const DISTILL_CONCURRENCY = 5;
   const distilled = [];
   let distillFailed = 0;
-  let distillSubrequests = 0; // реальный расход — до 2 подзапросов на попытку из-за повтора
   const distillFailSamples = []; // первые несколько причин — не весь список, сводка не должна раздуваться
-  for (let i = 0; i < toDistill.length; i += DISTILL_CONCURRENCY) {
-    const chunk = toDistill.slice(i, i + DISTILL_CONCURRENCY);
+  for (let i = 0; i < candidates.length; i += DISTILL_CONCURRENCY) {
+    // Резерв на ЭТУ пачку: у каждой из до DISTILL_CONCURRENCY записей в
+    // худшем случае 2 попытки дистилляции + геокодинг = 3, плюс 1 в самом
+    // конце на финальную batch-вставку (ФАЗА 5). Не хватает — прогон
+    // останавливается здесь, остаток candidates просто не тронут в этот
+    // раз (не потерян — echoExists при следующем прогоне снова увидит их
+    // как новые, раз они ещё не в базе).
+    if (budgetLeft() < DISTILL_CONCURRENCY * 3 + 1) break;
+    const chunk = candidates.slice(i, i + DISTILL_CONCURRENCY);
     const chunkResults = await Promise.all(chunk.map(async c => {
       const budget = { n: 0 };
       const dist = await distillEcho(env, c.item, budget);
       return { ...c, dist, spent: budget.n };
     }));
     for (const r of chunkResults) {
-      distillSubrequests += r.spent;
+      used += r.spent;
       if (!r.dist || !r.dist.text) {
         distillFailed++;
         if (distillFailSamples.length < 5) distillFailSamples.push((r.dist && r.dist.fail) || 'unknown');
@@ -518,7 +527,6 @@ async function runEchoCollection(env, opts = {}) {
       distilled.push(r);
     }
   }
-  used += distillSubrequests;
 
   const ready = distilled.filter(c => c.dist && c.dist.text && !(c.dist.category && disabled.has(c.dist.category)));
 
@@ -571,7 +579,7 @@ async function runEchoCollection(env, opts = {}) {
     // источник даёт десятки новых записей, хотя берётся не больше perSource.
     fresh: Math.min((freshBySource[url] || []).length, perSource),
   }));
-  summary.distillAttempted = toDistill.length;
+  summary.distillAttempted = distilled.length;
   summary.distillFailed = distillFailed; // сколько параллельных вызовов LLM тихо провалились — диагностика от 22.08
   summary.distillFailSamples = distillFailSamples; // причины первых нескольких провалов — не только счёт, но и текст ошибки
   summary.subrequestsUsed = used;
