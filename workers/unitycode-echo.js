@@ -458,7 +458,22 @@ async function runEchoCollection(env, opts = {}) {
   // на попытку в геокодинге).
   const maxDistill = Math.max(0, Math.floor((budgetLeft() - 1) / 2));
   const toDistill = candidates.slice(0, maxDistill);
-  const distilled = await Promise.all(toDistill.map(async c => ({ ...c, dist: await distillEcho(env, c.item) })));
+  // Пачками, не всё разом (правка 22.08, по факту с прода): 12 параллельных
+  // запросов к шлюзу DotPoin разом дали 8 тихих провалов из 12 — шлюз,
+  // похоже, не держит столько одновременных соединений и часть просто
+  // рвёт/отклоняет (distillEcho гасит это в try/catch, возвращая null, без
+  // единого слова о причине). Симуляция этого не поймала — там LLM был
+  // идеальным моком, отвечающим всегда. DISTILL_CONCURRENCY — компромисс:
+  // всё ещё быстрее, чем строго по одному, но не бьёт по шлюзу всей
+  // пачкой сразу.
+  const DISTILL_CONCURRENCY = 5;
+  const distilled = [];
+  let distillFailed = 0;
+  for (let i = 0; i < toDistill.length; i += DISTILL_CONCURRENCY) {
+    const chunk = toDistill.slice(i, i + DISTILL_CONCURRENCY);
+    const chunkResults = await Promise.all(chunk.map(async c => ({ ...c, dist: await distillEcho(env, c.item) })));
+    for (const r of chunkResults) { if (!r.dist) distillFailed++; distilled.push(r); }
+  }
   used += toDistill.length;
 
   const ready = distilled.filter(c => c.dist && !(c.dist.category && disabled.has(c.dist.category)));
@@ -507,8 +522,13 @@ async function runEchoCollection(env, opts = {}) {
     url,
     fetched: (fetchResults.find(r => r.url === url) || {}).withIds?.length || 0,
     alreadySeen: (fetchResults.find(r => r.url === url) || {}).withIds?.filter(x => known.has(x.client_id)).length || 0,
-    fresh: (freshBySource[url] || []).length,
+    // fresh — сколько РЕАЛЬНО пошло в кандидаты (после среза по perSource),
+    // не всё, что нашлось в фиде: иначе на широком фиде выглядело так, будто
+    // источник даёт десятки новых записей, хотя берётся не больше perSource.
+    fresh: Math.min((freshBySource[url] || []).length, perSource),
   }));
+  summary.distillAttempted = toDistill.length;
+  summary.distillFailed = distillFailed; // сколько параллельных вызовов LLM тихо провалились — диагностика от 22.08
   summary.subrequestsUsed = used;
   return summary;
 }
