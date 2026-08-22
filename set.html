@@ -402,7 +402,7 @@ if (!localStorage.getItem('uc_token')) {
     <div style="width:90%;max-width:420px;border:1px solid rgba(0,255,136,0.3);background:#050a05;padding:2rem;">
       <div style="font-family:monospace;font-size:0.6rem;color:#00ff88;letter-spacing:0.2em;margin-bottom:1rem;">${UC_I18N.t('set.keyTitle')}</div>
       <p style="font-family:monospace;font-size:0.8rem;line-height:1.7;color:rgba(255,255,255,0.7);margin-bottom:1.4rem;">${UC_I18N.t('set.keyDesc')}</p>
-      <input id="uc-set-phrase" type="text" placeholder="${UC_I18N.t('set.keyPhrase')}" style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(0,255,136,0.2);color:#fff;font-family:monospace;font-size:0.8rem;padding:0.6rem 0.8rem;outline:none;margin-bottom:1rem;">
+      <input id="uc-set-phrase" type="text" placeholder="${UC_I18N.t('set.keyPhrase')}" style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(0,255,136,0.2);color:#fff;font-family:monospace;font-size:16px;padding:0.6rem 0.8rem;outline:none;margin-bottom:1rem;">
       <div style="display:flex;gap:0.8rem;">
         <button id="uc-set-ok" style="flex:1;padding:0.6rem;border:1px solid #00ff88;color:#00ff88;font-family:monospace;font-size:0.7rem;letter-spacing:0.1em;background:transparent;cursor:pointer;">${UC_I18N.t('set.keyEnter')}</button>
         <button id="uc-set-skip" style="flex:1;padding:0.6rem;border:1px solid rgba(255,255,255,0.1);color:#555;font-family:monospace;font-size:0.7rem;letter-spacing:0.1em;background:transparent;cursor:pointer;">${UC_I18N.t('set.keyJustLook')}</button>
@@ -812,8 +812,13 @@ console.warn('Full refresh error', e);
 }
 
 loadNodes(true);
-setInterval(() => loadNodes(false), REFRESH_INTERVAL);
-setInterval(fullRefreshNodes, FULL_REFRESH_INTERVAL);
+// Пропуск на фоновой вкладке (аудит 22.08) — раньше три сетевых таймера
+// (эти два плюс loadConnections ниже) продолжали дёргать Supabase, даже
+// когда телефон лежит экраном вниз с открытой вкладкой: лишний трафик и
+// разряд батареи без единого зрителя. Догон при возврате — тем же приёмом,
+// что уже есть у опроса эха (см. visibilitychange там же).
+setInterval(() => { if (document.visibilityState === 'visible') loadNodes(false); }, REFRESH_INTERVAL);
+setInterval(() => { if (document.visibilityState === 'visible') fullRefreshNodes(); }, FULL_REFRESH_INTERVAL);
 
 // Линии связей
 const linesLayer = L.layerGroup().addTo(map);
@@ -923,7 +928,18 @@ writeCache(CACHE_CONNS, conns);
 
 // Если узлы уже из кэша — линии можно рисовать почти сразу
 setTimeout(loadConnections, cachedNodes ? 200 : 2000);
-setInterval(loadConnections, 30000);
+setInterval(() => { if (document.visibilityState === 'visible') loadConnections(); }, 30000);
+
+// Догон сразу по возврату на вкладку — тем же приёмом, что уже есть у эха
+// (см. addEventListener('visibilitychange', ...) там же), но здесь один
+// слушатель катит все три сетевых цикла разом, не дожидаясь их таймеров.
+document.addEventListener('visibilitychange', () => {
+if (document.visibilityState === 'visible') {
+loadNodes(false);
+fullRefreshNodes();
+loadConnections();
+}
+});
 
 // ═══════════════════════════════════════════════════════
 // ЭХО МИРА — независимый слой поверх карты (см. migrations/echoes.sql,
@@ -1135,10 +1151,12 @@ applyEchoFilters();
 
 let pulseState = true;
 setInterval(() => {
+if (document.visibilityState !== 'visible') return;
 document.getElementById('pulse').style.color = (pulseState = !pulseState) ? '#00ff88' : '#555';
 }, 1500);
 
 setInterval(() => {
+if (document.visibilityState !== 'visible') return;
 document.getElementById('activeCount').textContent = Math.floor(1 + Math.random() * 8);
 }, 5000);
 }
