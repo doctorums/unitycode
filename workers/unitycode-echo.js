@@ -193,7 +193,16 @@ async function distillEcho(env, item) {
         ],
       }),
     });
-    if (!r.ok) return null;
+    // ДО 22.08 любая неудача (HTTP-ошибка, пустой ответ, битый JSON) гасилась
+    // молча — return null без единого слова о причине. Когда в проде 9 из 12
+    // параллельных вызовов вдруг стали проваливаться разом (сначала решили,
+    // что дело в параллельности — снизили DISTILL_CONCURRENCY, провалов
+    // стало ЕЩЁ больше), выяснилось: гадать без причины бессмысленно. Теперь
+    // неудача несёт `fail` — текст ошибки, а не воздух.
+    if (!r.ok) {
+      const errTxt = (await r.text()).slice(0, 150);
+      return { fail: 'http_' + r.status + ': ' + errTxt };
+    }
     const d = await r.json();
     const msg = d?.choices?.[0]?.message || {};
     let raw = (msg.content || '').replace(/```json|```/g, '').trim();
@@ -202,7 +211,7 @@ async function distillEcho(env, item) {
       const m = rc.match(/\{[\s\S]*"text"[\s\S]*\}/);
       if (m) raw = m[0];
     }
-    if (!raw) return null;
+    if (!raw) return { fail: 'empty_response' };
     const parsed = JSON.parse(raw);
     const text = String(parsed.text || '').trim().slice(0, 60); // страховка поверх фразы в 3-4 слова, не 500 (DB check) — иначе абзац всё равно проскочит
     // Модель иногда возвращает шаблон ответа из промпта дословно, не заполнив
@@ -210,13 +219,13 @@ async function distillEcho(env, item) {
     // валидный, длина ненулевая — без явной проверки такое доезжало до карты
     // как эхо из одних точек (21.08, одна запись в базе). Признак — в строке
     // нет ни одной буквы.
-    if (!hasLetters(text)) return null;
+    if (!hasLetters(text)) return { fail: 'template_echo_or_blank_text' };
     let category = String(parsed.category || '').toLowerCase().trim();
     if (!VALID_CATEGORIES.includes(category)) category = null; // модель ошиблась — не блокирует вставку
     let place = parsed.place ? String(parsed.place).trim().slice(0, 200) : null;
     if (!hasLetters(place)) place = null; // тот же шаблон в поле place — не геокодим многоточие
     return { text, category, place };
-  } catch (e) { return null; }
+  } catch (e) { return { fail: 'throw: ' + String(e).slice(0, 150) }; }
 }
 
 // Дешёвая проверка ПЕРЕД платным вызовом LLM — без неё каждый прогон
@@ -469,14 +478,21 @@ async function runEchoCollection(env, opts = {}) {
   const DISTILL_CONCURRENCY = 5;
   const distilled = [];
   let distillFailed = 0;
+  const distillFailSamples = []; // первые несколько причин — не весь список, сводка не должна раздуваться
   for (let i = 0; i < toDistill.length; i += DISTILL_CONCURRENCY) {
     const chunk = toDistill.slice(i, i + DISTILL_CONCURRENCY);
     const chunkResults = await Promise.all(chunk.map(async c => ({ ...c, dist: await distillEcho(env, c.item) })));
-    for (const r of chunkResults) { if (!r.dist) distillFailed++; distilled.push(r); }
+    for (const r of chunkResults) {
+      if (!r.dist || !r.dist.text) {
+        distillFailed++;
+        if (distillFailSamples.length < 5) distillFailSamples.push((r.dist && r.dist.fail) || 'unknown');
+      }
+      distilled.push(r);
+    }
   }
   used += toDistill.length;
 
-  const ready = distilled.filter(c => c.dist && !(c.dist.category && disabled.has(c.dist.category)));
+  const ready = distilled.filter(c => c.dist && c.dist.text && !(c.dist.category && disabled.has(c.dist.category)));
 
   // ФАЗА 4 — геокодинг СТРОГО последовательно (Nominatim: не больше
   // 1 запроса/сек) — единственный оставшийся последовательный участок,
@@ -529,6 +545,7 @@ async function runEchoCollection(env, opts = {}) {
   }));
   summary.distillAttempted = toDistill.length;
   summary.distillFailed = distillFailed; // сколько параллельных вызовов LLM тихо провалились — диагностика от 22.08
+  summary.distillFailSamples = distillFailSamples; // причины первых нескольких провалов — не только счёт, но и текст ошибки
   summary.subrequestsUsed = used;
   return summary;
 }
