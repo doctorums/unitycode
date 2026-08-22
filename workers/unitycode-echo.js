@@ -306,6 +306,26 @@ async function sbInsertEcho(env, row) {
   } catch (e) { return false; }
 }
 
+// Batch-версия — один POST с массивом строк вместо одного на запись, тем же
+// приёмом, что уже используется в unitycode-write.js для connections/events
+// у Связующего. PostgREST принимает Prefer:resolution=ignore-duplicates и на
+// массив, применяя его к каждой строке отдельно.
+async function sbInsertEchoBatch(env, rows) {
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/echoes`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: env.SUPABASE_SERVICE_KEY,
+        Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY,
+        Prefer: 'return=minimal,resolution=ignore-duplicates',
+      },
+      body: JSON.stringify(rows),
+    });
+    return r.ok;
+  } catch (e) { return false; }
+}
+
 async function pruneOld(env) {
   const cutoff = new Date(Date.now() - retentionDays(env) * 86400000).toISOString();
   try {
@@ -327,6 +347,27 @@ function sourceHost(url) {
 // диагностическому запросу (fetch, см. ниже). Возвращает сводку для
 // отладки: без неё «отработало или нет» было видно только по счёту
 // строк в echoes, ни разу не объясняя причину нуля.
+//
+// ПЕРЕПИСАНО 22.08: раньше источники обходились строго ПО ОЧЕРЕДИ (fetch →
+// dedup → distill → geocode → insert, и только потом следующий источник) —
+// бюджет подзапросов это переживал спокойно, а время нет. Витя сообщил:
+// при однократном заходе по ссылке НИ РАЗУ не пришло больше одной новой
+// записи — ни разу, не «иногда мало». Дело не в везении с бюджетом (его
+// как раз хватало с запасом), а в часах: 17 источников, обходимых строго
+// последовательно, только на скачивание+проверку тратят десяток с лишним
+// секунд ещё ДО первой дистилляции, а фоновая ctx.waitUntil-задача имеет
+// свой потолок по ВРЕМЕНИ, не только по числу подзапросов. Прогон
+// стабильно обрывался сразу после первой успешной вставки — каждый раз
+// в одном и том же месте, потому что и путь до него был каждый раз
+// примерно одной и той же длины.
+//
+// Теперь: все фиды тянутся ПАРАЛЛЕЛЬНО (Promise.all), дедуп — ОДНИМ
+// batch-запросом на все источники разом (не по одному), дистилляция —
+// тоже параллельно (LLM это позволяет, в отличие от Nominatim). Строго
+// последовательным остаётся только геокодинг (политика Nominatim: не
+// больше 1 запроса/сек, см. geocodePlace) — единственное место, где
+// параллелизм в принципе запрещён. Вставка — одним batch-запросом
+// (тот же приём, что у runLinker в unitycode-write.js для connections).
 async function runEchoCollection(env, opts = {}) {
   const summary = { ranAt: new Date().toISOString(), skipped: null, sources: [], inserted: 0 };
 
@@ -351,110 +392,123 @@ async function runEchoCollection(env, opts = {}) {
     return summary;
   }
   // opts.maxSources/perSourceOverride — быстрый режим для ручной проверки
-  // через fetch(): полный прогон (6 источников × до 4 записи, каждая — вызов
-  // LLM синхронно) может тянуться минуты, для проверки «работает ли вообще
-  // цепочка» это неоправданно долго. Cron (scheduled) вызывает без opts —
-  // всегда полный прогон.
+  // через fetch(): полный прогон может тянуться дольше, чем нужно для
+  // проверки «работает ли вообще цепочка». Cron (scheduled) вызывает без
+  // opts — всегда полный прогон.
   if (opts.maxSources) sources = sources.slice(0, opts.maxSources);
   const perSource = opts.perSourceOverride != null ? opts.perSourceOverride : maxPerSource(env);
   const disabled = disabledCategories(env);
 
   // Free-план Workers режет ЛЮБОЙ вызов, начиная с 51-го исходящего fetch()
-  // за один инвок (включая всё, что происходит внутри ctx.waitUntil) — жёсткий
-  // потолок платформы, не наш лимит. При 6+ источниках и до 4 записей с
-  // каждой (2 подзапроса на источник + до 3 на каждую новую запись:
-  // дистилляция/геокодинг/вставка) бюджет кончается на списке — без учёта
-  // этого fetch() дальше просто падает с ошибкой, try/catch её гасит, и
-  // прогон выглядит так, будто «почти ничего не сделал», без объяснения
-  // почему. STOP_AT — с запасом от 50, а не впритык: сама платформа тоже
-  // тратит подзапросы не только на явные fetch() в этом файле.
+  // за один инвок — жёсткий потолок платформы, не наш лимит. STOP_AT — с
+  // запасом от 50, а не впритык: сама платформа тоже тратит подзапросы не
+  // только на явные fetch() в этом файле.
   const SUBREQUEST_STOP_AT = 45;
   let used = 1; // pruneOld уже потратил один fetch выше
   const budgetLeft = () => SUBREQUEST_STOP_AT - used;
 
-  // Без ротации источники в начале списка (politics) выедали весь бюджет
-  // каждый прогон, а хвост списка (economy) не получал ни одного шанса.
-  // Перемешивание перед каждым прогоном — самый простой способ дать всем
-  // источникам примерно равный шанс на бюджет, без отдельного хранилища
-  // состояния «на чём остановились в прошлый раз».
-  for (let i = sources.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [sources[i], sources[j]] = [sources[j], sources[i]];
-  }
-
-  for (const url of sources) {
-    if (budgetLeft() < 2) { summary.sources.push({ url, skippedBudget: true }); continue; }
-    const s = { url, fetched: 0, alreadySeen: 0, fresh: 0, distilled: 0, geocoded: 0, inserted: 0, skippedDisabled: 0, skippedBudget: 0 };
-
-    // Смотрим ГЛУБЖЕ хвоста фида, а берём всё равно не больше perSource —
-    // но именно первые perSource ЕЩЁ НЕ ВИДЕННЫХ, а не первые perSource
-    // вообще (правка 21.08). Со срезом по верхушке фида источник намертво
-    // застревал: верхние записи попадали в базу на первом же прогоне, и
-    // дальше каждый следующий прогон смотрел ровно на них же и не находил
-    // ничего нового, пока сам источник не опубликует свежее. Теперь прогоны
-    // постепенно вычёрпывают фид вглубь.
-    const all = (await fetchFeed(url)).slice(0, FEED_SCAN_MAX);
-    used++;
-    s.fetched = all.length;
-
+  // ФАЗА 1 — все фиды параллельно. Раньше это было 17 последовательных
+  // round-trip'ов подряд; параллельно — время одного самого медленного
+  // фида, а не суммы всех.
+  const fetchResults = await Promise.all(sources.map(async url => {
+    const items = (await fetchFeed(url)).slice(0, FEED_SCAN_MAX);
     const withIds = [];
-    for (const item of all) {
+    for (const item of items) {
       const seed = item.link || `${url}|${item.pub || item.title}`;
-      withIds.push({ item, client_id: await hashId(seed) }); // хэш локальный, подзапросов не тратит
+      withIds.push({ item, client_id: await hashId(seed), url }); // хэш локальный, подзапросов не тратит
     }
-    const known = await knownEchoIds(env, withIds.map(x => x.client_id));
-    used++;
-    s.alreadySeen = known.size;
+    return { url, withIds };
+  }));
+  used += sources.length; // по одному подзапросу на источник — параллельность не меняет счёт, только время
 
-    const items = withIds.filter(x => !known.has(x.client_id)).slice(0, perSource);
-    s.fresh = items.length;
+  // ФАЗА 2 — ОДНА проверка «уже видели» на ВСЕ источники разом, вместо
+  // одной на каждый (правка 21.08 делала это уже на уровне источника;
+  // теперь то же самое, но на уровне всего прогона — дешевле и быстрее).
+  const allWithIds = fetchResults.flatMap(r => r.withIds);
+  const known = await knownEchoIds(env, allWithIds.map(x => x.client_id));
+  used++;
 
-    for (const { item, client_id } of items) {
-      // Каждому item на пути до вставки нужно ≤3 подзапроса (дистилляция,
-      // геокодинг, вставка) — не начинаем, если бюджета заведомо не хватит
-      // на все шаги: недописанная попытка (например потратились на
-      // дистилляцию, а вставка не прошла) не освобождает client_id, и
-      // следующий прогон честно попробует её заново.
-      if (budgetLeft() < 3) { s.skippedBudget++; break; }
-
-      const dist = await distillEcho(env, item);
-      used++;
-      if (!dist) continue;
-      s.distilled++;
-      if (dist.category && disabled.has(dist.category)) { s.skippedDisabled++; continue; }
-
-      // Геокодинг — тоже только для новых (отсеяны batch-проверкой выше),
-      // как и дистилляция: Nominatim не тратится на то, что и так уже
-      // в базе. Неудача (нет place, сервис недоступен, ничего не нашлось)
-      // не блокирует вставку — echo просто останется без точки на карте.
-      let lat = null, lon = null;
-      if (dist.place) {
-        const geo = await geocodePlace(dist.place);
-        used++;
-        if (geo) {
-          const spread = spreadEchoCoords(geo.lat, geo.lon, ECHO_SPREAD_KM);
-          lat = spread.lat; lon = spread.lon;
-          s.geocoded++;
-        }
-      }
-
-      const eventTime = item.pub && !isNaN(Date.parse(item.pub)) ? new Date(item.pub).toISOString() : null;
-
-      const ok = await sbInsertEcho(env, {
-        client_id,
-        text: dist.text,
-        category: dist.category,
-        place: dist.place,
-        lat, lon,
-        source_url: item.link || url,
-        source_name: sourceHost(url),
-        event_time: eventTime,
-      });
-      used++;
-      if (ok) { s.inserted++; summary.inserted++; }
-    }
-    summary.sources.push(s);
+  // Не больше perSource НОВЫХ на каждый источник — тем же смыслом, что
+  // раньше, просто после общей, а не локальной проверки.
+  const freshBySource = {};
+  for (const x of allWithIds) {
+    if (known.has(x.client_id)) continue;
+    (freshBySource[x.url] = freshBySource[x.url] || []).push(x);
   }
+  const candidates = sources.flatMap(url => (freshBySource[url] || []).slice(0, perSource));
+  // Перемешиваем кандидатов ПЕРЕД срезом по бюджету (ФАЗА 3 ниже) — иначе
+  // при нехватке бюджета на всех подряд систематически везло бы источникам
+  // в начале списка ECHO_SOURCES (politics), а хвосту (economy, NHK) —
+  // никогда. Раньше рулила ротация самих источников (см. историю правок);
+  // теперь фиды разбираются все и сразу параллельно, так что справедливость
+  // нужна не между источниками, а между уже найденными новыми записями.
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+
+  // ФАЗА 3 — дистилляция параллельно. Бюджет тут делится ПОПОЛАМ (не весь
+  // остаток целиком) — иначе дистилляция сама съедала всё до последнего
+  // подзапроса, ничего не оставляя на геокодинг и вставку, и прогон честно
+  // распознавал кучу новых записей, но ни одной не мог довести до базы
+  // (правка 22.08 самого этого рефакторинга — поймано на симуляции, не в
+  // проде, но реальный риск был тот же). -1 — резерв под финальную
+  // batch-вставку (см. ФАЗУ 5), /2 — на случай если КАЖДОЙ из
+  // дистиллированных записей понадобится ещё и геокодинг (по 1 подзапросу
+  // на попытку в геокодинге).
+  const maxDistill = Math.max(0, Math.floor((budgetLeft() - 1) / 2));
+  const toDistill = candidates.slice(0, maxDistill);
+  const distilled = await Promise.all(toDistill.map(async c => ({ ...c, dist: await distillEcho(env, c.item) })));
+  used += toDistill.length;
+
+  const ready = distilled.filter(c => c.dist && !(c.dist.category && disabled.has(c.dist.category)));
+
+  // ФАЗА 4 — геокодинг СТРОГО последовательно (Nominatim: не больше
+  // 1 запроса/сек) — единственный оставшийся последовательный участок,
+  // а не весь прогон целиком, как раньше. Запись без place или без бюджета
+  // на геокодинг просто остаётся без координат — это не блокирует вставку.
+  const rows = [];
+  for (const c of ready) {
+    let lat = null, lon = null;
+    if (c.dist.place && budgetLeft() >= 2) { // 1 на геокодинг + 1 резерв под вставку
+      const geo = await geocodePlace(c.dist.place);
+      used++;
+      if (geo) {
+        const spread = spreadEchoCoords(geo.lat, geo.lon, ECHO_SPREAD_KM);
+        lat = spread.lat; lon = spread.lon;
+      }
+    }
+    const eventTime = c.item.pub && !isNaN(Date.parse(c.item.pub)) ? new Date(c.item.pub).toISOString() : null;
+    rows.push({
+      client_id: c.client_id, text: c.dist.text, category: c.dist.category, place: c.dist.place,
+      lat, lon, source_url: c.item.link || c.url, source_name: sourceHost(c.url), event_time: eventTime,
+    });
+  }
+
+  // ФАЗА 5 — вставка одним batch-запросом. Если весь batch не прошёл (не
+  // только дубликаты — их гасит ignore-duplicates, а что-то более серьёзное) —
+  // откат на вставку по одной, чтобы не терять всё разом.
+  if (rows.length && budgetLeft() >= 1) {
+    used++;
+    if (await sbInsertEchoBatch(env, rows)) {
+      summary.inserted = rows.length;
+    } else {
+      let count = 0;
+      for (const row of rows) {
+        if (budgetLeft() < 1) break;
+        used++;
+        if (await sbInsertEcho(env, row)) count++;
+      }
+      summary.inserted = count;
+    }
+  }
+
+  summary.sources = sources.map(url => ({
+    url,
+    fetched: (fetchResults.find(r => r.url === url) || {}).withIds?.length || 0,
+    alreadySeen: (fetchResults.find(r => r.url === url) || {}).withIds?.filter(x => known.has(x.client_id)).length || 0,
+    fresh: (freshBySource[url] || []).length,
+  }));
   summary.subrequestsUsed = used;
   return summary;
 }
