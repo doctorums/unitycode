@@ -208,7 +208,13 @@ async function distillEchoOnce(env, item, budget) {
       body: JSON.stringify({
         model: MIMO_MODEL,
         temperature: 0.4,
-        max_tokens: 80, // 3-4 слова — с запасом хватает и на JSON-обвязку
+        // 3-4 слова просят, но модель иногда пишет длиннее (осознанно
+        // допустили — «иногда смысл важнее», 22.08), и 80 токенов впритык
+        // обрубало JSON на середине place/category — SyntaxError на
+        // разборе, отдельная от empty_response причина провала (та же
+        // диагностика, что нашла и первую). 160 — с запасом, не расход:
+        // потолок, а не то, во что модель обычно упирается.
+        max_tokens: 160,
         messages: [
           { role: 'system', content: ECHO_PROMPT },
           { role: 'user', content: `Заголовок: ${item.title}\n\nСодержание: ${desc || '—'}` },
