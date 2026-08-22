@@ -135,6 +135,33 @@ cursor:pointer;
 .popup-btn.echo-respond:hover { background: #ffb43c; color: #000; }
 .echo-popup .leaflet-popup-content-wrapper { border-radius: 10px !important; background: rgba(0,0,0,0.57) !important; }
 .echo-popup .leaflet-popup-tip { background: rgba(0,0,0,0.57) !important; }
+/* Лента безместных эхо — новости без географии (~40% сбора: не у каждой
+   заметки есть страна/город) на карте показать нечем, но и терять не
+   хочется. Отдельная строка, не карта — «карта это пространство» (Витя,
+   22.08), а у ленты пространства не требуется. Сама лента — flex-сосед
+   #map, не наложение: карта просто становится на её высоту меньше, ничего
+   не перекрывает существующие плавающие кнопки. */
+.echo-ticker {
+flex-shrink: 0; height: 0; overflow: hidden;
+background: rgba(0,0,0,0.9); border-top: 1px solid rgba(255,180,60,0.25);
+transition: height 0.25s ease;
+}
+.echo-ticker.show { height: 1.9rem; }
+.echo-ticker-track {
+display: flex; align-items: center; height: 1.9rem;
+white-space: nowrap; will-change: transform;
+animation: echoTickerScroll linear infinite;
+}
+.echo-ticker-item {
+color: #ffb43c; font-family: 'Share Tech Mono', monospace;
+font-size: 0.62rem; letter-spacing: 0.03em;
+padding: 0 1.4rem; flex-shrink: 0;
+}
+.echo-ticker-item::before { content: '◆'; margin-right: 1.4rem; opacity: 0.5; font-size: 0.5rem; }
+@keyframes echoTickerScroll {
+from { transform: translateX(0); }
+to { transform: translateX(-50%); }
+}
 .marker-cluster { background: rgba(0,255,136,0.12) !important; border: 1px solid rgba(0,255,136,0.4) !important; }
 .marker-cluster div { background: rgba(0,255,136,0.2) !important; color: #00ff88 !important; font-family: 'Share Tech Mono', monospace !important; font-size: 11px !important; font-weight: normal !important; border: 1px solid rgba(0,255,136,0.6) !important; }
 .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large { background: rgba(0,255,136,0.08) !important; }
@@ -213,6 +240,7 @@ to { opacity: 0; }
 </div>
 
 <div id="map"></div>
+<div id="echoTicker" class="echo-ticker"><div id="echoTickerTrack" class="echo-ticker-track"></div></div>
 <button id="mapReset" data-i18n-aria="set.resetView" aria-label="Показать всю Сеть">⌖</button>
 <button id="echoToggle" data-i18n-aria="set.echoToggleAria" aria-label="Показать/скрыть слой Эха мира"><span data-i18n="set.echoToggle">Эхо мира</span></button>
 <div id="echoControls">
@@ -953,9 +981,38 @@ iconSize: [9, 9], iconAnchor: [4, 4]
 
 let lastEchoCreatedAt = null; // курсор для инкрементальной подгрузки — тот же приём, что lastCreatedAt у узлов
 
+// Безместные эхо (~40% сбора — не у каждой заметки есть география) на
+// карту не попадают никак, но и теряться не должны — см. echo-ticker.
+const noPlaceEchoes = {}; // id -> text
+const echoTickerEl = document.getElementById('echoTicker');
+const echoTickerTrackEl = document.getElementById('echoTickerTrack');
+function renderEchoTicker() {
+const items = Object.values(noPlaceEchoes);
+const show = echoOn && items.length > 0;
+echoTickerEl.classList.toggle('show', show);
+if (!show) return;
+const html = items.map(t => `<span class="echo-ticker-item">${esc(t)}</span>`).join('');
+// Контент продублирован дважды — вместе с translateX(-50%) в keyframes это
+// даёт бесшовную прокрутку по кругу без рывка в момент перезапуска.
+echoTickerTrackEl.innerHTML = html + html;
+// Скорость — по объёму текста, не фиксированная: иначе на пяти фразах
+// лента улетала бы за секунду, а на полусотне тащилась бы вечность.
+const seconds = Math.max(15, items.length * 5);
+echoTickerTrackEl.style.animationDuration = seconds + 's';
+}
+
 function addEchoMarker(e) {
-if (e.lat == null || e.lon == null || echoMarkers[e.id]) return;
+// Курсор обновляется здесь для ЛЮБОГО эха, не только геопривязанного —
+// иначе прогон, где все новые записи вдруг оказались без места, держал бы
+// lastEchoCreatedAt на месте, и те же самые записи прилетали бы на каждый
+// следующий опрос заново (не ломает — noPlaceEchoes идемпотентен по id —
+// но зря гоняет трафик каждые 15с).
 if (!lastEchoCreatedAt || e.created_at > lastEchoCreatedAt) lastEchoCreatedAt = e.created_at;
+if (e.lat == null || e.lon == null) {
+if (!noPlaceEchoes[e.id]) { noPlaceEchoes[e.id] = e.text; renderEchoTicker(); }
+return;
+}
+if (echoMarkers[e.id]) return;
 const marker = L.marker([e.lat, e.lon], { icon: echoIcon() });
 marker._echo = e;
 const srcHtml = e.source_url
@@ -1005,7 +1062,9 @@ map.fitBounds(coords, FIT_OPTS);
 // принцип, что loadNodes у узлов.
 async function loadEchoes() {
 try {
-let url = `${SUPABASE_URL}/rest/v1/echoes?select=id,text,category,place,lat,lon,source_name,source_url,created_at&lat=not.is.null&lon=not.is.null&order=created_at.desc&limit=500`;
+// БЕЗ lat=not.is.null (было раньше) — безместные эхо теперь тоже нужны,
+// для echo-ticker (см. addEchoMarker/renderEchoTicker выше).
+let url = `${SUPABASE_URL}/rest/v1/echoes?select=id,text,category,place,lat,lon,source_name,source_url,created_at&order=created_at.desc&limit=500`;
 if (lastEchoCreatedAt) url += `&created_at=gt.${encodeURIComponent(lastEchoCreatedAt)}`;
 const res = await UCData.fetchRetry(url, { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
 if (!res.ok) return;
@@ -1053,6 +1112,7 @@ map.addLayer(echoLayer);
 } else {
 map.removeLayer(echoLayer);
 }
+renderEchoTicker(); // лента следует за тем же тумблером, что и слой на карте
 }
 echoToggleBtn.addEventListener('click', () => setEchoOn(!echoOn));
 if (echoOn) setEchoOn(true); // восстановление состояния из localStorage при загрузке страницы
