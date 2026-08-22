@@ -177,8 +177,30 @@ function hasLetters(s) {
   return !!s && /\p{L}/u.test(s);
 }
 
-async function distillEcho(env, item) {
+// Обёртка с одним повтором — тот же приём, что distill()/gateCheck() в
+// unitycode-write.js для той же модели (mimo-v2.5, тот же шлюз DotPoin):
+// шлюз периодически отвечает HTTP 200 с пустым телом, без content и без
+// reasoning_content — не сбой сети, не таймаут, просто пустой ответ модели.
+// Диагностика 22.08 (реальный прогон, не симуляция): 11 из 12 параллельных
+// попыток дистилляции — все с одной и той же причиной, empty_response.
+// Один повтор для gateCheck/distill в unitycode-write.js спасал абсолютное
+// большинство таких случаев; здесь до сих пор повтора не было вовсе.
+// budget — необязательный счётчик { n: 0 }, инкрементируется на каждую
+// реальную попытку (1 или 2, если случился повтор) — вызывающий код
+// (runEchoCollection) читает его после вызова, чтобы точно знать реальный
+// расход подзапросов для этой записи, а не предполагать «всегда 1».
+async function distillEcho(env, item, budget) {
+  let res = await distillEchoOnce(env, item, budget);
+  if (res.text) return res;
+  const first = res.fail || 'unknown';
+  res = await distillEchoOnce(env, item, budget);
+  if (res.text) return res;
+  return { fail: first + ' | повтор: ' + (res.fail || 'unknown') };
+}
+
+async function distillEchoOnce(env, item, budget) {
   try {
+    if (budget) budget.n++;
     const desc = (item.desc || '').slice(0, ECHO_DESC_MAX);
     const r = await fetch(MIMO_URL, {
       method: 'POST',
@@ -456,33 +478,33 @@ async function runEchoCollection(env, opts = {}) {
     [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
   }
 
-  // ФАЗА 3 — дистилляция параллельно. Бюджет тут делится ПОПОЛАМ (не весь
-  // остаток целиком) — иначе дистилляция сама съедала всё до последнего
-  // подзапроса, ничего не оставляя на геокодинг и вставку, и прогон честно
-  // распознавал кучу новых записей, но ни одной не мог довести до базы
-  // (правка 22.08 самого этого рефакторинга — поймано на симуляции, не в
-  // проде, но реальный риск был тот же). -1 — резерв под финальную
-  // batch-вставку (см. ФАЗУ 5), /2 — на случай если КАЖДОЙ из
-  // дистиллированных записей понадобится ещё и геокодинг (по 1 подзапросу
-  // на попытку в геокодинге).
-  const maxDistill = Math.max(0, Math.floor((budgetLeft() - 1) / 2));
+  // ФАЗА 3 — дистилляция параллельно. distillEcho теперь делает до 2
+  // попыток на запись (см. её обёртку выше — шлюз периодически отвечает
+  // пустым телом, эмпирика 22.08 показала: 11 из 12 отказов подряд), а
+  // значит одна запись может стоить ДО 2 подзапросов, не 1. Резерв под
+  // бюджет пересчитан с учётом этого: -1 под финальную вставку (ФАЗА 5),
+  // /3 — на случай если КАЖДОЙ записи понадобятся оба фактора сразу:
+  // 2 попытки дистилляции + геокодинг.
+  const maxDistill = Math.max(0, Math.floor((budgetLeft() - 1) / 3));
   const toDistill = candidates.slice(0, maxDistill);
-  // Пачками, не всё разом (правка 22.08, по факту с прода): 12 параллельных
-  // запросов к шлюзу DotPoin разом дали 8 тихих провалов из 12 — шлюз,
-  // похоже, не держит столько одновременных соединений и часть просто
-  // рвёт/отклоняет (distillEcho гасит это в try/catch, возвращая null, без
-  // единого слова о причине). Симуляция этого не поймала — там LLM был
-  // идеальным моком, отвечающим всегда. DISTILL_CONCURRENCY — компромисс:
-  // всё ещё быстрее, чем строго по одному, но не бьёт по шлюзу всей
-  // пачкой сразу.
+  // Пачками, не всё разом (правка 22.08, по факту с прода): большая
+  // параллельность сама по себе не была причиной пустых ответов шлюза
+  // (снижение DISTILL_CONCURRENCY не помогло — процент провалов не упал),
+  // но чанкование остаётся разумной осторожностью и не мешает повтору.
   const DISTILL_CONCURRENCY = 5;
   const distilled = [];
   let distillFailed = 0;
+  let distillSubrequests = 0; // реальный расход — до 2 подзапросов на попытку из-за повтора
   const distillFailSamples = []; // первые несколько причин — не весь список, сводка не должна раздуваться
   for (let i = 0; i < toDistill.length; i += DISTILL_CONCURRENCY) {
     const chunk = toDistill.slice(i, i + DISTILL_CONCURRENCY);
-    const chunkResults = await Promise.all(chunk.map(async c => ({ ...c, dist: await distillEcho(env, c.item) })));
+    const chunkResults = await Promise.all(chunk.map(async c => {
+      const budget = { n: 0 };
+      const dist = await distillEcho(env, c.item, budget);
+      return { ...c, dist, spent: budget.n };
+    }));
     for (const r of chunkResults) {
+      distillSubrequests += r.spent;
       if (!r.dist || !r.dist.text) {
         distillFailed++;
         if (distillFailSamples.length < 5) distillFailSamples.push((r.dist && r.dist.fail) || 'unknown');
@@ -490,7 +512,7 @@ async function runEchoCollection(env, opts = {}) {
       distilled.push(r);
     }
   }
-  used += toDistill.length;
+  used += distillSubrequests;
 
   const ready = distilled.filter(c => c.dist && c.dist.text && !(c.dist.category && disabled.has(c.dist.category)));
 
