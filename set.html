@@ -400,8 +400,24 @@ if (localStorage.getItem('uc_intro_seen') || localStorage.getItem('uc_token')) {
 document.getElementById('intro').style.display = 'none';
 }
 
-// Если токена нет — предлагаем ввести фразу
-if (!localStorage.getItem('uc_token')) {
+// Если токена нет — предлагаем ввести фразу.
+//
+// ПРАВКА 22.08 (Витя): «чуть замешкался — перезагрузка страницы и опять
+// окно ввода». Само окно задумано, а вот повторный вопрос после каждой
+// перезагрузки — нет: кнопка «просто посмотреть» раньше только убирала
+// окно с экрана и ничего не запоминала. Перезагрузку при этом вызываем не
+// мы (единственный location.reload ниже — после ВВОДА фразы): вкладку
+// выгружает сам браузер, карта с маркерами не из лёгких, и на телефоне
+// это обычное дело. Человек не должен платить за это ещё одним вопросом.
+//
+// sessionStorage, не localStorage — намеренно: отказ переживает
+// перезагрузку и возврат на вкладку (это и чиним), но не становится
+// «никогда больше не спрашивать». Тот же приём и та же причина, что у
+// uc_hasTrace в index.html.
+let keyAskSkipped = false;
+try { keyAskSkipped = sessionStorage.getItem('uc_set_key_skipped') === '1'; } catch (e) {}
+
+if (!localStorage.getItem('uc_token') && !keyAskSkipped) {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;';
   overlay.innerHTML = `
@@ -419,6 +435,10 @@ if (!localStorage.getItem('uc_token')) {
   async function confirmPhrase() {
     const phrase = document.getElementById('uc-set-phrase').value.trim();
     document.body.removeChild(overlay);
+    // Пустое поле + «ввести»/Enter — это тот же отказ, что и «просто
+    // посмотреть», просто другой дверью. Запоминаем так же, иначе окно
+    // вернулось бы на следующей перезагрузке.
+    if (!phrase) { try { sessionStorage.setItem('uc_set_key_skipped', '1'); } catch (e) {} }
     if (phrase) {
       const token = await phraseToToken(phrase);
       localStorage.setItem('uc_token', token);
@@ -429,7 +449,10 @@ if (!localStorage.getItem('uc_token')) {
   }
 
   document.getElementById('uc-set-ok').onclick = confirmPhrase;
-  document.getElementById('uc-set-skip').onclick = () => document.body.removeChild(overlay);
+  document.getElementById('uc-set-skip').onclick = () => {
+    try { sessionStorage.setItem('uc_set_key_skipped', '1'); } catch (e) {}
+    document.body.removeChild(overlay);
+  };
   document.getElementById('uc-set-phrase').onkeydown = e => { if (e.key === 'Enter') confirmPhrase(); };
 }
 
