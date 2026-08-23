@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>UnityCode — это пространство нейротворчества.</title>
+<meta name="description" content="UnityCode — живая семантическая сеть. Ты отдаёшь сырую мысль, ИИ находит в ней резонанс с мыслями незнакомых людей, и из этого растёт анонимный граф смысла. Некоммерческий научно-художественный эксперимент. Без профилей, лент и персональных данных.">
+<!-- GitHub Pages отдаёт вход по двум адресам: / и /index.html. Для робота
+     это две страницы с одинаковым содержимым — canonical говорит, какая
+     настоящая, иначе сигнал делится между ними. -->
+<link rel="canonical" href="https://unitycode.space/">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
@@ -1433,5 +1438,28 @@ d.style.color='';
   }
 })();
 </script>
+
+<!-- Маршрут вглубь портала для роботов и для людей с отключённым JS.
+     Браузер с JS содержимое <noscript> не рендерит и места им не занимает —
+     на обычном показе этого блока не существует.
+
+     Зачем именно ССЫЛКИ, а не текст: текст на входе и так лежит в разметке
+     статически (h1.question, .choice-q, .disclaimer — русский прямо в HTML,
+     data-i18n здесь не используется, i18n.js подменяет его по id только для
+     других языков). А вот ссылок в статической разметке НЕТ НИ ОДНОЙ: меню
+     рисует скрипт, и не ссылками, а div с обработчиком. Робот, зашедший на
+     главную, не находил ни одного пути внутрь — при том что сами внутренние
+     страницы связаны друг с другом отлично (по пять ссылок на каждой).
+     Дублировать сюда текст незачем — он уже проиндексируется. -->
+<noscript>
+  <nav style="position:relative;z-index:30;max-width:640px;margin:0 auto;padding:2rem 1.5rem;font-family:'Share Tech Mono',monospace;font-size:0.8rem;line-height:2;color:rgba(255,255,255,0.7);">
+    <a href="petlya.html" style="color:#00ff88;">Спираль</a> — отдать шум ·
+    <a href="set.html" style="color:#00ff88;">Сеть</a> — карта узлов ·
+    <a href="implant.html" style="color:#00ff88;">Паттерн</a> — что Сеть видит ·
+    <a href="materials.html" style="color:#00ff88;">Материя</a> — тексты проекта ·
+    <a href="golosa.html" style="color:#00ff88;">Голоса</a> ·
+    <a href="kniga.html" style="color:#00ff88;">Книга</a>
+  </nav>
+</noscript>
 </body>
 </html>
