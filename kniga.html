@@ -144,7 +144,16 @@
     .topbar .bk-title{font-size:14px}
     main{padding:78px 20px 30px}
   }
-  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  /* Глушим движение — но НЕ прячем контент. Правило animation:none само по
+     себе выключало анимацию, которая была единственным способом снять
+     стартовый opacity:0 у .cover-rise/.cover-slide-r/.part-anim/.chap-anim —
+     и заголовок, подзаголовок с эпиграфом пропадали навсегда (симптом 22.08:
+     видна одна ω, у неё стартового opacity:0 нет). Кто просил меньше
+     движения — просил меньше движения, а не пустую страницу. */
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+    .cover-rise,.cover-slide-r,.part-anim,.chap-anim,.pane.active.anim-in{opacity:1!important;transform:none!important}
+  }
 
   /* bookmarks */
   .bm-host{position:relative}
@@ -417,22 +426,24 @@ function go(i){
         void node.offsetWidth;
         node.style.animation='';
       });
+      // Следующий кадр — проверяем, ПОШЛА ли анимация на самом деле.
+      // Не таймаут на несколько секунд (это значило бы пустой экран всё это
+      // время), а честный вопрос браузеру через getAnimations(): если на
+      // элементе не крутится ни одной анимации, а opacity всё ещё 0 —
+      // проявить немедленно. Причин, по которым анимация может не пойти,
+      // больше, чем можно предусмотреть (настройки экономии, версия Safari,
+      // особенности вставки через innerHTML), и код не должен зависеть от
+      // того, все ли они угаданы.
+      requestAnimationFrame(()=>{
+        el.querySelectorAll('.cover-rise,.cover-slide-r,.chap-anim,.part-anim').forEach(node=>{
+          const running = node.getAnimations ? node.getAnimations().length>0 : true;
+          if(!running && getComputedStyle(node).opacity==='0') node.style.opacity='1';
+        });
+      });
     });
     requestAnimationFrame(()=>{
       requestAnimationFrame(()=>el.classList.remove('anim-in'));
     });
-    // Подстраховка — не про то, чтобы вместо красивого появления всегда
-    // грубо материализовать текст, а про худший случай: если анимация
-    // почему-то так и не запустилась (retrigger выше не всесилен — устройств
-    // больше, чем можно проверить), контент не должен остаться невидимым
-    // НАВСЕГДА. 5с — с запасом от самой долгой анимации (.cover-slide-r:
-    // 1.15s задержка + 2.8s длительность ≈ 4с), уже отыгравшую анимацию
-    // не трогает (opacity и так уже 1, повторная установка безвредна).
-    setTimeout(()=>{
-      el.querySelectorAll('.cover-rise,.cover-slide-r,.chap-anim,.part-anim').forEach(node=>{
-        if(getComputedStyle(node).opacity==='0') node.style.opacity='1';
-      });
-    }, 5000);
 
     current=i;
     document.querySelectorAll('.toc-item').forEach(b=>b.classList.toggle('active', +b.dataset.pane===i));
