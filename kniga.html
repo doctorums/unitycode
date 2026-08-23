@@ -398,14 +398,41 @@ function go(i){
       const start=Math.max(0, ttl.getBoundingClientRect().right - epi.getBoundingClientRect().left);
       epi.style.setProperty('--slide-start', start+'px');
     }
-    el.querySelectorAll('.omega-hero,.cover-rise,.cover-slide-r,.chap-anim,.part-anim').forEach(node=>{
-      node.style.animation='none';
-      void node.offsetWidth;
-      node.style.animation='';
+    // ФИКС 22.08 (Витя, iPhone на хорошем канале — не сеть): сброс+повтор
+    // анимации раньше был синхронным, в том же тике, что вставка панели в
+    // DOM. На iOS Safari анимации, навешенные на только что вставленный
+    // через innerHTML элемент, иногда вообще не запускаются, если между
+    // сбросом (animation:none) и восстановлением не было НАСТОЯЩЕГО кадра
+    // отрисовки — void offsetWidth форсирует reflow, но не гарантирует,
+    // что браузер успел РЕАЛЬНО отрисовать промежуточное состояние.
+    // Симптом ровно совпадал: .omega-hero виден (у него нет стартового
+    // opacity:0, дышащая анимация не нужна для появления), а всё на
+    // .cover-rise/.cover-slide-r (заголовок, подзаголовок, эпиграф — все
+    // стартуют с opacity:0 и ждут анимацию, чтобы проявиться) оставалось
+    // невидимым навсегда. requestAnimationFrame перед сбросом даёт браузеру
+    // настоящий кадр между «выключено» и «включено заново».
+    requestAnimationFrame(()=>{
+      el.querySelectorAll('.omega-hero,.cover-rise,.cover-slide-r,.chap-anim,.part-anim').forEach(node=>{
+        node.style.animation='none';
+        void node.offsetWidth;
+        node.style.animation='';
+      });
     });
     requestAnimationFrame(()=>{
       requestAnimationFrame(()=>el.classList.remove('anim-in'));
     });
+    // Подстраховка — не про то, чтобы вместо красивого появления всегда
+    // грубо материализовать текст, а про худший случай: если анимация
+    // почему-то так и не запустилась (retrigger выше не всесилен — устройств
+    // больше, чем можно проверить), контент не должен остаться невидимым
+    // НАВСЕГДА. 5с — с запасом от самой долгой анимации (.cover-slide-r:
+    // 1.15s задержка + 2.8s длительность ≈ 4с), уже отыгравшую анимацию
+    // не трогает (opacity и так уже 1, повторная установка безвредна).
+    setTimeout(()=>{
+      el.querySelectorAll('.cover-rise,.cover-slide-r,.chap-anim,.part-anim').forEach(node=>{
+        if(getComputedStyle(node).opacity==='0') node.style.opacity='1';
+      });
+    }, 5000);
 
     current=i;
     document.querySelectorAll('.toc-item').forEach(b=>b.classList.toggle('active', +b.dataset.pane===i));
