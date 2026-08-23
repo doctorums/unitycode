@@ -2,8 +2,8 @@
 <!--
   UnityCode — карта сайта.
   Только страницы портала. Не включены: log.html, check-token.html,
-  audio_diag_android.html (служебные), vhod.html, water_test.html
-  (прототипы) — они же закрыты в robots.txt.
+  audio_diag_android.html (служебные) и water_test.html (прототип) —
+  они же закрыты в robots.txt.
   Даты lastmod — реальные даты последних правок из истории репозитория.
   priority — не команда роботу, а подсказка об относительном весе внутри
   сайта: вход, три опоры портала, затем тексты.
