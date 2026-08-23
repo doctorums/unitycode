@@ -228,6 +228,9 @@
     'kniga.backMatter': { ru:`← Материя`, en:`← Matter` , es:`← Materia`, fr:`← Matière`, zh:`← 物质`},
     'kniga.navHeading': { ru:`Навигация`, en:`Navigation` , es:`Navegación`, fr:`Navigation`, zh:`导航`},
     'kniga.coverTitle': { ru:`Обложка`, en:`Cover` , es:`Portada`, fr:`Couverture`, zh:`封面`},
+    'kniga.loading':  { ru:`Загрузка книги…`, en:`Loading the book…` , es:`Cargando el libro…`, fr:`Chargement du livre…`, zh:`正在加载书籍…`},
+    'kniga.loadError': { ru:`Не удалось загрузить книгу — похоже, оборвалась связь.`, en:`Couldn't load the book — the connection seems to have dropped.` , es:`No se pudo cargar el libro — parece que se perdió la conexión.`, fr:`Impossible de charger le livre — la connexion semble s'être interrompue.`, zh:`无法加载书籍——网络连接似乎中断了。`},
+    'kniga.retry':    { ru:`Повторить`, en:`Retry` , es:`Reintentar`, fr:`Réessayer`, zh:`重试`},
 
     // — вынесено из кода страниц (было захардкожено ru/en) —
     'petlya.advance':   { ru:`Дальше`, en:`Next`, es:`Continuar` , fr:`Suivant`, zh:`继续`},

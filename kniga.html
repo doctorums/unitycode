@@ -202,7 +202,7 @@
   <div id="bmList" style="display:none"></div>
 </nav>
 
-<main id="main"></main>
+<main id="main"><p style="text-align:center;padding:22vh 0;color:var(--fg-dim);font-style:italic;" data-i18n="kniga.loading">Загрузка книги…</p></main>
 
 
 <script src="i18n.js"></script>
@@ -210,7 +210,25 @@
 <script src="./js/book-loader.js"></script>
 <script>
 (async ()=>{
-const BOOK = await loadBook();
+// ФИКС 22.08: BOOK.json ~270КБ, на слабом канале телефона запрос может
+// оборваться (или ответ прийти обрезанным — book-loader.js это отдельно
+// ловит проверкой формы). Раньше отсюда не было try/catch вообще: сбой
+// здесь ронял всю асинхронную IIFE молча — страница оставалась с пустым
+// <main> и пустым оглавлением, без единого слова о причине и без способа
+// повторить попытку. «Худший канал — расчётный» касается не только
+// Спирали.
+let BOOK;
+try {
+  BOOK = await loadBook();
+} catch (e) {
+  const t = (k, fb) => (window.UC_I18N ? UC_I18N.t(k) : fb);
+  document.getElementById('main').innerHTML =
+    '<div style="text-align:center;padding:20vh 24px;color:var(--fg-dim);">' +
+      '<p style="font-style:italic;margin-bottom:1.2rem;">' + escapeHTML(t('kniga.loadError', 'Не удалось загрузить книгу — похоже, оборвалась связь.')) + '</p>' +
+      '<button onclick="location.reload()" style="background:none;border:1px solid var(--rule);color:var(--fg);border-radius:5px;cursor:pointer;font-family:inherit;font-size:15px;padding:10px 20px;">' + escapeHTML(t('kniga.retry', 'Повторить')) + '</button>' +
+    '</div>';
+  return;
+}
 
 // bookmarks storage (объявляем рано, до restore)
 let BM=[];
