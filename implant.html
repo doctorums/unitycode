@@ -1560,11 +1560,6 @@ async function loadDelta() {
         );
         const mine = await r.json();
         const arr = Array.isArray(mine) ? mine : [];
-        // АДДИТИВНО: id своих узлов, появившихся с прошлого визита —
-        // для дельта-разбора по тапу на блок
-        window._deltaNewIds = arr
-          .filter(n => n.created_at && n.created_at > since)
-          .map(n => n.id);
         const ids = arr.map(n => n.id).slice(0, 50);
         if (!ids.length) return 0;
         const list = ids.join(',');
@@ -1586,13 +1581,7 @@ async function loadDelta() {
       const txt = document.getElementById('delta-text');
       if (box && txt && parts.length) {
         if (tag) tag.textContent = UC_I18N.t('implant.deltaTag');
-        let suffix = '';
-        if (Array.isArray(window._deltaNewIds) && window._deltaNewIds.length) {
-          suffix = UC_I18N.t('implant.deltaTap');
-          box.style.cursor = 'pointer';
-          box.onclick = runDeltaAnalysis;
-        }
-        txt.innerHTML = UC_I18N.t('implant.deltaPrefix') + parts.join('; ') + '.' + suffix;
+        txt.innerHTML = UC_I18N.t('implant.deltaPrefix') + parts.join('; ') + '.';
         box.style.display = 'block';
       }
     }
@@ -2066,43 +2055,6 @@ window.addEventListener('orientationchange', () => setTimeout(() => {
   }
 }, 400));
 
-
-// АДДИТИВНО: дельта-разбор — личный анализ с фокусом на узлах,
-// появившихся с прошлого визита. Тап по блоку «Пока тебя не было».
-// Воркер в этом режиме кэш не использует (набор «нового» каждый раз свой).
-async function runDeltaAnalysis() {
-  const newIds = window._deltaNewIds || [];
-  const myNodes = window._myNodes || [];
-  if (!newIds.length || !myNodes.length) { runPersonalAnalysis(); return; }
-
-  openOracle(UC_I18N.t('implant.deltaTitle'));
-  try {
-    // ФИКС 18.08: тот же голый fetch, что был у runPersonalAnalysis —
-    // тот же повтор с бэкоффом (ucFetchRetry), см. комментарий там.
-    // Кэш здесь всё равно не пишется (дельта-режим намеренно без кэша,
-    // см. шапку функции) — но сама попытка теперь честно переживает
-    // временный сбой канала, а не сдаётся с первого раза.
-    const res = await ucFetchRetry(ANALYZE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        scope: 'personal',
-        lang: (window.UC_I18N ? UC_I18N.lang : 'ru'),
-        user_token: localStorage.getItem('uc_token') || '',
-        angle: getCharacter(),
-        nodes: myNodes.map(n => ({ id: n.id, raw_noise: n.raw_noise, ai_interpretation: n.ai_interpretation })),
-        connections: window._myConns || [],
-        new_node_ids: newIds,
-      }),
-    });
-    const data = await res.json();
-    const interp = data.interpretation || UC_I18N.t('petlya.signalUnrecognized');
-    typeOracle(interp);
-    try { if (data.interpretation) localStorage.setItem('uc_last_personal_read', data.interpretation); } catch (e) {}
-  } catch (e) {
-    showOracleError(UC_I18N.t('implant.analyzeError'));
-  }
-}
 
 // АДДИТИВНО: сохранение узора как PNG — картинка + строка последнего
 // личного анализа как подпись (если он есть). Работает офлайн,

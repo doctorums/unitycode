@@ -260,12 +260,6 @@
       en:`<span class="delta-accent">{n}</span> new connection touched your nodes||<span class="delta-accent">{n}</span> new connections touched your nodes`,
       es:`<span class="delta-accent">{n}</span> nueva conexión tocó tus nodos||<span class="delta-accent">{n}</span> nuevas conexiones tocaron tus nodos`
     , fr:`<span class="delta-accent">{n}</span> nouveau lien a touché vos nœuds||<span class="delta-accent">{n}</span> nouveaux liens ont touché vos nœuds`, zh:`<span class="delta-accent">{n}</span> 条新联结触及了你的节点`},
-    'implant.deltaTap': {
-      ru:` <span class="delta-accent">&middot; тапни &mdash; разбор нового</span>`,
-      en:` <span class="delta-accent">&middot; tap &mdash; a reading of the new</span>`,
-      es:` <span class="delta-accent">&middot; toca &mdash; una lectura de lo nuevo</span>`
-    , fr:` <span class="delta-accent">&middot; touchez &mdash; une lecture du nouveau</span>`, zh:` <span class="delta-accent">&middot; 点击 &mdash; 解读新的部分</span>`},
-    'implant.deltaTitle': { ru:`РАЗБОР НОВОГО`, en:`READING OF THE NEW`, es:`LECTURA DE LO NUEVO` , fr:`LECTURE DU NOUVEAU`, zh:`解读新的部分`},
 
     'implant.freshNever': {
       ru:`// узор этой Сети <span class="fresh-accent">ещё не собирался</span>`,
