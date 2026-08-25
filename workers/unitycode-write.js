@@ -659,9 +659,29 @@ async function sbExists(env, table, col, id) {
 // статистики отклика. Фоново, тихо: несуществующий/устаревший echo_id
 // (например, эхо уже удалено прунингом retention) не критичен и не
 // блокирует ничего, что человек уже получил.
+//
+// АДДИТИВНО (25.08): echo_text — снимок текста эха на момент отклика
+// (migrations/echo_responses_text.sql). echo_id — ON DELETE CASCADE от
+// echoes, а echoes живут только ECHO_RETENTION_DAYS (сейчас 5, см.
+// unitycode-echo.js): без снимка через 5 дней исчезала бы не только
+// ссылка, а сама память о том, НА ЧТО именно откликнулся узел — при
+// том, что сам узел остаётся в Сети навсегда. Текст достаём сами,
+// service-ключом, не берём из тела запроса: клиенту не доверяем (та же
+// причина, что у eligibility в voice_write) — он мог бы прислать что
+// угодно под видом текста эха.
 async function recordEchoResponse(env, echoId, nodeId) {
+  let echoText = null;
   try {
-    await sbInsert(env, 'echo_responses', { echo_id: echoId, node_id: nodeId }, false, 'resolution=ignore-duplicates');
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/echoes?id=eq.${echoId}&select=text&limit=1`, {
+      headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY },
+    });
+    if (r.ok) {
+      const rows = await r.json();
+      if (Array.isArray(rows) && rows.length) echoText = rows[0].text;
+    }
+  } catch (e) { /* снимка не будет — маппинг всё равно ценен без него */ }
+  try {
+    await sbInsert(env, 'echo_responses', { echo_id: echoId, node_id: nodeId, echo_text: echoText }, false, 'resolution=ignore-duplicates');
   } catch (e) { /* тихо: не критичный путь */ }
 }
 
