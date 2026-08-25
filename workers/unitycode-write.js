@@ -669,17 +669,33 @@ async function sbExists(env, table, col, id) {
 // service-ключом, не берём из тела запроса: клиенту не доверяем (та же
 // причина, что у eligibility в voice_write) — он мог бы прислать что
 // угодно под видом текста эха.
+//
+// ФИКС 25.08 (в тот же день): первая версия сдавалась после ОДНОГО
+// сетевого сбоя и писала null навсегда — а именно в этот момент новость
+// точно ещё цела (кнопка «Откликнуться» была на живом эхе), это не тот
+// случай, когда null оправдан. Один повтор — тот же приём, что уже есть
+// в этом файле (gateCheck/mimoOnce) и в unitycode-echo.js (distillEcho):
+// сбой шлюза/сети часто разовый. Повторяем только сетевой сбой/HTTP-
+// ошибку — если Supabase честно ответил «такой записи нет», это
+// окончательно (например echo реально уже удалён прунингом), повтор
+// ничего не изменит.
+async function fetchEchoText(env, echoId) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await fetch(`${env.SUPABASE_URL}/rest/v1/echoes?id=eq.${echoId}&select=text&limit=1`, {
+        headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY },
+      });
+      if (r.ok) {
+        const rows = await r.json();
+        return Array.isArray(rows) && rows.length ? rows[0].text : null;
+      }
+    } catch (e) { /* сетевой сбой — вторая попытка ниже, если она ещё есть */ }
+  }
+  return null;
+}
+
 async function recordEchoResponse(env, echoId, nodeId) {
-  let echoText = null;
-  try {
-    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/echoes?id=eq.${echoId}&select=text&limit=1`, {
-      headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY },
-    });
-    if (r.ok) {
-      const rows = await r.json();
-      if (Array.isArray(rows) && rows.length) echoText = rows[0].text;
-    }
-  } catch (e) { /* снимка не будет — маппинг всё равно ценен без него */ }
+  const echoText = await fetchEchoText(env, echoId);
   try {
     await sbInsert(env, 'echo_responses', { echo_id: echoId, node_id: nodeId, echo_text: echoText }, false, 'resolution=ignore-duplicates');
   } catch (e) { /* тихо: не критичный путь */ }
