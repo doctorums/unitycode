@@ -60,11 +60,13 @@
               pointer-events:auto; transform:translateZ(0); -webkit-transform:translateZ(0);
               will-change:transform; }
   .mat-item { font-family:'Share Tech Mono',monospace; letter-spacing:0.1em; text-transform:uppercase;
-              cursor:pointer; text-decoration:none; transition:color 0.2s,border-color 0.2s,background 0.2s;
+              cursor:pointer; text-decoration:none; transition:color 0.2s,border-color 0.2s,background 0.2s,transform 0.15s ease;
               pointer-events:auto; -webkit-tap-highlight-color:rgba(255,255,255,0.1);
               display:inline-block; }
   .mat-item.cur { color:var(--accent); border-color:var(--accent); }
-  @media (hover: hover) { .mat-item:hover { color:var(--accent); border-color:var(--accent); } }
+  @media (hover: hover) { .mat-item:hover { color:var(--accent); border-color:var(--accent); transform:scale(1.12); } }
+  /* АДДИТИВНО: тач — палец не даёт :hover при скольжении, класс ставит JS (см. runMenuMagnify) */
+  .mat-item.mag { transform:scale(1.12); }
 
   /* Подложка контента — параметры из CONFIG.panel. По умолчанию: вуаль без рамки. */
   #reader { display:none; margin-top:1rem; max-width:680px; }
@@ -303,7 +305,7 @@ const CONFIG = {
   // цвета — туда за половину pulseDuration, обратно за вторую половину.
   const halfMs = ((m.pulseDuration||7)/2).toFixed(2);
   css.textContent='.mat-item{font-size:'+m.fontSize+';padding:'+m.padding+';background:'+m.bg
-    +';border:'+m.border+';color:'+m.color+';transition:color '+halfMs+'s ease;}'
+    +';border:'+m.border+';color:'+m.color+';transition:color '+halfMs+'s ease,transform 0.15s ease;}'
     +'.mat-item.pulsing{color:'+(m.pulseColor||'#ffb43c')+';}';
   document.head.appendChild(css);
 })();
@@ -380,6 +382,27 @@ CONFIG.materials.forEach(m=>{
   document.getElementById('menu').appendChild(el);
 });
 function markCurrent(id){ document.querySelectorAll('.mat-item').forEach(b=>b.classList.toggle('cur',b.dataset.id===id)); }
+
+// АДДИТИВНО: увеличение пункта под пальцем при скольжении по меню — у
+// touch нет :hover в движении (см. .mat-item.mag в CSS), элемент под
+// точкой касания находим сами через elementFromPoint.
+(function runMenuMagnify(){
+  const menu = document.getElementById('menu');
+  let magEl = null;
+  function setMag(el){
+    if (el === magEl) return;
+    if (magEl) magEl.classList.remove('mag');
+    if (el && el.classList.contains('mat-item')) { el.classList.add('mag'); magEl = el; }
+    else magEl = null;
+  }
+  menu.addEventListener('touchmove', e => {
+    const t = e.touches[0];
+    if (!t) return;
+    setMag(document.elementFromPoint(t.clientX, t.clientY));
+  }, { passive: true });
+  menu.addEventListener('touchend', () => setMag(null));
+  menu.addEventListener('touchcancel', () => setMag(null));
+})();
 
 let openId=null;  // какой материал сейчас раскрыт
 
