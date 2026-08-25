@@ -1072,6 +1072,27 @@ let lastEchoCreatedAt = null; // курсор для инкрементальн�
 // Безместные эхо (~40% сбора — не у каждой заметки есть география) на
 // карту не попадают никак, но и теряться не должны — см. echo-ticker.
 const noPlaceEchoes = {}; // id -> text
+
+// АДДИТИВНО (25.08): перевод текста эха под язык читателя. echoes.text
+// всегда на русском независимо от источника (см. ECHO_PROMPT в
+// unitycode-echo.js) — для читателя не с ru-интерфейсом это иначе
+// нечитаемо. Отдельный режим (translate_echo, не тот же translate, что
+// у попапа узла ниже) — у эха свой серверный кэш echo_translations:
+// эхо общее для всех, один и тот же перевод не платится второй раз
+// для другого читателя того же языка. _echoTrCache — только чтобы одна
+// открытая вкладка не спросила один и тот же перевод дважды параллельно
+// (попап + тикер могут показывать одну запись одновременно).
+const _echoTrCache = new Map();
+function translateEchoLazy(echoId, text, lang) {
+  const key = echoId + ':' + lang;
+  if (_echoTrCache.has(key)) return _echoTrCache.get(key);
+  const p = fetch(ANALYZE_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'translate_echo', echo_id: echoId, text, lang }),
+  }).then(r => r.json()).then(d => d.translation || null).catch(() => null);
+  _echoTrCache.set(key, p);
+  return p;
+}
 const echoTickerEl = document.getElementById('echoTicker');
 const echoTickerTrackEl = document.getElementById('echoTickerTrack');
 function renderEchoTicker() {
@@ -1097,7 +1118,18 @@ function addEchoMarker(e) {
 // но зря гоняет трафик каждые 15с).
 if (!lastEchoCreatedAt || e.created_at > lastEchoCreatedAt) lastEchoCreatedAt = e.created_at;
 if (e.lat == null || e.lon == null) {
-if (!noPlaceEchoes[e.id]) { noPlaceEchoes[e.id] = e.text; renderEchoTicker(); }
+if (!noPlaceEchoes[e.id]) {
+noPlaceEchoes[e.id] = e.text;
+renderEchoTicker();
+// Показывает русский сразу, тихо подменяет на перевод когда придёт —
+// не блокирует тикер ожиданием, на неудаче просто остаётся оригинал.
+const lang = (window.UC_I18N ? UC_I18N.lang : null) || localStorage.getItem('uc_lang') || 'ru';
+if (lang !== 'ru') {
+translateEchoLazy(e.id, e.text, lang).then(tr => {
+if (tr && noPlaceEchoes[e.id] != null) { noPlaceEchoes[e.id] = tr; renderEchoTicker(); }
+});
+}
+}
 return;
 }
 if (echoMarkers[e.id]) return;
@@ -1117,6 +1149,27 @@ marker.bindPopup(`
 </div>`, { className: 'echo-popup' });
 echoMarkers[e.id] = marker;
 }
+
+// АДДИТИВНО: перевод текста эха при открытии попапа — отдельный слушатель
+// от того, что уже обрабатывает попапы узлов (map.on('popupopen',...) выше,
+// строка ~763): тот выходит рано на _nodeId==null, этот — зеркало того же
+// приёма (тускнеет оригинал → дописывается перевод, см. _appendTr), но
+// через translateEchoLazy (свой серверный кэш) вместо голого mode:'translate'.
+map.on('popupopen', async function(e){
+const mk = e.popup._source;
+if (!mk || !mk._echo) return;
+const lang = (window.UC_I18N ? UC_I18N.lang : null) || localStorage.getItem('uc_lang') || 'ru';
+if (lang === 'ru') return;
+const popupEl = e.popup.getElement();
+const textEl = popupEl && popupEl.querySelector('.popup-text');
+if (!textEl) return;
+textEl.style.color = 'rgba(255,255,255,0.35)';
+const tr = await translateEchoLazy(mk._echo.id, mk._echo.text, lang);
+if (tr) {
+const te2 = e.popup.getElement()?.querySelector('.popup-text');
+if (te2) _appendTr(te2, tr);
+}
+});
 
 // Пока открыт любой попап (читаешь узел, собираешь связь через пикер) —
 // фоновое обрамление эха откладывается, а не просто теряется: если его не
