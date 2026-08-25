@@ -110,6 +110,41 @@ async function cacheWrite(env, scope, interpretation, nodeCount, connCount, lang
   } catch (e) { return { ok:false, why:'throw: '+String(e).slice(0,150) }; }
 }
 
+// АДДИТИВНО (25.08): кэш переводов «Эха мира» — отдельная таблица
+// echo_translations (echo_id+lang → text), не analysis_cache: другой
+// контракт (нет node_count/conn_count, echo_id — не user_token).
+// ON DELETE CASCADE от echoes в самой таблице — когда запись стирается
+// по retention (unitycode-echo, pruneOld), перевод уходит сам, без
+// отдельной уборки (см. migrations/echo_translations.sql).
+async function echoCacheRead(env, echoId, lang) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return null;
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/echo_translations?echo_id=eq.${encodeURIComponent(echoId)}&lang=eq.${encodeURIComponent(lang)}&select=text&limit=1`,
+      { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY } }
+    );
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return Array.isArray(rows) && rows.length ? rows[0].text : null;
+  } catch (e) { return null; }
+}
+
+async function echoCacheWrite(env, echoId, lang, text) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return;
+  try {
+    await fetch(`${env.SUPABASE_URL}/rest/v1/echo_translations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: env.SUPABASE_SERVICE_KEY,
+        Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY,
+        Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({ echo_id: echoId, lang, text }),
+    });
+  } catch (e) { /* тихо — не критично, следующий читатель просто переведёт заново */ }
+}
+
 // ═══════════════════════════════════════════════════════
 // ЯЗЫК ОТВЕТА — фиксируется явно по полю lang из запроса.
 // Иначе модель сама «угадывает» язык наблюдения.
@@ -609,6 +644,28 @@ export default {
         translation = String(tMsg.reasoning_content).trim().split('\n').filter(Boolean).pop() || '';
       }
       return jsonResponse({ translation: translation.slice(0, 500) }, 200, CORS);
+    }
+    // ──────────────────────────────────────────────────────────────
+
+    // ── РЕЖИМ ПЕРЕВОДА ЭХА ───────────────────────────────────────
+    // Отдельно от 'translate' выше: у эха есть стабильный echo_id и
+    // собственный кэш (echo_translations), а не разовый перевод без
+    // сохранения. lang='ru' короткое замыкание — источник и так на
+    // русском (см. ECHO_PROMPT в unitycode-echo.js), переводить нечего.
+    if (body.mode === 'translate_echo') {
+      const echoId = (body.echo_id || '').toString().trim();
+      const text = (body.text || '').toString().trim().slice(0, 500);
+      const tLang = (body.lang || 'ru').toString().toLowerCase();
+      if (!echoId || !text) return jsonResponse({ error: 'echo_id_and_text_required' }, 400, CORS);
+      if (tLang === 'ru') return jsonResponse({ translation: text, cached: true }, 200, CORS);
+
+      const cached = await echoCacheRead(env, echoId, tLang);
+      if (cached) return jsonResponse({ translation: cached, cached: true }, 200, CORS);
+
+      const translated = await doTranslate(env, text, tLang);
+      if (!translated) return jsonResponse({ error: 'translate_failed' }, 502, CORS);
+      ctx.waitUntil(echoCacheWrite(env, echoId, tLang, translated));
+      return jsonResponse({ translation: translated, cached: false }, 200, CORS);
     }
     // ──────────────────────────────────────────────────────────────
 
