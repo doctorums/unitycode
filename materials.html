@@ -812,6 +812,31 @@ function renderMarkdown(md){
   const SH=CONFIG.ship||{on:false};
   let ship=null;  // { state, x,y, angle, target, ... }
   let shipHideUntil=0;
+
+  // АДДИТИВНО: тот же magnify-эффект меню, что у пальца/мыши (.mat-item.mag),
+  // теперь ещё и от пролёта корабля — амплитуда плавная, не бинарная, зависит
+  // от угла входа. Ship.angle — направление движения (atan2), |sin(angle)|
+  // даёт «вертикальность» курса: 1 — идёт прямо по оси столбца меню (прошивает
+  // несколько пунктов, максимум), 0 — чисто горизонтально (чиркнул сбоку,
+  // почти незаметно). Инлайн-transform, не класс — амплитуда каждый раз своя.
+  let shipMagEl=null;
+  function clearShipMagnify(){ if(shipMagEl){ shipMagEl.style.transform=''; shipMagEl=null; } }
+  function updateShipMenuMagnify(){
+    const items=document.querySelectorAll('#menu .mat-item');
+    let nearest=null, nearestDist=Infinity, nearestThresh=0;
+    items.forEach(el=>{
+      const r=el.getBoundingClientRect();
+      const dist=Math.hypot(ship.x-(r.left+r.width/2), ship.y-(r.top+r.height/2));
+      const thresh=r.height*1.5;
+      if(dist<thresh && dist<nearestDist){ nearest=el; nearestDist=dist; nearestThresh=thresh; }
+    });
+    if(shipMagEl && shipMagEl!==nearest) shipMagEl.style.transform='';
+    if(!nearest){ shipMagEl=null; return; }
+    const prox=Math.max(0,1-nearestDist/nearestThresh);
+    const angleFactor=Math.abs(Math.sin(ship.angle));
+    nearest.style.transform='scale('+(1+0.12*prox*angleFactor).toFixed(3)+')';
+    shipMagEl=nearest;
+  }
   function shipBase(){ // точка укрытия — район меню (правый верх)
     return { x: W-60, y: 70 };
   }
@@ -837,10 +862,11 @@ function renderMarkdown(md){
     return best;
   }
   function drawShip(){
-    if(noiseHidden){ ship=null; return; }
+    if(noiseHidden){ ship=null; clearShipMagnify(); return; }
     const now=performance.now()/1000;
     if(!ship){
       if(SH.on && now>=shipHideUntil) launchShip();
+      clearShipMagnify();
       return;
     }
     const C=SH.color||"180,210,255", spd=SH.speed||2.2, S=SH.size||16;
@@ -885,8 +911,10 @@ function renderMarkdown(md){
       const dx=ship.bx-ship.x, dy=ship.by-ship.y, d=Math.hypot(dx,dy)||1;
       ship.angle=Math.atan2(dy,dx);
       ship.x+=dx/d*spd*2.4; ship.y+=dy/d*spd*2.4;
-      if(d<8){ ship=null; shipHideUntil=now+rnd(SH.hideMin||5,SH.hideMax||12); return; }
+      if(d<8){ ship=null; shipHideUntil=now+rnd(SH.hideMin||5,SH.hideMax||12); clearShipMagnify(); return; }
     }
+
+    if(ship.state!=='swallow') updateShipMenuMagnify(); else clearShipMagnify();
 
     // луч-захват — яркий пульсирующий конус от носа к шуму
     if(ship.state==='swallow' && ship.captured){
