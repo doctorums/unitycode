@@ -876,7 +876,7 @@ function renderMarkdown(md){
         ship.target=pickTarget();
       }
       if(!ship.target){ // некого ловить — назад в укрытие
-        ship.state='leave'; ship.bx=shipBase().x; ship.by=shipBase().y;
+        ship.state='leave'; ship.bx=shipBase().x; ship.by=shipBase().y; ship.onFinal=false;
       } else {
         const tx=ship.target.tx, ty=ship.target.ty;
         const dx=tx-ship.x, dy=ty-ship.y, d=Math.hypot(dx,dy)||1;
@@ -905,13 +905,28 @@ function renderMarkdown(md){
       if(ship.swp>=1){ // проглочен — убрать шум, уносим
         const idx=noises.indexOf(ship.captured); if(idx>=0) noises.splice(idx,1);
         setTimeout(spawnNoise, rnd(3,6)*1000);
-        ship.captured=null; ship.state='leave'; const b=shipBase(); ship.bx=b.x; ship.by=b.y;
+        ship.captured=null; ship.state='leave'; const b=shipBase(); ship.bx=b.x; ship.by=b.y; ship.onFinal=false;
       }
     } else if(ship.state==='leave'){
-      const dx=ship.bx-ship.x, dy=ship.by-ship.y, d=Math.hypot(dx,dy)||1;
+      // АДДИТИВНО: заход на посадку через точку-ориентир НИЖЕ укрытия —
+      // сперва летит туда, а с неё строго вверх в само укрытие. Раньше
+      // была одна прямая до укрытия целиком, и угол входа у меню зависел
+      // только от того, где поймана добыча: на широком экране (iPad-
+      // ландшафт, монитор) добыча чаще ловится далеко слева от укрытия,
+      // обратный путь получался почти горизонтальным весь целиком —
+      // magnify у меню (см. updateShipMenuMagnify) читался слабо не из-за
+      // бага формулы, а потому что вертикальности неоткуда было взяться.
+      // Точка-ориентир снизу (не сверху) держит манёвр на экране — сверху
+      // укрытие и так у самого края (shipBase().y=70).
+      const APPROACH_DIST=140;
+      const wx=ship.bx, wy=ship.by+APPROACH_DIST;
+      const tx=ship.onFinal?ship.bx:wx, ty=ship.onFinal?ship.by:wy;
+      const dx=tx-ship.x, dy=ty-ship.y, d=Math.hypot(dx,dy)||1;
       ship.angle=Math.atan2(dy,dx);
       ship.x+=dx/d*spd*2.4; ship.y+=dy/d*spd*2.4;
-      if(d<8){ ship=null; shipHideUntil=now+rnd(SH.hideMin||5,SH.hideMax||12); clearShipMagnify(); return; }
+      if(!ship.onFinal && d<20) ship.onFinal=true;
+      const dToBase=Math.hypot(ship.bx-ship.x, ship.by-ship.y);
+      if(ship.onFinal && dToBase<8){ ship=null; shipHideUntil=now+rnd(SH.hideMin||5,SH.hideMax||12); clearShipMagnify(); return; }
     }
 
     if(ship.state!=='swallow') updateShipMenuMagnify(); else clearShipMagnify();
