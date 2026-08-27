@@ -186,6 +186,27 @@
   window.addEventListener('pagehide', () => fadeOutForNav(0.2));
   window.addEventListener('beforeunload', () => fadeOutForNav(0.2));
 
+  // ФИКС 27.08: у гашения при уходе не было парного возврата. Браузер при
+  // «назад» отдаёт ту же ЖИВУЮ страницу из bfcache — скрипт не
+  // перезапускается, start() не зовётся, а masterGain так и остался в нуле
+  // после pagehide. Дальше всё «работало»: эмбиент шёл, голос эссенции
+  // исправно декодировался и стартовал — в тишину. Диагностика писала ok,
+  // потому что ok и было: звук честно играл на нулевой громкости.
+  // Поймано на маршруте Спираль → Сеть → назад → второе вплетение (27.08):
+  // «голоса второй раз нет».
+  // persisted=false — это обычная загрузка, там свой путь через start(),
+  // трогать не нужно. muted не трогаем принципиально: если человек
+  // выключил звук, возврат на страницу — не повод его включать.
+  window.addEventListener('pageshow', function (e) {
+    if (!e.persisted) return;
+    if (!ctx || !masterGain || !started || muted) return;
+    if (ctx.state === 'suspended') ctx.resume();
+    const now = ctx.currentTime;
+    masterGain.gain.cancelScheduledValues(now);
+    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+    masterGain.gain.linearRampToValueAtTime(MASTER_VOL, now + 0.6);
+  });
+
   function fxSubspace() {
     if (!ctx || muted) return;
     fxPortal();

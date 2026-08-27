@@ -520,9 +520,14 @@ let _ucVoiceBusy = false;
 function ucSpeakEssence(text) {
   try {
     const t = String(text || '').trim();
-    if (!t || _ucVoiceBusy) return;
-    if (!VOICE_WORKER_URL || VOICE_WORKER_URL.indexOf('ЗАМЕНИ') !== -1) return; // ещё не настроен
-    if (!window.UCAudio || !window.UCAudio.speak) return; // audio.js не загрузился — молча пропускаем
+    // ФИКС 27.08: четыре ранних выхода молчали вообще — ни в консоль, ни в
+    // uc_voice_last. Голос пропадал, а Журнал показывал прошлый успех, и
+    // разбор начинался с гадания «дошло ли до fetch вообще». Тот же урок,
+    // что с essence (25.07) и с not_audio (14.08): у отказа должно быть имя.
+    if (!t) { ucVoiceFail('пустая эссенция — озвучивать нечего'); return; }
+    if (_ucVoiceBusy) { ucVoiceFail('занято: предыдущий голос ещё звучит'); return; }
+    if (!VOICE_WORKER_URL || VOICE_WORKER_URL.indexOf('ЗАМЕНИ') !== -1) { ucVoiceFail('voice-воркер не настроен'); return; }
+    if (!window.UCAudio || !window.UCAudio.speak) { ucVoiceFail('audio.js не загрузился'); return; }
     _ucVoiceBusy = true;
     // ФИКС 14.08: раньше bare fetch без ретраев — на LTE+VPN синтез уже
     // оплачен (Яндекс списывает при синтезе, не при доставке), а сама
@@ -594,17 +599,31 @@ window.onloadTurnstileCallback = function(){
   } catch(e){}
   setTsVisible(false); // спрятан по умолчанию, пока проверка не нужна
 };
+// ФИКС 27.08: виджет Turnstile на странице ОДИН, и ячейка _tsResolve под
+// его колбэк — тоже одна. Два одновременных запроса токена (кнопка «Вплести»
+// и фоновая ucTrySyncQueue) затирали _tsResolve друг другу: тот, кого
+// затёрли, терял свой колбэк и висел все 12 секунд страховки — отсюда
+// «вплетает очень долго» на ровном месте. Ставим запросы в очередь: каждый
+// дожидается своей execute и получает СВОЙ токен. Отдать один токен обоим
+// нельзя — сервер гасит его при первой же проверке, второй получил бы отказ.
+let _tsChain = Promise.resolve('');
 function getTurnstileToken(){
+  const next = _tsChain.then(getTurnstileTokenOnce, getTurnstileTokenOnce);
+  _tsChain = next.catch(() => '');   // сбой одного не рвёт очередь следующим
+  return next;
+}
+
+function getTurnstileTokenOnce(){
   return new Promise(resolve => {
     if (!window.turnstile || _tsId === null) { resolve(''); return; }
     let done = false;
-    const finish = (val) => { if(done) return; done = true; setTsVisible(false); resolve(val); };
+    const finish = (val) => { if(done) return; done = true; setTsVisible(false); _tsResolve = null; resolve(val); };
     _tsResolve = (val) => finish(val);
     setTsVisible(true); // показываем на время проверки — вдруг нужен челлендж
     try { turnstile.reset(_tsId); } catch(e){}
     try { turnstile.execute(_tsId); } catch(e){ finish(''); }
     // Страховка: на нестабильном канале callback может не прийти — не вешаем UI
-    setTimeout(() => { if(!done){ _tsResolve = null; finish(''); } }, 12000);
+    setTimeout(() => { if(!done){ finish(''); } }, 12000);
   });
 }
 
@@ -640,7 +659,14 @@ async function takeTurnstileToken(){
   const ready = tsFresh();
   if (ready) {
     _tsCached = ''; _tsCachedAt = 0;
-    setTimeout(prewarmTurnstile, 500);   // греем следующий на будущее
+    // ФИКС 27.08: здесь стоял немедленный прогрев следующего токена. На
+    // обычном канале он невидим, но в приватном окне у Turnstile нет
+    // репутации браузера (ни кук, ни истории), и КАЖДОЕ обращение
+    // разворачивается в настоящий вопрос «человек ли ты». Выходило два
+    // подряд на одно вплетение: один за дело, второй — впрок за токен,
+    // который может вообще не понадобиться. Прогрев не потерян: он
+    // остался там, где ему место — в finalizeAiMessage, в момент, когда
+    // появилась новая кнопка «Вплести» и человек читает отклик.
     return ready;
   }
   return await getTurnstileToken();
@@ -1270,6 +1296,20 @@ if (!rawNoise) {
 // Объявляем здесь (а не через const внутри try), чтобы catch-блок при сбое
 // тоже мог использовать userToken для прямой проверки в Supabase.
 let userToken = '';
+
+// ФИКС 27.08: ucInFlight — общий на кнопку и фоновую очередь. Раньше его
+// знала только ucTrySyncQueue, а про отправку с кнопки не знал никто:
+// шум ложился в очередь ДО сетевого запроса (так и задумано — иначе он
+// потеряется при обрыве), и любой триггер очереди в этот момент — таймер
+// 45с, событие 'online' или возврат на вкладку — слал ВТОРОЙ запрос с тем
+// же client_id. База от дубля защищена идемпотентностью, а вот Привратник
+// и Дистиллятор отрабатывали полностью заново: лишние вызовы LLM и лишний
+// токен Turnstile на пустом месте. Очередь уже умеет пропускать «в полёте»
+// (см. её проверку ucInFlight.has) — теперь кнопка ей об этом сообщает.
+// Семантика очереди не меняется: при сбое шум остаётся в ней и доедет
+// фоном, как и раньше.
+const _idem = btn.dataset.idem || '';
+if (_idem) ucInFlight.add(_idem);
 try {
 const { lat, lng } = await getCoords();
 userToken = await getUserToken();
@@ -1413,6 +1453,10 @@ if (_tokenForCheck) {
     }
   })();
 }
+} finally {
+// Отпускаем метку в ЛЮБОМ исходе. При сбое шум остаётся в очереди — и с
+// этого момента фон снова вправе за него взяться, как и задумано.
+if (_idem) ucInFlight.delete(_idem);
 }
 }
 
