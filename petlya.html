@@ -183,6 +183,24 @@ to { opacity: 1; transform: translateX(-50%) translateY(0); }
 display: inline-block; margin-top: 0.4rem;
 color: rgba(120,200,255,0.9); text-decoration: underline;
 }
+/* ── ФИКС 03.09: ОКНО ГАСНЕТ САМО ──────────────────────────────────
+   Было: окно снималось removeChild — рывком, и только когда кнопка
+   становилась «Дальше». Стало: живёт отмеренное время и уходит фейдом
+   за секунду (см. ucShowQueueToast/ucHideQueueToast). Экран нигде не
+   залипает, и на телефоне не нужно ничего искать, чтобы убрать. */
+.uc-toast { transition: opacity 1s ease; }
+.uc-toast.uc-toast-out { opacity: 0; pointer-events: none; }
+/* Ширину задаём явно. При left:50% и right:auto на раскладку окну достаётся
+   только правая половина экрана (195px из 390), max-width тут не помогает —
+   и текст встаёт узким столбиком, ровно тем, от которого мы и уходим. */
+.uc-toast { width: min(90vw, 30rem); }
+/* Тон окна — тот же цветовой язык, что был у строк внутри сообщения:
+   янтарь — шум ещё в пути, красный — Сеть не приняла, синий (по
+   умолчанию) — оборвалась связь. */
+.uc-toast.uc-toast-warn { border-color: rgba(255,180,60,0.32); color: rgba(255,205,140,0.82); }
+.uc-toast.uc-toast-warn a { color: rgba(255,205,140,0.9); }
+.uc-toast.uc-toast-bad { border-color: rgba(255,51,102,0.32); color: rgba(255,150,175,0.85); }
+.uc-toast.uc-toast-bad a { color: rgba(255,150,175,0.9); }
 
 /* ═══════════════════════════════
 ВВОД
@@ -1200,32 +1218,25 @@ function persistWoven(msgIndex, clientId) {
 // ни словом, и о потере узнали только по пустой базе шесть дней спустя.
 //
 // Кнопка остаётся навигацией — «Сеть» посмотреть полезно в любом исходе.
-// Но если шум ВСЁ ЕЩЁ в очереди, рядом остаётся тихая строка правды. Она не
-// пугает и ничего не требует: досылка идёт фоном сама (ucTrySyncQueue), и
-// строка исчезнет, как только шум долетит.
+// Но если шум ВСЁ ЕЩЁ в очереди, об этом должно быть сказано вслух. Окно не
+// пугает и ничего не требует: досылка идёт фоном сама (ucTrySyncQueue).
+// Гаснет само через 5 секунд, а если шум долетит раньше — снимается сразу
+// (persistWoven → ucClearPendingNote), потому что перестало быть правдой.
 function ucClearPendingNote(clientId) {
   if (!clientId) return;
-  document.querySelectorAll(`[data-pending="${clientId}"]`).forEach(el => {
-    if (el.parentNode) el.parentNode.removeChild(el);
-  });
+  ucHideQueueToast(clientId);
 }
 
 function ucMarkPendingIfQueued(btn) {
   const clientId = btn && btn.dataset ? btn.dataset.idem : '';
   if (!clientId) return;
   if (!ucQueueRead().some(x => x.client_id === clientId)) return; // долетело — молчим
-  const parent = btn.parentNode;
-  if (!parent || parent.querySelector(`[data-pending="${clientId}"]`)) return;
-  const note = document.createElement('div');
-  note.dataset.pending = clientId;
-  // .message.ai — это flex-строка, и заметка без этого встаёт КОЛОНКОЙ справа
-  // от кнопки, в остаток ширины (~216px на телефоне). Пускаем её на свою
-  // строку: flex-wrap ставим точечно на этом сообщении, а не в общий CSS —
-  // остальные сообщения не трогаем.
-  parent.style.flexWrap = 'wrap';
-  note.style.cssText = 'flex:0 0 100%;font-size:0.6rem;line-height:1.6;color:rgba(255,180,60,0.6);margin-top:0.4rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
-  note.textContent = '// ' + UC_I18N.t('petlya.stillQueued');
-  parent.appendChild(note);
+  // Не перебиваем окно, которое ещё досиживает свой срок: у одного шума
+  // сообщения идут друг за другом, и подменять текст под читающим взглядом —
+  // хуже, чем промолчать. Своё скажем, когда прежнее договорит.
+  const live = document.querySelector(`.uc-toast[data-auto-note="${clientId}"]`);
+  if (live && live._ucTtlUntil > Date.now()) return;
+  ucShowQueueToast(clientId, UC_I18N.t('petlya.stillQueued'), '', { tone: 'warn', ttl: 5000 });
 }
 
 // UI: красим конкретную кнопку в "вплетено" и убираем всё, что рядом с ней
@@ -1263,7 +1274,9 @@ function transformToAdvance(btn) {
   btn.disabled = false;
   btn.style.color = 'rgba(120,200,255,0.9)';
   btn.onclick = function() { window.location.href = 'set.html'; };
-  ucHideQueueToast(btn.dataset.idem);
+  // soft: окно с собственным сроком (отказ Привратника — девять секунд)
+  // досиживает своё, а не срезается здесь на пятой.
+  ucHideQueueToast(btn.dataset.idem, { soft: true });
   const parent = btn.parentNode;
   const autoNote = parent.querySelector(`[data-auto-note="${btn.dataset.idem}"]`);
   if (autoNote && autoNote.parentNode) autoNote.parentNode.removeChild(autoNote);
@@ -1278,8 +1291,20 @@ function transformToAdvance(btn) {
 // (position:fixed), поэтому НЕ встраивается в флекс-поток сообщения и не
 // рвёт вёрстку. Помечено data-auto-note = clientId, чтобы его можно было
 // найти и убрать, когда шум подтверждён.
-function ucShowQueueToast(clientId, message, linkLabel) {
+// ФИКС 03.09: через это окно теперь идут ВСЕ пояснения к вплетению, а не
+// одно. Раньше их было четыре и жили они в трёх разных местах: отказ
+// Привратника и «Сеть не расслышала» — строкой внутри сообщения, потеря
+// связи — здесь, «шум ещё в очереди» — снова строкой. А .message.ai это
+// flex-строка, и строка внутри неё вставала узкой колонкой сбоку от кнопки
+// (216px из 390 на телефоне) — во что-то такое приходилось всматриваться.
+// Разнобой был не по замыслу, а по наслоению правок.
+//
+// opts: { tone: 'warn'|'bad', ttl: мс } — ttl 0 или без него означает
+// «висеть до явного ucHideQueueToast» (так ведёт себя ожидание с отсчётом:
+// его снимает transformToAdvance).
+function ucShowQueueToast(clientId, message, linkLabel, opts) {
   if (!clientId) return;
+  const o = opts || {};
   let toast = document.querySelector(`.uc-toast[data-auto-note="${clientId}"]`);
   if (!toast) {
     toast = document.createElement('div');
@@ -1290,6 +1315,26 @@ function ucShowQueueToast(clientId, message, linkLabel) {
     toast.appendChild(msg);
     document.body.appendChild(toast);
   }
+  // Окно того же шума могло уже угасать или ждать своего часа: у одной
+  // кнопки исходы сменяют друг друга (ожидание → «ещё в очереди»). Гасим
+  // прежние таймеры и возвращаем окно к жизни, иначе новое сообщение
+  // исчезло бы по чужому отсчёту, едва появившись.
+  if (toast._ucTimers) toast._ucTimers.forEach(clearTimeout);
+  toast._ucTimers = [];
+  toast.classList.remove('uc-toast-out', 'uc-toast-warn', 'uc-toast-bad');
+  if (o.tone === 'warn') toast.classList.add('uc-toast-warn');
+  if (o.tone === 'bad') toast.classList.add('uc-toast-bad');
+  // Окно не должно садиться на поле ввода. Оно и раньше садилось (bottom
+  // 1.4rem от нижнего края экрана, а строка ввода — там же), но раньше через
+  // него шло одно сообщение. Теперь идут все, и одно из них прямым текстом
+  // зовёт шуметь дальше — закрывать при этом то, чем шумят, нельзя.
+  // Высоту берём с живого элемента: она разная на трёх брейкпоинтах и
+  // зависит от safe-area айфона, константой не угадаешь.
+  try {
+    const ia = document.querySelector('.input-area');
+    const h = ia ? ia.getBoundingClientRect().height : 0;
+    if (h) toast.style.bottom = (h + 14) + 'px';
+  } catch (e) { /* не критично — останется дефолт из CSS */ }
   const msgEl = toast.querySelector('[data-toast-msg]');
   if (msgEl) msgEl.textContent = '// ' + message;
   if (linkLabel && !toast.querySelector('a')) {
@@ -1299,11 +1344,29 @@ function ucShowQueueToast(clientId, message, linkLabel) {
     a.textContent = linkLabel;
     toast.appendChild(a);
   }
+  toast._ucTtlUntil = o.ttl > 0 ? Date.now() + o.ttl : 0;
+  if (o.ttl > 0) toast._ucTimers.push(setTimeout(() => ucHideQueueToast(clientId), o.ttl));
 }
-function ucHideQueueToast(clientId) {
+// Гасим фейдом, а не вырезаем из DOM: секунда на исчезновение, чтобы взгляд
+// успел заметить, что окно ушло само, а не мигнуло. Удаляем уже после.
+//
+// soft:true — «убери, если оно там просто висит». Так зовёт transformToAdvance,
+// которая срабатывает на пятой секунде в ЛЮБОМ исходе. Без этой оговорки она
+// погасила бы отказ Привратника на пятой секунде из отведённых ему девяти —
+// ровно ту причину, ради которой девять и дали. Успех (styleWovenButton) и
+// подтверждённая досылка (ucClearPendingNote) зовут без soft и гасят всегда:
+// там окно уже говорит неправду, и держать его незачем.
+function ucHideQueueToast(clientId, opts) {
   if (!clientId) return;
   const toast = document.querySelector(`.uc-toast[data-auto-note="${clientId}"]`);
-  if (toast && toast.parentNode) toast.parentNode.removeChild(toast);
+  if (!toast) return;
+  if (toast.classList.contains('uc-toast-out')) return; // уже гаснет
+  if (opts && opts.soft && toast._ucTtlUntil > Date.now()) return; // досиживает своё
+  toast.classList.add('uc-toast-out');
+  if (!toast._ucTimers) toast._ucTimers = [];
+  toast._ucTimers.push(setTimeout(() => {
+    if (toast.parentNode) toast.parentNode.removeChild(toast);
+  }, 1000));
 }
 
 // Подсказка сразу, а не только текстом "сохранено локально": явная ссылка
@@ -1416,10 +1479,16 @@ if (data && data.ok === false && data.error === 'gate') {
 btn.textContent = UC_I18N.t('petlya.weaveRejected');
 btn.style.color = 'var(--accent2)';
 btn.style.borderColor = 'rgba(255,51,102,0.3)';
-const note = document.createElement('div');
-note.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,51,102,0.55);margin-top:0.5rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
-note.textContent = '// ' + (data.reason || UC_I18N.t('petlya.signalIndistinct'));
-if (btn.parentNode) btn.parentNode.appendChild(note);
+// Единственный исход, где шум пропадает навсегда: из очереди он снимается
+// строкой ниже, повтора не будет. Поэтому окну даём 9 секунд, а не 5 —
+// причина от модели это голос Сети, обращённый к человеку, и его надо
+// успеть прочитать. Дальше всё равно гаснет: экран не залипает.
+ucShowQueueToast(
+  btn.dataset.idem,
+  data.reason || UC_I18N.t('petlya.signalIndistinct'),
+  '',
+  { tone: 'bad', ttl: 9000 }
+);
 ucQueueRemove(btn.dataset.idem);
 setTimeout(() => transformToAdvance(btn), 5000);
 return;
@@ -1431,10 +1500,12 @@ btn.textContent = UC_I18N.t('petlya.retryR');
 btn.style.color = 'var(--accent2)';
 btn.disabled = false;
 btn.dataset.weaveInProgress = '0';
-const note = document.createElement('div');
-note.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,51,102,0.45);margin-top:0.5rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
-note.textContent = '// ' + (data.reason || UC_I18N.t('petlya.netDidntHear'));
-if (btn.parentNode) btn.parentNode.appendChild(note);
+ucShowQueueToast(
+  btn.dataset.idem,
+  data.reason || UC_I18N.t('petlya.netDidntHear'),
+  '',
+  { ttl: 5000 }
+);
 setTimeout(() => transformToAdvance(btn), 5000);
 return;
 }
@@ -1591,9 +1662,23 @@ async function ucTrySyncQueue() {
               liveBtn.style.color = 'var(--accent2)';
               liveBtn.style.borderColor = 'rgba(255,51,102,0.3)';
               liveBtn.disabled = true;
-              const autoNote = liveBtn.parentNode ? liveBtn.parentNode.querySelector(`[data-auto-note="${item.client_id}"]`) : null;
-              if (autoNote) autoNote.textContent = '// ' + (data.reason || UC_I18N.t('petlya.signalIndistinct'));
             }
+            // ФИКС 03.09: здесь искали пояснение внутри сообщения —
+            // liveBtn.parentNode.querySelector('[data-auto-note=...]'). А окно
+            // живёт на document.body, не в сообщении: поиск ВСЕГДА возвращал
+            // null, и причина отказа при фоновой досылке не показывалась
+            // вообще никогда. Показываем её тем же окном и на те же 9 секунд,
+            // что и при отказе по кнопке — исход-то один и тот же.
+            //
+            // Окно ставим и без кнопки на экране: досылка могла сработать на
+            // перезагруженной странице, где кнопки уже нет, а сказать о том,
+            // что шум не приняли, всё равно надо.
+            ucShowQueueToast(
+              item.client_id,
+              data.reason || UC_I18N.t('petlya.signalIndistinct'),
+              '',
+              { tone: 'bad', ttl: 9000 }
+            );
           } catch(e){}
         }
         // gate_unavailable / прочее — транзитно, оставляем в очереди
