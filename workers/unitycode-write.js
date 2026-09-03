@@ -19,7 +19,13 @@
 //                                  а также фоновую оценку Голосов (reviewVoice). Если секрета
 //                                  нет — привратник выключен (всё вплетается), Голоса пишутся
 //                                  без review_score (остаётся null).
-//   RATE_KV               (KV)     опционально; лимит частоты по token/IP
+//   RATE_KV               (KV)     ОБЯЗАТЕЛЕН на практике, хотя код переживает и его
+//                                  отсутствие. Без него: (1) лимитов частоты нет вообще
+//                                  (rateOk сразу возвращает true) и (2) Turnstile
+//                                  становится жёстким требованием, то есть любой его
+//                                  сбой = молчаливый 403 и потерянное вплетение (см.
+//                                  разбор 03.09 у развилки verified ниже).
+//                                  Namespace: unitycode-rate-kv
 //   VOICE_THRESHOLD       (var)    опционально; порог шумов для «вторых ворот» (см. voice_*
 //                                  ниже). Без переменной — дефолт 50.
 //   ECHO_TEST_KEY         (secret) опционально; ТОТ ЖЕ секрет, что уже стоит у воркера
@@ -338,6 +344,8 @@ const EVENT_SCHEMA_V = {
   essence_failed: 1,      // v1: reason (строка из distill().fail) — фикс 25.07
   essence_retried: 1,     // v1: reason первой неудачи, когда спас повтор — фикс 01.08
   woven_unverified: 1,    // v1: action — запись прошла без Turnstile, фикс 01.08
+  write_rejected: 1,      // v1: reason ('no_token'|'turnstile_no_kv'|'rate_limited'|'gate'|
+                          //     'gate_unavailable'), action, + verified/gate/len по случаю — фикс 03.09
 };
 
 async function logEvent(env, type, { clientId, nodeId, payload } = {}) {
@@ -484,7 +492,7 @@ const GATE_PROMPT = `Ты — привратник Сети Код Единст�
 Проверь честно: есть ли в тексте хоть одно осмысленное слово или образ? Если нет — это мусор, отклоняй. Если есть хоть след смысла — принимай.
 
 Ответь СТРОГО одним JSON без пояснений и без markdown:
-{"verdict":"accept"} 
+{"verdict":"accept"}
 или
 {"verdict":"reject","reason":"тихая причина, 4-10 слов, голосом Сети, без укора"}`;
 
@@ -900,7 +908,35 @@ export default {
 
     const ip = req.headers.get('CF-Connecting-IP') || '';
     const token = (body.token || '').toString().slice(0, 128);
-    if (!token) return json({ error: 'no_token' }, 400, origin);
+
+    // ── ФИКС 03.09: У ОТКАЗА ПОЯВЛЯЕТСЯ ИМЯ ────────────────────────
+    // Четыре точки отказа этого хендлера (origin, пустой токен, Turnstile,
+    // лимит частоты) молчали НАПРОЧЬ: ни события, ни строки, ни следа. А на
+    // экране человека все три последних выглядят одинаково безобидно —
+    // «⏳ Ждём…», отсчёт, потом кнопка становится «Дальше» (проверено
+    // воспроизведением 03.09). Итог: 02.09 Витя вплёл шум, интерфейс не
+    // возразил, в базе не появилось ничего, и выяснять причину пришлось
+    // шесть дней спустя по косвенным уликам — при том, что причина
+    // повторялась и раньше.
+    //
+    // Тот же урок, что уже выучен на essence_failed (25.07), not_audio
+    // (14.08) и distillFailSamples (22.08): гасить сбой молча — значит
+    // платить за него потом вслепую.
+    //
+    // Origin-отказ НЕ логируем намеренно: адрес воркера открыт, и любой
+    // чужой запрос с левым origin раздувал бы таблицу events, которую нам
+    // нельзя чистить (железное правило 4). Логируем три точки ПОСЛЕ
+    // проверки origin — их может вызвать только наш собственный сайт.
+    const rejectLog = (reason, extra) => {
+      ctx.waitUntil(logEvent(env, 'write_rejected', {
+        payload: Object.assign({ reason, action: String(body.action || '').slice(0, 32) }, extra || {}),
+      }));
+    };
+
+    if (!token) {
+      rejectLog('no_token');
+      return json({ error: 'no_token' }, 400, origin);
+    }
 
     // ── TURNSTILE КАК ЛУЧШЕЕ УСИЛИЕ, А НЕ ШЛАГБАУМ (01.08) ──────────
     // Было: нет токена — жёсткий 403. На практике это значило, что человек
@@ -917,12 +953,27 @@ export default {
     // ВАЖНО: послабление действует только там, где есть чем компенсировать.
     // Без RATE_KV лимитов нет вообще (rateOk сразу возвращает true), и тогда
     // Turnstile остаётся обязательным — иначе дверь осталась бы нараспашку.
+    //
+    // ЧТО ВСКРЫЛОСЬ 03.09: эта развилка всё это время шла по СТАРОЙ ветке.
+    // Послабление включается только при наличии RATE_KV, а KV-namespace в
+    // аккаунте не был создан вообще (проверено через API: 0 namespace'ов).
+    // То есть правка 01.08 была написана ровно против этого случая — и не
+    // действовала ни дня. Любой сбой Turnstile (не отдал токен за 12 секунд
+    // на слабом канале — клиент по своей страховке шлёт пустую строку)
+    // означал жёсткий 403 и молчаливую потерю. Плюс rateOk без KV сразу
+    // возвращает true, так что лимитов частоты тоже не было никаких:
+    // капча намертво обязательна, а защиты от частоты ноль.
+    // Namespace создан 03.09, привязка биндингом — в дашборде.
     const verified = await verifyTurnstile(body.turnstile, ip, env.TURNSTILE_SECRET);
-    if (!verified && !env.RATE_KV)
+    if (!verified && !env.RATE_KV) {
+      rejectLog('turnstile_no_kv');
       return json({ error: 'turnstile' }, 403, origin);
+    }
 
-    if (!(await rateOk(env.RATE_KV, token, ip, !verified)))
+    if (!(await rateOk(env.RATE_KV, token, ip, !verified))) {
+      rejectLog('rate_limited', { verified });
       return json({ error: 'rate_limited' }, 429, origin);
+    }
 
     // Каждая непроверенная запись оставляет след: злоупотребление должно
     // быть видно в журнале, а не обнаруживаться на глаз.
@@ -946,10 +997,23 @@ export default {
         if (env.MIMO_API_KEY) {
           const gate = await gateCheck(env, t, lang);
           gateTrace = gate.trace || 'unknown';
+          // ФИКС 03.09, вторым заходом: вердикт Привратника тоже не оставлял
+          // следа. А это единственный путь, который УДАЛЯЕТ шум из очереди
+          // на устройстве (клиент считает отказ окончательным и правильно
+          // делает) — то есть после него не остаётся вообще ничего: ни узла,
+          // ни события, ни записи в очереди. Ровно так выглядит потеря
+          // 02.09, если очередь у Вити окажется пустой.
+          //
+          // reason не пишем — это текст, адресованный человеку, и в журнале
+          // он ни к чему. Пишем trace: json_reject / salvage_reject /
+          // no_verdict — по нему видно, действительно ли модель отказала
+          // или разбор ответа поехал.
           if (gate.verdict === 'reject') {
+            rejectLog('gate', { gate: gateTrace, len: t.length });
             return json({ ok: false, error: 'gate', reason: gate.reason, gate: gateTrace }, 200, origin);
           }
           if (gate.verdict === 'blocked') {
+            rejectLog('gate_unavailable', { gate: gateTrace, len: t.length });
             return json({ ok: false, error: 'gate_unavailable', reason: '', gate: gateTrace }, 200, origin);
           }
         }
