@@ -1218,7 +1218,12 @@ function ucMarkPendingIfQueued(btn) {
   if (!parent || parent.querySelector(`[data-pending="${clientId}"]`)) return;
   const note = document.createElement('div');
   note.dataset.pending = clientId;
-  note.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,180,60,0.6);margin-top:0.4rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
+  // .message.ai — это flex-строка, и заметка без этого встаёт КОЛОНКОЙ справа
+  // от кнопки, в остаток ширины (~216px на телефоне). Пускаем её на свою
+  // строку: flex-wrap ставим точечно на этом сообщении, а не в общий CSS —
+  // остальные сообщения не трогаем.
+  parent.style.flexWrap = 'wrap';
+  note.style.cssText = 'flex:0 0 100%;font-size:0.6rem;line-height:1.6;color:rgba(255,180,60,0.6);margin-top:0.4rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
   note.textContent = '// ' + UC_I18N.t('petlya.stillQueued');
   parent.appendChild(note);
 }

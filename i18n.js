@@ -241,10 +241,10 @@
       es:`lo más probable es que ya haya llegado — solo se perdió la confirmación. No hace falta esperar: puedes seguir escribiendo o comprobarlo en la Red`
     , fr:`c'est probablement déjà arrivé — seule la confirmation s'est perdue. Pas besoin d'attendre : vous pouvez continuer à écrire ou vérifier dans le Réseau`, zh:`它很可能已经送达了 —— 丢失的只是确认。不必等待：你可以继续写，或者到「网络」里查看`},
     'petlya.stillQueued': {
-      ru:`шум ещё не вплетён — досылается сам, ничего делать не нужно`,
-      en:`this noise isn't woven in yet — it's being resent on its own, nothing to do`,
-      es:`este ruido aún no está tejido — se reenvía solo, no hay que hacer nada`
-    , fr:`ce bruit n'est pas encore tissé — il se renvoie tout seul, rien à faire`, zh:`这段杂音还没有织入 —— 它会自己重发，无需操作`},
+      ru:`связь подводит — шум ждёт в очереди и уйдёт сам, как только поймает сеть. Можно шуметь дальше или прогуляться по порталу`,
+      en:`the connection's shaky — this noise is waiting in the queue and will go on its own once the signal comes back. Keep making noise, or wander the portal a while`,
+      es:`la conexión falla — este ruido espera en la cola y saldrá solo en cuanto vuelva la señal. Puedes seguir haciendo ruido o pasear por el portal`
+    , fr:`la connexion faiblit — ce bruit attend dans la file et partira tout seul dès que le signal revient. Continuez à faire du bruit, ou baladez-vous dans le portail`, zh:`网络不太稳 —— 这段杂音还在队列里等着，信号一回来就会自己发出去。你可以继续制造杂音，或者在门户里随便逛逛`},
 
     'implant.deltaTag':    { ru:`// ПОКА ТЕБЯ НЕ БЫЛО`, en:`// WHILE YOU WERE AWAY`, es:`// MIENTRAS NO ESTABAS` , fr:`// PENDANT VOTRE ABSENCE`, zh:`// 你不在的时候`},
     'implant.voiceGateTag':  { ru:`// ВТОРЫЕ ВОРОТА`, en:`// THE SECOND GATE`, es:`// LA SEGUNDA PUERTA`, fr:`// LA SECONDE PORTE`, zh:`// 第二道门`},
