@@ -240,6 +240,11 @@
       en:`it likely already got through — only the confirmation was lost. No need to wait: keep writing, or check the Network`,
       es:`lo más probable es que ya haya llegado — solo se perdió la confirmación. No hace falta esperar: puedes seguir escribiendo o comprobarlo en la Red`
     , fr:`c'est probablement déjà arrivé — seule la confirmation s'est perdue. Pas besoin d'attendre : vous pouvez continuer à écrire ou vérifier dans le Réseau`, zh:`它很可能已经送达了 —— 丢失的只是确认。不必等待：你可以继续写，或者到「网络」里查看`},
+    'petlya.stillQueued': {
+      ru:`шум ещё не вплетён — досылается сам, ничего делать не нужно`,
+      en:`this noise isn't woven in yet — it's being resent on its own, nothing to do`,
+      es:`este ruido aún no está tejido — se reenvía solo, no hay que hacer nada`
+    , fr:`ce bruit n'est pas encore tissé — il se renvoie tout seul, rien à faire`, zh:`这段杂音还没有织入 —— 它会自己重发，无需操作`},
 
     'implant.deltaTag':    { ru:`// ПОКА ТЕБЯ НЕ БЫЛО`, en:`// WHILE YOU WERE AWAY`, es:`// MIENTRAS NO ESTABAS` , fr:`// PENDANT VOTRE ABSENCE`, zh:`// 你不在的时候`},
     'implant.voiceGateTag':  { ru:`// ВТОРЫЕ ВОРОТА`, en:`// THE SECOND GATE`, es:`// LA SEGUNDA PUERTA`, fr:`// LA SECONDE PORTE`, zh:`// 第二道门`},

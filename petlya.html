@@ -1186,6 +1186,41 @@ function persistWoven(msgIndex, clientId) {
   try { localStorage.setItem('uc_woven_idx_' + msgIndex, '1'); } catch(e){}
   try { localStorage.removeItem('uc_noise_' + msgIndex); } catch(e){}
   ucQueueRemove(clientId);
+  // Шум подтверждён — строка «ещё не вплетено» больше не правда. Снимаем её
+  // здесь, а не в styleWovenButton: та выходит рано, если кнопка уже стала
+  // «Дальше», и тогда пометка осталась бы висеть после успешной досылки.
+  ucClearPendingNote(clientId);
+}
+
+// ── ФИКС 03.09: «ДАЛЬШЕ» БОЛЬШЕ НЕ ВЫДАЁТ ОТКАЗ ЗА УСПЕХ ──────────
+// transformToAdvance через пять секунд стирала тост, пояснение и ссылку —
+// и ставила ту же надпись «Дальше», что и после удачного вплетения. Экран
+// становился неотличим от успешного. Именно так 02.09 потерялся шум: 403 от
+// воркера (Turnstile без RATE_KV, см. разбор там же), интерфейс не возразил
+// ни словом, и о потере узнали только по пустой базе шесть дней спустя.
+//
+// Кнопка остаётся навигацией — «Сеть» посмотреть полезно в любом исходе.
+// Но если шум ВСЁ ЕЩЁ в очереди, рядом остаётся тихая строка правды. Она не
+// пугает и ничего не требует: досылка идёт фоном сама (ucTrySyncQueue), и
+// строка исчезнет, как только шум долетит.
+function ucClearPendingNote(clientId) {
+  if (!clientId) return;
+  document.querySelectorAll(`[data-pending="${clientId}"]`).forEach(el => {
+    if (el.parentNode) el.parentNode.removeChild(el);
+  });
+}
+
+function ucMarkPendingIfQueued(btn) {
+  const clientId = btn && btn.dataset ? btn.dataset.idem : '';
+  if (!clientId) return;
+  if (!ucQueueRead().some(x => x.client_id === clientId)) return; // долетело — молчим
+  const parent = btn.parentNode;
+  if (!parent || parent.querySelector(`[data-pending="${clientId}"]`)) return;
+  const note = document.createElement('div');
+  note.dataset.pending = clientId;
+  note.style.cssText = 'font-size:0.6rem;line-height:1.6;color:rgba(255,180,60,0.6);margin-top:0.4rem;font-family:\'Share Tech Mono\',monospace;letter-spacing:0.05em;';
+  note.textContent = '// ' + UC_I18N.t('petlya.stillQueued');
+  parent.appendChild(note);
 }
 
 // UI: красим конкретную кнопку в "вплетено" и убираем всё, что рядом с ней
@@ -1229,6 +1264,9 @@ function transformToAdvance(btn) {
   if (autoNote && autoNote.parentNode) autoNote.parentNode.removeChild(autoNote);
   const netLink = parent.querySelector(`[data-net-link="${btn.dataset.idem}"]`);
   if (netLink && netLink.parentNode) netLink.parentNode.removeChild(netLink);
+  // Всё лишнее убрано — но если шум ещё не долетел, об этом должно остаться
+  // сказано. См. ucMarkPendingIfQueued (фикс 03.09).
+  ucMarkPendingIfQueued(btn);
 }
 
 // Всплывающее окошко при слабом соединении. Живёт на document.body
