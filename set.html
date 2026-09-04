@@ -705,7 +705,30 @@ map.fitBounds(coords, FIT_OPTS);
 // тихо теряет: кнопка визуально нажимается, но камера никуда не едет.
 // Воспроизводилось у Вити именно так — работает первый раз, не работает
 // после того как «полазил по узлам».
+// ── КАМЕРА ПРИНАДЛЕЖИТ ЧЕЛОВЕКУ, ПОКА ОН ЕЁ НЕ ОТДАСТ (04.09) ──────
+// Слой эха обрамляет карту заново каждый раз, когда приходят новые точки
+// (см. fitEchoes), а Эхо мира собирает новости непрерывно — опрос идёт раз
+// в 15 секунд. Пока человек просто смотрел, это было полезно. Но если он
+// приблизился и читает узлы, камера в какой-то момент уезжает сама, и весь
+// зум насмарку. Оговорка `anyPopupOpen` там половинчатая: она лишь
+// откладывает рывок до закрытия попапа — то есть ровно до того момента,
+// когда человек дочитал и закрыл. Воспроизведено 04.09: зум 13 на Москве,
+// одно новое эхо в Токио — камера сама ушла на зум 2.
+//
+// Признак «камеру взял человек» снимаем с настоящего ввода в контейнере
+// карты, а не с событий Leaflet: zoomstart/movestart одинаково стреляют и
+// на наш собственный fitBounds, по ним своё от чужого не отличить.
+// capture — жест мог быть перехвачен обработчиками Leaflet раньше нас.
+let userTookCamera = false;
+['pointerdown', 'touchstart', 'wheel'].forEach(function(ev) {
+map.getContainer().addEventListener(ev, function() { userTookCamera = true; },
+                                    { passive: true, capture: true });
+});
+
+// Кнопка «показать всю Сеть» — это и есть жест «забирай камеру обратно».
+// Она снаружи контейнера карты, так что своим нажатием флаг не ставит.
 document.getElementById('mapReset').addEventListener('click', function() {
+userTookCamera = false;
 const coords = Object.values(nodeCoords);
 if (coords.length) { map.stop(); map.fitBounds(coords, FIT_OPTS); }
 });
@@ -1194,6 +1217,10 @@ if (echoFitPending) { echoFitPending = false; fitEchoes(); }
 function fitEchoes() {
 const coords = Object.values(echoMarkers).map(m => m.getLatLng());
 if (!coords.length) return;
+// Камеру уже забрал человек — не отнимаем. Новые эхо всё равно лягут на
+// карту, просто кадр останется тот, который он выбрал сам. Вернуть
+// обрамление можно кнопкой ⌖ (см. userTookCamera выше).
+if (userTookCamera) return;
 if (anyPopupOpen) { echoFitPending = true; return; }
 map.stop();
 map.fitBounds(coords, FIT_OPTS);
