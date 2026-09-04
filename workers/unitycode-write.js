@@ -28,6 +28,19 @@
 //                                  Namespace: unitycode-rate-kv
 //   VOICE_THRESHOLD       (var)    опционально; порог шумов для «вторых ворот» (см. voice_*
 //                                  ниже). Без переменной — дефолт 50.
+//
+// ЧАСТЬ НАСТРОЕК ЖИВЁТ НЕ ЗДЕСЬ, А В БАЗЕ (04.09). Пороги Связующего —
+// linker.enabled / max_new_links_per_run / min_confidence / hub_degree_cap —
+// читаются из таблицы settings (migrations/observability_stage1.sql) на каждом
+// прогоне. Смысл: поведение агента правится в Supabase через Table Editor, без
+// правки этого файла и без заливки в дашборд. Дефолты в LINKER_DEFAULTS ниже —
+// страховка на случай, если база не ответила, а не второе место хранения:
+// настройки не должны уметь остановить Сеть тем, что не прочитались.
+//
+// Связующий также вызывает RPC take_network_snapshot() после каждого прогона,
+// в котором реально появились связи, — снимок метрик сети в network_snapshots.
+// Право вызова у функции отозвано у anon и выдано service_role, поэтому ходить
+// туда может только воркер, а не браузер.
 //   ECHO_TEST_KEY         (secret) опционально; ТОТ ЖЕ секрет, что уже стоит у воркера
 //                                  unitycode-echo для его диагностического fetch(). Если задан
 //                                  здесь тоже — каждое успешное вплетение узла заодно будит
@@ -275,8 +288,14 @@ const LINKER_PROMPT = `Ты — Связующий, агент Сети Код �
 
 Если ни один кандидат не резонирует — это нормальный и ожидаемый ответ. Пустой список не является неудачей: Сеть, где всё связано со всем, не содержит информации. Не выдумывай связи из вежливости.
 
+Для КАЖДОЙ связи, которую решил провести, скажи две вещи помимо номера:
+
+weight — насколько силён отклик, число от 0 до 1. 1.0 — два шума говорят об одном и том же живом опыте, связь очевидна. 0.5 — отклик есть, но неяркий. Ниже 0.3 связь, скорее всего, не стоит проводить вовсе. Ставь честно: ровные 0.9 у всего подряд обесценивают шкалу так же, как связь со всеми подряд обесценивает Сеть.
+
+reason — одна-две строки живым языком: что именно перекликается в этих двух шумах. Не «оба о хрупкости» — это та самая абстракция, от которой предостережение выше. Конкретно: что человек сказал там и что здесь, и где они встречаются. Это читает человек, а не машина.
+
 Ответь СТРОГО одним JSON без markdown и пояснений:
-{"connect": [номера кандидатов через запятую, например 1,3]}
+{"connect": [{"n": 1, "weight": 0.8, "reason": "..."}, {"n": 3, "weight": 0.55, "reason": "..."}]}
 или
 {"connect": []}`;
 
@@ -289,37 +308,133 @@ function shuffleArr(arr) {
   return a;
 }
 
+// ── НАСТРОЙКИ СВЯЗУЮЩЕГО ИЗ БАЗЫ, А НЕ ИЗ КОНСТАНТ (04.09) ─────────
+// Пороги живут в таблице settings (migrations/observability_stage1.sql).
+// Смысл ровно один: поведение агента правится в Supabase через Table
+// Editor, без правки этого файла и без заливки в дашборд. Ради этого
+// таблица и заводилась.
+//
+// Дефолты здесь — не дубль настроек, а страховка. Если база не ответила
+// или ключ кто-то удалил, Связующий работает по ним, а не останавливается:
+// настройки не должны уметь остановить Сеть тем, что не прочитались.
+const LINKER_DEFAULTS = {
+  enabled: true,
+  max_new_links_per_run: 3,
+  min_confidence: 0.55,
+  hub_degree_cap: 12,
+};
+
+function pickSetting(rows, key, fallback, cast) {
+  const row = rows.find(r => r.key === key);
+  if (!row || row.value === null || row.value === undefined) return fallback;
+  const v = cast(row.value);
+  return v === null ? fallback : v;
+}
+const asBool = v => (typeof v === 'boolean' ? v : (v === 'true' ? true : (v === 'false' ? false : null)));
+const asNum = v => (Number.isFinite(Number(v)) ? Number(v) : null);
+
+function parseLinkerSettings(rows) {
+  if (!Array.isArray(rows) || !rows.length) return { ...LINKER_DEFAULTS };
+  return {
+    enabled: pickSetting(rows, 'linker.enabled', LINKER_DEFAULTS.enabled, asBool),
+    max_new_links_per_run: pickSetting(rows, 'linker.max_new_links_per_run', LINKER_DEFAULTS.max_new_links_per_run, asNum),
+    min_confidence: pickSetting(rows, 'linker.min_confidence', LINKER_DEFAULTS.min_confidence, asNum),
+    hub_degree_cap: pickSetting(rows, 'linker.hub_degree_cap', LINKER_DEFAULTS.hub_degree_cap, asNum),
+  };
+}
+
+// Возвращает { candidates, settings, degree, capped } — не голый массив,
+// как раньше: настройки и степени добываются здесь же, из того же
+// Promise.all, и тащить за ними отдельный круговой рейс не нужно.
+//
+// Почему настройки читаются ЗДЕСЬ, а не раньше — хотя linker.enabled мог бы
+// оборвать прогон до всякой работы: узкое место Связующего это не число
+// подзапросов, а ВРЕМЯ (весь он живёт в ctx.waitUntil с общим бюджетом 30
+// секунд, и правка 07.08 существует потому, что бюджет однажды умер прямо
+// между созданием связи и записью о ней). Отдельный рейс перед этим —
+// лишний круг ожидания на каждом вплетении. В общем Promise.all чтение
+// стоит ноль по времени, а при enabled=false мы теряем два дешёвых
+// параллельных запроса и не тратим главное — вызов модели.
 async function gatherLinkCandidates(env, newNodeId) {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return [];
+  const empty = { candidates: [], settings: { ...LINKER_DEFAULTS }, degree: new Map(), capped: 0 };
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return empty;
   const headers = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY };
   try {
-    const [nodesRes, connsRes] = await Promise.all([
+    const [nodesRes, connsRes, setRes] = await Promise.all([
       fetch(`${env.SUPABASE_URL}/rest/v1/nodes?id=neq.${newNodeId}&select=id,raw_noise&order=created_at.desc&limit=60`, { headers }),
       fetch(`${env.SUPABASE_URL}/rest/v1/connections?select=from_node_id,to_node_id`, { headers }),
+      fetch(`${env.SUPABASE_URL}/rest/v1/settings?key=like.linker.*&select=key,value`, { headers }),
     ]);
-    if (!nodesRes.ok) return [];
+
+    let settings = { ...LINKER_DEFAULTS };
+    if (setRes.ok) {
+      try { settings = parseLinkerSettings(await setRes.json()); } catch (_) { /* дефолты */ }
+    }
+
+    if (!nodesRes.ok) return { ...empty, settings };
     const nodes = await nodesRes.json();
-    if (!Array.isArray(nodes) || !nodes.length) return [];
+    if (!Array.isArray(nodes) || !nodes.length) return { ...empty, settings };
     const conns = connsRes.ok ? await connsRes.json() : [];
 
-    const connectedIds = new Set();
-    (Array.isArray(conns) ? conns : []).forEach(c => {
-      if (c.from_node_id) connectedIds.add(c.from_node_id);
-      if (c.to_node_id) connectedIds.add(c.to_node_id);
-    });
+    // Степень каждого узла — из того же массива связей, что уже пришёл.
+    // Ни одного лишнего запроса: connectedIds ниже строился из него же,
+    // просто вместо «связан / не связан» теперь считаем сколько.
+    const degree = new Map();
+    const bump = id => { if (id) degree.set(id, (degree.get(id) || 0) + 1); };
+    (Array.isArray(conns) ? conns : []).forEach(c => { bump(c.from_node_id); bump(c.to_node_id); });
+    const connectedIds = new Set(degree.keys());
 
-    const recent5 = nodes.slice(0, 5);
-    const lonelyPool = nodes.filter(n => !connectedIds.has(n.id));
+    // ── ПОТОЛОК СТЕПЕНИ (04.09) ────────────────────────────────────
+    // Перегруженный узел выбывает ДО показа модели, а не отбраковывается
+    // после: незачем занимать место в списке кандидатов и тратить внимание
+    // модели на то, что всё равно нельзя связать.
+    //
+    // Чего этот потолок НЕ делает, чтобы не было иллюзий: два сегодняшних
+    // хаба по 9 связей набраны БОЛЬШИНСТВОМ вручную людьми (замер 04.09:
+    // 8 рёбер от Связующего против 10 от людей). Кап на агента их бы не
+    // предотвратил. Он мешает агенту УСИЛИВАТЬ уже сложившийся хаб — а это
+    // как раз тот механизм, который разгоняет сам себя.
+    const cap = settings.hub_degree_cap;
+    const allowed = cap > 0 ? nodes.filter(n => (degree.get(n.id) || 0) < cap) : nodes;
+    const capped = nodes.length - allowed.length;
+    if (!allowed.length) return { ...empty, settings, degree, capped };
+
+    const recent5 = allowed.slice(0, 5);
+    const lonelyPool = allowed.filter(n => !connectedIds.has(n.id));
     const lonely5 = shuffleArr(lonelyPool).slice(0, 5);
 
     const chosenIds = new Set([...recent5, ...lonely5].map(n => n.id));
-    const restPool = nodes.filter(n => !chosenIds.has(n.id));
+    const restPool = allowed.filter(n => !chosenIds.has(n.id));
     const random3 = shuffleArr(restPool).slice(0, 3);
 
     const all = [...recent5, ...lonely5, ...random3];
     const seen = new Set();
-    return all.filter(n => { if (seen.has(n.id)) return false; seen.add(n.id); return true; });
-  } catch (e) { return []; }
+    const candidates = all.filter(n => { if (seen.has(n.id)) return false; seen.add(n.id); return true; });
+    return { candidates, settings, degree, capped };
+  } catch (e) { return empty; }
+}
+
+// Снимок метрик сети — RPC take_network_snapshot() из
+// migrations/observability_stage1.sql. Право вызова отозвано у anon и
+// выдано service_role, поэтому ходить сюда может только этот воркер со
+// своим сервис-ключом; из браузера эндпоинт закрыт.
+//
+// Тихий fail-safe: снимок — наблюдение за сетью, а не часть вплетения.
+// Он не должен уметь испортить прогон тем, что не удался.
+async function takeNetworkSnapshot(env) {
+  try {
+    if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return;
+    await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/take_network_snapshot`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: env.SUPABASE_SERVICE_KEY,
+        Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY,
+        Prefer: 'return=minimal',
+      },
+      body: '{}',
+    });
+  } catch (e) { /* снимок не критичен — сеть важнее наблюдения за ней */ }
 }
 
 async function logLinker(env, nodeId, trace) {
@@ -339,7 +454,7 @@ async function logLinker(env, nodeId, trace) {
 
 const EVENT_SCHEMA_V = {
   node_created: 2,        // v2 (25.07): + geo_source ('client'|'last_known'|'ip_geo'|null). v1: raw_noise, ai_interpretation, essence?, lat?, lng?, tz?
-  connection_created: 1,  // v1: from_node_id, to_node_id, created_by
+  connection_created: 2,  // v2 (04.09): + weight (0–1 или null, если модель не назвала). v1: from_node_id, to_node_id, created_by
   node_duplicate_retry: 1,// v1: пустой payload, значим только client_id строки
   essence_failed: 1,      // v1: reason (строка из distill().fail) — фикс 25.07
   essence_retried: 1,     // v1: reason первой неудачи, когда спас повтор — фикс 01.08
@@ -360,10 +475,58 @@ async function logEvent(env, type, { clientId, nodeId, payload } = {}) {
   }
 }
 
+// Достаёт массив, стоящий за "connect", даже если внутри объекты.
+// Прежняя регулярка /"connect"\s*:\s*\[([^\]]*)\]/ ловила только плоский
+// список чисел: на [{"n":1,...}] она обрывалась о первую же `]`. А нужна
+// она не для красоты — это спасательный разбор для случая, когда шлюз
+// кладёт ответ только в reasoning_content, и он реально выручал прогоны.
+// Поэтому не выкидываем, а учим считать скобки.
+function extractConnectArray(s) {
+  const at = s.indexOf('"connect"');
+  if (at === -1) return null;
+  const open = s.indexOf('[', at);
+  if (open === -1) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = open; i < s.length; i++) {
+    const ch = s[i];
+    if (esc) { esc = false; continue; }
+    if (ch === '\\') { esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '[') depth++;
+    else if (ch === ']') { depth--; if (depth === 0) return s.slice(open, i + 1); }
+  }
+  return null;
+}
+
+// Приводит элемент списка к единому виду. Модель просят отдавать объекты
+// {n, weight, reason}, но она может вернуться к прежнему плоскому числу —
+// формат в промпте не гарантия. Голое число принимаем: связь важнее формы,
+// вес тогда неизвестен (null), и порог уверенности к ней не применяется.
+function normalizeLink(x) {
+  if (typeof x === 'number' && Number.isFinite(x)) return { n: x, weight: null, reason: '' };
+  if (x && typeof x === 'object') {
+    const n = parseInt(x.n ?? x.index ?? x.i, 10);
+    if (!Number.isFinite(n)) return null;
+    let w = Number(x.weight);
+    if (!Number.isFinite(w)) w = null;
+    else w = Math.min(1, Math.max(0, w));   // держим в шкале 0–1: её же проверяет CHECK в базе
+    return { n, weight: w, reason: String(x.reason || '').trim().slice(0, 500) };
+  }
+  const n = parseInt(x, 10);
+  return Number.isFinite(n) ? { n, weight: null, reason: '' } : null;
+}
+
 async function runLinker(env, newNode) {
   if (!env.MIMO_API_KEY) { await logLinker(env, newNode.id, 'no_mimo_key'); return; }
-  const candidates = await gatherLinkCandidates(env, newNode.id);
-  if (!candidates.length) { await logLinker(env, newNode.id, 'no_candidates (нет секретов Supabase или пустой пул)'); return; }
+  const { candidates, settings, capped } = await gatherLinkCandidates(env, newNode.id);
+
+  // Рубильник из Table Editor: linker.enabled=false останавливает агента
+  // без правки кода и без заливки. Пишем в журнал — иначе тишина Связующего
+  // выглядела бы поломкой.
+  if (!settings.enabled) { await logLinker(env, newNode.id, 'disabled_by_settings (linker.enabled=false)'); return; }
+
+  if (!candidates.length) { await logLinker(env, newNode.id, `no_candidates (нет секретов Supabase, пустой пул или все за потолком степени; capped=${capped})`); return; }
 
   const list = candidates
     .map((c, i) => `${i + 1}. ${String(c.raw_noise || '').slice(0, 300).trim()}`)
@@ -396,9 +559,8 @@ ${list}`;
     const msg = d?.choices?.[0]?.message || {};
     let raw = (msg.content || '').replace(/```json|```/g, '').trim();
     if (!raw && msg.reasoning_content) {
-      const rc = String(msg.reasoning_content);
-      const m = rc.match(/"connect"\s*:\s*\[([^\]]*)\]/);
-      if (m) raw = `{"connect":[${m[1]}]}`;
+      const arr = extractConnectArray(String(msg.reasoning_content));
+      if (arr) raw = `{"connect":${arr}}`;
     }
     if (!raw) {
       const rcSnippet = msg.reasoning_content ? String(msg.reasoning_content).slice(-300) : '(reasoning_content тоже пуст)';
@@ -406,16 +568,25 @@ ${list}`;
       return;
     }
 
-    let indices = [];
+    let links = [];
     let parsedOk = false;
     try {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed.connect)) { indices = parsed.connect; parsedOk = true; }
+      if (Array.isArray(parsed.connect)) { links = parsed.connect.map(normalizeLink).filter(Boolean); parsedOk = true; }
     } catch (_) {
-      const m = raw.match(/"connect"\s*:\s*\[([^\]]*)\]/);
-      if (m) {
-        indices = m[1].split(',').map(s => parseInt(s.trim(), 10)).filter(Number.isFinite);
-        parsedOk = true;
+      const arr = extractConnectArray(raw);
+      if (arr) {
+        try {
+          const list = JSON.parse(arr);
+          if (Array.isArray(list)) { links = list.map(normalizeLink).filter(Boolean); parsedOk = true; }
+        } catch (__) {
+          // Совсем битый JSON — вытаскиваем хотя бы номера, как раньше.
+          // Связь без веса лучше, чем потерянная связь.
+          links = arr.replace(/[[\]]/g, '').split(',')
+            .map(s => parseInt(s.trim(), 10)).filter(Number.isFinite)
+            .map(n => ({ n, weight: null, reason: '' }));
+          parsedOk = links.length > 0;
+        }
       }
     }
 
@@ -435,29 +606,68 @@ ${list}`;
     // «Атрибутированная автономия»), и она не может зависеть от того,
     // доживёт ли прогон до конца. Поэтому решение фиксируется до того,
     // как хоть что-то попадёт в граф.
-    const planned = indices.map(i => candidates[i - 1]).filter(c => c && c.id);
+    const proposed = links
+      .map(l => ({ ...l, node: candidates[l.n - 1] }))
+      .filter(l => l.node && l.node.id);
+
+    // ── ПОРОГ УВЕРЕННОСТИ (04.09) ──────────────────────────────────
+    // Отсекает слабые связи. Связь без веса (модель вернулась к плоскому
+    // формату) порогом НЕ режется: неизвестное — не то же самое, что
+    // низкое, и терять связь из-за формы ответа неправильно.
+    //
+    // Порог берётся из settings и меняется без деплоя. Поставленный в 0 он
+    // выключается целиком — так и стоит начать, пока не наберётся
+    // распределение весов на живых данных: 0.55 в ТЗ взято на глаз, и
+    // отсекать им вслепую значит терять связи, которых мы даже не увидим.
+    const minConf = settings.min_confidence;
+    const weak = minConf > 0 ? proposed.filter(l => l.weight !== null && l.weight < minConf) : [];
+    const strong = proposed.filter(l => !weak.includes(l));
+
+    // Лимит на прогон: сильные вперёд, слабейшие за бортом. Связь без веса
+    // считаем средней (0.5), чтобы она не вытесняла явно сильные и не
+    // оказывалась выброшенной первой.
+    const limit = settings.max_new_links_per_run > 0 ? settings.max_new_links_per_run : strong.length;
+    const ranked = strong.slice().sort((a, b) => (b.weight ?? 0.5) - (a.weight ?? 0.5));
+    const planned = ranked.slice(0, limit);
+    const overLimit = strong.length - planned.length;
+
     const verdict = planned.length === 0 ? 'no_resonance' : 'ok';
     await logLinker(env, newNode.id,
-      `${verdict} | candidates=${candidates.length} | raw=${raw.slice(0, 150)} | planned=${planned.length}`);
+      `${verdict} | candidates=${candidates.length} | capped=${capped} | raw=${raw.slice(0, 150)}` +
+      ` | предложено=${proposed.length} | слабых<${minConf}=${weak.length} | сверх лимита ${limit}=${overLimit}` +
+      ` | planned=${planned.length} [${planned.map(l => l.weight === null ? '—' : l.weight).join(', ')}]`);
     if (!planned.length) return;
 
     // Связи и события — двумя вставками вместо двух на каждую связь:
     // PostgREST принимает массив строк. Форма payload не меняется (v1),
     // меняется только длина хвоста, который и не помещался в бюджет.
-    const connRow = c => ({
-      from_node_id: newNode.id, to_node_id: c.id,
-      status: 'accepted', created_by: 'linker',
-    });
+    // weight и reason (04.09). Связь без веса получает DEFAULT из базы
+    // (1.0) — ставить туда выдуманное число хуже, чем оставить дефолт:
+    // «мы не знаем» и «мы уверены» не должны выглядеть одинаково, а
+    // отличить их можно по reason, которого в этом случае тоже нет.
+    const connRow = l => {
+      const row = {
+        from_node_id: newNode.id, to_node_id: l.node.id,
+        status: 'accepted', created_by: 'linker',
+        last_evaluated_at: new Date().toISOString(),
+      };
+      if (l.weight !== null) row.weight = l.weight;
+      if (l.reason) row.reason = l.reason;
+      return row;
+    };
+    let wroteAny = false;
     try {
       await sbInsert(env, 'connections', planned.map(connRow));
-      await sbInsert(env, 'events', planned.map(c => ({
+      wroteAny = true;
+      await sbInsert(env, 'events', planned.map(l => ({
         type: 'connection_created',
         node_id: newNode.id,
         payload: {
           _v: EVENT_SCHEMA_V.connection_created,
           from_node_id: newNode.id,
-          to_node_id: c.id,
+          to_node_id: l.node.id,
           created_by: 'linker',
+          weight: l.weight,
         },
       })));
     } catch (e) {
@@ -465,12 +675,24 @@ ${list}`;
       // Медленнее и может не уложиться в бюджет, но решение уже в журнале,
       // а связь важнее скорости. Вторая строка в журнале — судьба записи.
       let written = 0;
-      for (const c of planned) {
-        try { await sbInsert(env, 'connections', connRow(c)); written++; } catch (_) {}
+      for (const l of planned) {
+        try { await sbInsert(env, 'connections', connRow(l)); written++; } catch (_) {}
       }
+      wroteAny = written > 0;
       await logLinker(env, newNode.id,
         `batch_failed | ${String(e).slice(0, 150)} | поштучно ${written}/${planned.length}`);
     }
+
+    // ── СНИМОК СЕТИ ПОСЛЕ ИЗМЕНЕНИЯ (04.09) ────────────────────────
+    // Только если связи реально появились. no_resonance — ответ штатный и
+    // частый (см. промпт: «Пустой список не является неудачей»), сеть при
+    // нём не изменилась, и снимок повторил бы предыдущий слово в слово.
+    //
+    // Стоит последним и намеренно: это самое дешёвое, чем можно
+    // пожертвовать. Бюджет ctx.waitUntil здесь уже однажды умирал (фикс
+    // 07.08), так что иногда снимка не будет — и это терпимо, пропущенный
+    // снимок ничего не теряет, в отличие от несозданной связи.
+    if (wroteAny) await takeNetworkSnapshot(env);
   } catch (e) {
     await logLinker(env, newNode.id, `throw: ${String(e).slice(0, 200)} | candidates=${candidates.length}`);
   }
