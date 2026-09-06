@@ -733,8 +733,27 @@ const coords = Object.values(nodeCoords);
 if (coords.length) { map.stop(); map.fitBounds(coords, FIT_OPTS); }
 });
 
+// ── ПРАВКА 06.09: НАДПИСЬ ТОЛЬКО КОГДА ЖДАТЬ ДЕЙСТВИТЕЛЬНО ДОЛГО ───
+// «// СИНХРОНИЗАЦИЯ...» зажигалась на КАЖДЫЙ опрос узлов, то есть каждые
+// десять секунд. На быстром канале это вспышка в двадцать миллисекунд, её
+// никто не видит; на LTE — секунда светящегося текста внизу экрана, и так
+// без конца, пока человек пытается читать карту.
+//
+// Теперь с задержкой: успел запрос за LOADING_DELAY — надпись не появится
+// вовсе, не успел — скажет то, что должна. Таймер гасится при закрытии,
+// поэтому «мигнуть и пропасть» она больше не может.
+const LOADING_DELAY = 1500;
+let _loadingTimer = null;
 function showLoading(visible) {
-document.getElementById('loading').classList.toggle('visible', visible);
+const el = document.getElementById('loading');
+if (!el) return;
+if (visible) {
+if (_loadingTimer || el.classList.contains('visible')) return;
+_loadingTimer = setTimeout(function(){ _loadingTimer = null; el.classList.add('visible'); }, LOADING_DELAY);
+return;
+}
+if (_loadingTimer) { clearTimeout(_loadingTimer); _loadingTimer = null; }
+el.classList.remove('visible');
 }
 
 // Добавляет один узел на карту — общая функция для кэша и сети
@@ -836,7 +855,12 @@ fitAllNodes();
 
 // Инкрементальная загрузка (только новые узлы)
 async function loadNodes(initial = false) {
-showLoading(true);
+// ПРАВКА 06.09: надпись только на ПЕРВОЙ загрузке. Фоновый опрос идёт раз в
+// десять секунд, и человеку не нужно об этом сообщать — карта просто
+// обновляется. На LTE, где каждый запрос дольше секунды, надпись загоралась
+// на каждый опрос, и получалось ровное мигание внизу экрана всё время, пока
+// человек читает. При заходе она по-прежнему уместна: там реально ждут.
+if (initial) showLoading(true);
 try {
 let url = `${SUPABASE_URL}/rest/v1/nodes?select=id,created_at,raw_noise,lat,lng,user_token&lat=not.is.null&lng=not.is.null&order=created_at.desc`;
 if (lastCreatedAt) {
@@ -857,6 +881,8 @@ if (initial) fitAllNodes();
 console.error('Supabase incremental error:', e);
 if (initial && !cachedNodes) document.getElementById('nodeCount').textContent = '?';
 } finally {
+// Гасим всегда, не только при initial: если фоновый опрос почему-то
+// зажёг её раньше (порядок вызовов менялся не раз), пусть уберёт за собой.
 showLoading(false);
 }
 }
@@ -998,8 +1024,12 @@ loadedConnections.forEach(id => { if (!freshIds.has(id)) toRemove.push(id); });
 toRemove.forEach(removeConnectionFromMap);
 
 // Добавить новые
-conns.forEach(addConnectionToMap);
-raiseHumanLines();
+// ПРАВКА 06.09: raiseHumanLines дёргалась на КАЖДЫЙ опрос, то есть раз в
+// тридцать секунд, и переставляла SVG-пути в DOM даже когда ни одна связь
+// не менялась. Порядок от этого не менялся — он и так был правильный, —
+// а перерисовка происходила. Зовём только когда список реально изменился.
+const added = conns.map(addConnectionToMap).filter(Boolean).length;
+if (added || toRemove.length) raiseHumanLines();
 
 writeCache(CACHE_CONNS, conns);
 } catch(e) { console.warn('Connections load error', e); }
@@ -1209,19 +1239,36 @@ if (echoFitPending) { echoFitPending = false; fitEchoes(); }
 
 // Тот же приём, что fitAllNodes у узлов: без него слой открывался на том
 // виде карты, что уже был выставлен под узлы — эхо в Африке могло просто
-// оказаться за кадром, хотя маркер честно на карте есть. В отличие от
-// fitAllNodes (разово) — эхо продолжают собираться в фоне пока человек
-// смотрит на карту, «лениво» ждать обновления страницы не должно быть
-// нужно: обрамляем заново каждый раз, когда реально добавились новые точки
-// (не на каждый опрос впустую — иначе камера дёргалась бы просто так).
-function fitEchoes() {
+// оказаться за кадром, хотя маркер честно на карте есть.
+//
+// ── ПРАВКА 06.09: ОБРАМЛЯЕМ РАЗОВО, КАК УЗЛЫ ──────────────────────
+// Было: обрамляем заново каждый раз, когда добавились новые точки. Замысел
+// понятный (новое эхо не должно оставаться за кадром), но на практике это
+// значило, что человек, который просто СМОТРИТ карту и читает узлы, ничего
+// не трогая, каждые пятнадцать секунд получал уезжающую камеру. Правка
+// 04.09 отдавала камеру только тому, кто её взял пальцем, — а тот, кто
+// читает не трогая, оставался ни с чем. Витя: «пусть, если я роюсь по
+// карте, ничего не дёргается».
+//
+// Теперь эхо ведёт себя ровно как узлы: сложили кадр один раз и больше
+// камеру не трогаем никогда. Новые точки продолжают ложиться на слой —
+// просто без переезда. Вернуть общий вид — кнопка ⌖ или повторное
+// включение слоя тумблером: оба жеста явные, человек их делает сам.
+//
+// После этой правки камеру в set.html не двигает НИЧЕГО, кроме пальцев
+// человека, кнопки ⌖, тумблера эха и первичного обрамления при заходе.
+// force — только из тумблера слоя: включить «Эхо мира» и есть просьба
+// показать эхо, тут обрамление уместно даже если человек уже двигал карту.
+// Из фонового опроса force не приходит никогда.
+let didEchoFit = false;
+function fitEchoes(force) {
+if (didEchoFit && !force) return;
 const coords = Object.values(echoMarkers).map(m => m.getLatLng());
 if (!coords.length) return;
-// Камеру уже забрал человек — не отнимаем. Новые эхо всё равно лягут на
-// карту, просто кадр останется тот, который он выбрал сам. Вернуть
-// обрамление можно кнопкой ⌖ (см. userTookCamera выше).
-if (userTookCamera) return;
-if (anyPopupOpen) { echoFitPending = true; return; }
+// Камеру уже забрал человек — не отнимаем даже первый раз.
+if (userTookCamera && !force) { didEchoFit = true; return; }
+if (anyPopupOpen && !force) { echoFitPending = true; return; }
+didEchoFit = true;
 map.stop();
 map.fitBounds(coords, FIT_OPTS);
 }
@@ -1275,7 +1322,7 @@ if (on) {
 // видимыми там, где их и добавили, а не там, где сейчас смотрит человек.
 // fitEchoes() отдельно на каждое включение чинит именно это.
 if (!echoLoaded) { echoLoaded = true; loadEchoes(); }
-else { fitEchoes(); }
+else { fitEchoes(true); }   // force: включение слоя — явная просьба показать эхо
 map.addLayer(echoLayer);
 } else {
 map.removeLayer(echoLayer);
