@@ -268,7 +268,6 @@ to { opacity: 0; }
 
 <div class="status-bar">
 <div class="stat"><span class="stat-label" data-i18n="set.statNodes">Узлов в сети:</span><span class="stat-val" id="nodeCount">—</span></div>
-<div class="stat"><span class="stat-label" data-i18n="set.statActive">Активны сейчас:</span><span class="stat-val" id="activeCount">1</span></div>
 <div class="stat"><span class="stat-label" data-i18n="set.statPulse">Пульс сети:</span><span class="stat-val" id="pulse">●</span></div>
 </div>
 
@@ -1386,10 +1385,15 @@ if (document.visibilityState !== 'visible') return;
 document.getElementById('pulse').style.color = (pulseState = !pulseState) ? '#00ff88' : '#555';
 }, 1500);
 
-setInterval(() => {
-if (document.visibilityState !== 'visible') return;
-document.getElementById('activeCount').textContent = Math.floor(1 + Math.random() * 8);
-}, 5000);
+// УБРАНО 06.09: счётчик «Активны сейчас» рисовал Math.random() от 1 до 8
+// каждые пять секунд. Число было выдуманным — никто не считал, сколько людей
+// на самом деле смотрит карту, и посчитать нечем: браузер в базу не пишет
+// (железное правило 6), присутствие нигде не хранится. Показывать выдуманную
+// цифру рядом с честными «узлов в сети» и «связей» — значит подмешивать
+// вымысел к данным, по которым люди судят о Сети. Плюс оно мигало.
+//
+// Разметка стата удалена выше. Ключ set.statActive в i18n.js оставлен: он
+// больше не используется, но чистка словаря — отдельная правка, не эта.
 }
 </script>
 <div id="ts-box" style="position:fixed;bottom:8px;right:8px;z-index:4000;"></div>
