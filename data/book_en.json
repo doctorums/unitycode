@@ -3965,6 +3965,21 @@
               "i": false
             }
           ]
+        },
+        {
+          "kind": "callout",
+          "paras": [
+            {
+              "text": "Please note: this text is a conceptual draft, the philosophical basis for a science-fiction project (a book and its universe). It explores abstract cybernetic and metaphysical hypotheses; it is not a religious treatise and is not intended to offend anyone's beliefs.",
+              "runs": [
+                {
+                  "t": "Please note: this text is a conceptual draft, the philosophical basis for a science-fiction project (a book and its universe). It explores abstract cybernetic and metaphysical hypotheses; it is not a religious treatise and is not intended to offend anyone's beliefs.",
+                  "b": false,
+                  "i": false
+                }
+              ]
+            }
+          ]
         }
       ]
     },
