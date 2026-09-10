@@ -396,12 +396,17 @@ BOOK.sections.forEach((sec)=>{
     inner+='<h1 class="part part-anim">'+escapeHTML(sec.title)+'</h1>';
     const bl=BLURBS[sec.title];
     const items=sec.items||[];
-    const firstTxt=items.length?(items[0].text||''):'';
+    // Сверяем подводку с первым АБЗАЦЕМ, а не с первым элементом: раздел
+    // может начинаться с врезки (примечание о характере текста в
+    // «Первоисточнике»). Иначе защита от повтора не срабатывает и подводка
+    // печатается вторым эхом того же предложения.
+    const fi=items.findIndex(it=>it&&it.kind!=='callout');
+    const firstTxt=fi>=0?(items[fi].text||''):'';
     const dupExact=bl&&firstTxt&&bl.trim()===firstTxt.trim();
     const dupPrefix=bl&&firstTxt&&!dupExact&&firstTxt.trim().startsWith(bl.trim());
     if(dupExact){
       inner+='<div class="part-blurb cover-slide-r">'+escapeHTML(firstTxt)+'</div>';
-      inner+=renderItems(items.slice(1), pidx);
+      inner+=renderItems(items.filter((_,i)=>i!==fi), pidx);
     }else if(dupPrefix){
       inner+=renderItems(items, pidx);
     }else{
