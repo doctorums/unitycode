@@ -1005,10 +1005,69 @@ function renderMarkdown(md){
   // (поворот, смена хрома Safari) и застревает с ними: CSS-бокс на весь
   // экран, растр меньше — просвечивает фон. Размер берём у body
   // (100dvh уже резолвится верно), не пересоздаём звёзды при том же размере.
+  // ── ДИЗЕРИНГ ФОНА (10.09) ──────────────────────────────────────────
+  // Витя: на 2560x1440 фон сильно полосатит, на телефоне нет.
+  //
+  // Причина не в градиенте как таковом, а в арифметике цвета: всё небо
+  // укладывается в 23 ступени синего, 14 зелёного и 6 красного из 255.
+  // Это 41 различимая ступень на всю высоту экрана, сколько бы пикселей в
+  // нём ни было. На телефоне полоса шириной 20px, на 2560x1440 — 35px, а
+  // самая широкая 87px: те же полосы, растянутые вчетверо.
+  //
+  // ЧТО ПРОВЕРЕНО 10.09, чтобы не лечить здорового: сам Chromium градиенты
+  // канваса уже дизерит. Замер реального рендера на 2560x1440 — ни одной
+  // ровной ступени шире 7px. То есть на выходе из канваса небо гладкое, и
+  // полосы берутся ПОСЛЕ него, при выводе на экран: пересчёт цвета под
+  // гамут дисплея заново квантует картинку и убивает слабый дизеринг
+  // браузера. Воспроизвести это на стенде не удалось — headless рисует
+  // без такого пересчёта.
+  //
+  // Отсюда лечение: свой шум амплитудой около полутора уровней — заметно
+  // сильнее браузерного, чтобы пережить ещё одно квантование. Полтора
+  // уровня из 255 глазом не видны (это 0,6%), а ступень ломают.
+  //
+  // Считаем ОДИН раз на размер окна, не каждый кадр: небо статично, и
+  // 3.7 миллиона пикселей на каждом кадре никому не нужны. В кадре
+  // остаётся один drawImage — не дороже прежнего fillRect.
+  const DITHER = 1.5;   // амплитуда шума в уровнях яркости (0 = выключить)
+  let skyBg=null;
+
+  // Рисует градиент ровно тем же вызовом, что и раньше, — чтобы вид
+  // не поехал ни на пиксель. Плюс затемнение/осветление из CONFIG.
+  function paintSkyInto(c,w,h){
+    const bg=c.createLinearGradient(0,0,0,h);
+    bg.addColorStop(0,SK.top); bg.addColorStop(0.6,SK.mid); bg.addColorStop(1,SK.bottom);
+    c.globalAlpha=1; c.fillStyle=bg; c.fillRect(0,0,w,h);
+    const br=SK.brightness;
+    if(br!==1){ c.globalAlpha=Math.abs(1-br); c.fillStyle=br<1?'#000':'#223'; c.fillRect(0,0,w,h); c.globalAlpha=1; }
+  }
+
+  function buildSkyBg(){
+    if(!W||!H) { skyBg=null; return; }
+    try{
+      const off=document.createElement('canvas');
+      off.width=W; off.height=H;
+      const oc=off.getContext('2d',{willReadFrequently:true});
+      paintSkyInto(oc,W,H);
+      if(DITHER>0){
+        const img=oc.getImageData(0,0,W,H), d=img.data;
+        for(let i=0;i<d.length;i+=4){
+          // один и тот же сдвиг на три канала: шум по яркости, не цветной —
+          // цветной дал бы видимые точки на почти чёрном фоне.
+          const n=(Math.random()*2-1)*DITHER;
+          d[i]+=n; d[i+1]+=n; d[i+2]+=n;   // Uint8ClampedArray сам округлит и обрежет
+        }
+        oc.putImageData(img,0,0);
+      }
+      skyBg=off;
+    }catch(e){ skyBg=null; }  // не вышло — рисуем как раньше, прямо в кадре
+  }
+
   function init(){
     const _w=document.body.clientWidth, _h=document.body.clientHeight;
     if(_w===W && _h===H) return;
     W=cv.width=_w; H=cv.height=_h;
+    buildSkyBg();
     const N=Math.min(S.maxCount, Math.round(W*H/3600*S.density));
     stars=Array.from({length:N},()=>({
       x:Math.random()*W, y:Math.random()*H,
@@ -1087,12 +1146,10 @@ function renderMarkdown(md){
     }
   }
   function loop(now){
-    const t=now/1000, br=SK.brightness;
+    const t=now/1000;
     lastObj.sz=0; lastObj.cOn=false;  // сброс позиций объектов на кадр
-    const bg=ctx.createLinearGradient(0,0,0,H);
-    bg.addColorStop(0,SK.top); bg.addColorStop(0.6,SK.mid); bg.addColorStop(1,SK.bottom);
-    ctx.globalAlpha=1; ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
-    if(br!==1){ ctx.globalAlpha=Math.abs(1-br); ctx.fillStyle=br<1?'#000':'#223'; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1; }
+    ctx.globalAlpha=1;
+    if(skyBg) ctx.drawImage(skyBg,0,0); else paintSkyInto(ctx,W,H);
     for(const g of gals) galaxy(g,t);
     for(const s of stars){
       s.x+=s.vx; s.y+=s.vy;
