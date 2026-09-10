@@ -41,7 +41,11 @@ body { height: 100vh; height: 100dvh; display: flex; flex-direction: column; ove
 /* Блокирует только pinch-zoom (масштабирование), не трогает обычный скролл/тач.
    Применяется только на Android через JS-детекцию ниже — iOS не затрагивается. */
 body.android-no-zoom { touch-action: pan-x pan-y; }
-#sky { position:fixed; inset:0; z-index:0; display:block; pointer-events:none; touch-action:none; }
+#sky { position:fixed; inset:0; width:100%; height:100%; z-index:0; display:block; pointer-events:none; touch-action:none; }
+  /* width/height ОБЯЗАТЕЛЬНЫ (10.09): канвас — замещаемый элемент, и при
+     width:auto он берёт размер из атрибута width, а не из inset:0. Пока
+     растр совпадал с логическим размером, это было незаметно; с переходом
+     на физические пиксели (dpr 2) канвас полез бы за край экрана вдвое. */
 @keyframes fadeIn {
 0% { opacity: 0; filter: brightness(3) saturate(0); }
 20% { opacity: 0.4; filter: brightness(4) saturate(0); }
@@ -1966,8 +1970,25 @@ requestAnimationFrame(frame);
   // гамут дисплея уже за пределами канваса — там полосы и проступают.
   // Кладём свой шум, посильнее браузерного: полтора уровня из 255 глазом
   // не видны, а ступень ломают. Считается один раз на размер окна.
+
+  // Сколько физических пикселей рисовать. Потолок двойной: по самому dpr и по
+  // ОБЩЕМУ числу пикселей в кадре.
+  //
+  // Второй потолок важнее первого. Рисование стоит по пикселям, а не по
+  // экранам: на 2560x1440 при dpr 2 это 14.7 млн вместо 3.7 — вчетверо
+  // дороже каждый кадр, и замер 10.09 показал падение с 60 до 28 кадров в
+  // секунду. Ограничиваем 6 миллионами: ноутбуки и телефоны получают полный
+  // dpr (у них пикселей мало), большие мониторы — сколько влезает в бюджет.
+  // Это лучше обеих крайностей: резче, чем логический растр, и без обвала.
+  const MAX_DEVICE_PX = 6000000;
+  function pickDPR(w,h){
+    const want = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+    const px = Math.max(1, w*h);
+    const fit = Math.sqrt(MAX_DEVICE_PX/px);
+    return Math.max(1, Math.min(want, fit));
+  }
   const DITHER = 1.5;
-  let skyBg = null;
+  let skyBg = null, DPR = 1;
 
   // Градиент рисуется тем же вызовом, что и раньше, — вид не меняется.
   function paintSkyInto(c, w, h){
@@ -1979,19 +2000,33 @@ requestAnimationFrame(frame);
   function buildSkyBg(){
     if (!W || !H) { skyBg = null; return; }
     try {
+      // Фон строим в ФИЗИЧЕСКИХ пикселях — иначе при выводе его пришлось бы
+      // растягивать, и зерно размазалось бы так же, как раньше градиент.
+      const pw = Math.round(W*DPR), ph = Math.round(H*DPR);
       const off = document.createElement('canvas');
-      off.width = W; off.height = H;
+      off.width = pw; off.height = ph;
       const oc = off.getContext('2d', { willReadFrequently: true });
-      paintSkyInto(oc, W, H);
+      paintSkyInto(oc, pw, ph);
       if (DITHER > 0) {
-        const img = oc.getImageData(0, 0, W, H), d = img.data;
-        for (let i = 0; i < d.length; i += 4) {
-          // сдвиг по яркости, одинаковый на три канала: цветной шум дал бы
-          // видимые точки на почти чёрном фоне
-          const n = (Math.random() * 2 - 1) * DITHER;
-          d[i] += n; d[i+1] += n; d[i+2] += n;
+        // Полосами по 256 строк: единый getImageData на 2560x1440 при dpr 2
+        // попросил бы 59 МБ подряд — на слабой машине это отказ.
+        // Шум из заранее посчитанной таблицы: Math.random() на каждый из
+        // 14.7 млн пикселей съедал почти секунду (замер 10.09).
+        const LUTN = 65536, LUT = new Float32Array(LUTN);
+        for (let i = 0; i < LUTN; i++) LUT[i] = (Math.random() * 2 - 1) * DITHER;
+        const CH = 256;
+        let k = (Math.random() * LUTN) | 0;
+        for (let y = 0; y < ph; y += CH) {
+          const hh = Math.min(CH, ph - y);
+          const img = oc.getImageData(0, y, pw, hh), d = img.data;
+          for (let i = 0; i < d.length; i += 4) {
+            // сдвиг по яркости, одинаковый на три канала: цветной шум дал бы
+            // видимые точки на почти чёрном фоне
+            const n = LUT[(k++) & (LUTN - 1)];
+            d[i] += n; d[i+1] += n; d[i+2] += n;
+          }
+          oc.putImageData(img, 0, y);
         }
-        oc.putImageData(img, 0, 0);
       }
       skyBg = off;
     } catch (e) { skyBg = null; }   // не вышло — рисуем как раньше, прямо в кадре
@@ -2000,7 +2035,18 @@ requestAnimationFrame(frame);
   function init(){
     const { w, h } = getViewportSize();
     if (w === W && h === H) return; // размер не изменился — не трогаем звёзды зря
-    W=cv.width=w; H=cv.height=h;
+    W=w; H=h;
+    // ── ПОД ВЫСОКОЕ РАЗРЕШЕНИЕ (10.09), см. разбор в materials.html ──
+    // Канвас рисовался в логических пикселях; на экране с большим числом
+    // физических браузер растягивал картинку интерполяцией — звёзды мылились,
+    // а ступени градиента и зерно поверх него размазывались на два-три
+    // пикселя, отчего полосы становились шире и заметнее. Рисуем в
+    // физических, код рисования оставляем в логических: это делает
+    // setTransform(DPR). Потолок 2 — выше глазом не видно, а работы кратно
+    // больше.
+    DPR = pickDPR(W,H);
+    cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
     buildSkyBg();
     const N=Math.min(S.maxCount, Math.round(W*H/3600*S.density));
     stars=Array.from({length:N},()=>({
@@ -2016,7 +2062,9 @@ requestAnimationFrame(frame);
   function loop(now){
     const t=now/1000;
     ctx.globalAlpha=1;
-    if(skyBg) ctx.drawImage(skyBg,0,0); else paintSkyInto(ctx,W,H);
+    // назначение в ЛОГИЧЕСКИХ пикселях: контекст уже масштабирован на DPR,
+    // поэтому физически ложится пиксель в пиксель
+    if(skyBg) ctx.drawImage(skyBg,0,0,W,H); else paintSkyInto(ctx,W,H);
     for(const s of stars){
       s.x+=s.vx; s.y+=s.vy;
       if(s.x<0)s.x+=W; if(s.x>W)s.x-=W; if(s.y<0)s.y+=H; if(s.y>H)s.y-=H;

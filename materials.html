@@ -50,7 +50,11 @@
 <style>
   html,body { height:100%; }
   body { min-height:100vh; min-height:100dvh; display:flex; flex-direction:column; overflow:hidden; overscroll-behavior:none; }
-  #sky { position:fixed; inset:0; z-index:0; display:block; pointer-events:none; touch-action:none; }
+  #sky { position:fixed; inset:0; width:100%; height:100%; z-index:0; display:block; pointer-events:none; touch-action:none; }
+  /* width/height ОБЯЗАТЕЛЬНЫ (10.09): канвас — замещаемый элемент, и при
+     width:auto он берёт размер из атрибута width, а не из inset:0. Пока
+     растр совпадал с логическим размером, это было незаметно; с переходом
+     на физические пиксели (dpr 2) канвас полез бы за край экрана вдвое. */
   header { position:relative; z-index:3; }
   main { position:relative; z-index:2; flex:1; width:100%; max-width:820px;
          margin:0 auto; padding:2.5rem 9rem 4rem 1.4rem; overflow-y:auto; }
@@ -1029,8 +1033,25 @@ function renderMarkdown(md){
   // Считаем ОДИН раз на размер окна, не каждый кадр: небо статично, и
   // 3.7 миллиона пикселей на каждом кадре никому не нужны. В кадре
   // остаётся один drawImage — не дороже прежнего fillRect.
+
+  // Сколько физических пикселей рисовать. Потолок двойной: по самому dpr и по
+  // ОБЩЕМУ числу пикселей в кадре.
+  //
+  // Второй потолок важнее первого. Рисование стоит по пикселям, а не по
+  // экранам: на 2560x1440 при dpr 2 это 14.7 млн вместо 3.7 — вчетверо
+  // дороже каждый кадр, и замер 10.09 показал падение с 60 до 28 кадров в
+  // секунду. Ограничиваем 6 миллионами: ноутбуки и телефоны получают полный
+  // dpr (у них пикселей мало), большие мониторы — сколько влезает в бюджет.
+  // Это лучше обеих крайностей: резче, чем логический растр, и без обвала.
+  const MAX_DEVICE_PX = 6000000;
+  function pickDPR(w,h){
+    const want = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+    const px = Math.max(1, w*h);
+    const fit = Math.sqrt(MAX_DEVICE_PX/px);
+    return Math.max(1, Math.min(want, fit));
+  }
   const DITHER = 1.5;   // амплитуда шума в уровнях яркости (0 = выключить)
-  let skyBg=null;
+  let skyBg=null, DPR=1;
 
   // Рисует градиент ровно тем же вызовом, что и раньше, — чтобы вид
   // не поехал ни на пиксель. Плюс затемнение/осветление из CONFIG.
@@ -1045,19 +1066,38 @@ function renderMarkdown(md){
   function buildSkyBg(){
     if(!W||!H) { skyBg=null; return; }
     try{
+      // Фон строим в ФИЗИЧЕСКИХ пикселях — иначе его пришлось бы растягивать
+      // при выводе, и зерно размазалось бы ровно так же, как раньше градиент.
+      const pw=Math.round(W*DPR), ph=Math.round(H*DPR);
       const off=document.createElement('canvas');
-      off.width=W; off.height=H;
+      off.width=pw; off.height=ph;
       const oc=off.getContext('2d',{willReadFrequently:true});
-      paintSkyInto(oc,W,H);
+      paintSkyInto(oc,pw,ph);
       if(DITHER>0){
-        const img=oc.getImageData(0,0,W,H), d=img.data;
-        for(let i=0;i<d.length;i+=4){
-          // один и тот же сдвиг на три канала: шум по яркости, не цветной —
-          // цветной дал бы видимые точки на почти чёрном фоне.
-          const n=(Math.random()*2-1)*DITHER;
-          d[i]+=n; d[i+1]+=n; d[i+2]+=n;   // Uint8ClampedArray сам округлит и обрежет
+        // Полосами по 256 строк, а не всей картинкой разом: на 2560x1440
+        // при dpr 2 единый getImageData попросил бы 59 МБ подряд, и на
+        // слабой машине это отказ. Работы столько же, пик памяти в разы ниже.
+        //
+        // Шум берём из заранее посчитанной таблицы, а не зовём Math.random()
+        // на каждый пиксель: при 14.7 млн пикселей вызовов было бы столько же,
+        // и именно они съедали почти секунду на сборку (замер 10.09).
+        // Таблица длиной 65536 со сдвигом фазы на каждой полосе — глазом
+        // повтор не различим, а считается в разы быстрее.
+        const LUTN=65536, LUT=new Float32Array(LUTN);
+        for(let i=0;i<LUTN;i++) LUT[i]=(Math.random()*2-1)*DITHER;
+        const CH=256;
+        let k=(Math.random()*LUTN)|0;
+        for(let y=0;y<ph;y+=CH){
+          const hh=Math.min(CH,ph-y);
+          const img=oc.getImageData(0,y,pw,hh), d=img.data;
+          for(let i=0;i<d.length;i+=4){
+            // один и тот же сдвиг на три канала: шум по яркости, не цветной —
+            // цветной дал бы видимые точки на почти чёрном фоне.
+            const n=LUT[(k++)&(LUTN-1)];
+            d[i]+=n; d[i+1]+=n; d[i+2]+=n;   // Uint8ClampedArray сам округлит и обрежет
+          }
+          oc.putImageData(img,0,y);
         }
-        oc.putImageData(img,0,0);
       }
       skyBg=off;
     }catch(e){ skyBg=null; }  // не вышло — рисуем как раньше, прямо в кадре
@@ -1066,7 +1106,25 @@ function renderMarkdown(md){
   function init(){
     const _w=document.body.clientWidth, _h=document.body.clientHeight;
     if(_w===W && _h===H) return;
-    W=cv.width=_w; H=cv.height=_h;
+    W=_w; H=_h;
+    // ── ПОД ВЫСОКОЕ РАЗРЕШЕНИЕ (10.09) ──────────────────────────────
+    // Канвас рисовался в ЛОГИЧЕСКИХ пикселях: cv.width=_w. На экране, где
+    // физических пикселей вдвое больше (Retina, 4K, 2560x1440 с масштабом
+    // системы), браузер растягивает эту картинку интерполяцией. Итог:
+    // звёзды мылятся, а каждая ступень градиента и любое зерно поверх него
+    // размазываются на два-три физических пикселя — полосы становятся вдвое
+    // шире и заметнее ровно там, где экран лучше. Тот же случай, что когда-то
+    // чинили на телефонах, только с другой стороны.
+    //
+    // Рисуем в ФИЗИЧЕСКИХ пикселях, а весь код рисования оставляем в
+    // логических: setTransform(dpr) переводит одно в другое. Ни одну
+    // координату в файле трогать не нужно.
+    //
+    // Потолок 2: выше выигрыш глазом не виден, а памяти и работы кратно
+    // больше (на 2560x1440 при dpr 2 это уже 14.7 млн пикселей).
+    DPR = pickDPR(W,H);
+    cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
     buildSkyBg();
     const N=Math.min(S.maxCount, Math.round(W*H/3600*S.density));
     stars=Array.from({length:N},()=>({
@@ -1149,7 +1207,9 @@ function renderMarkdown(md){
     const t=now/1000;
     lastObj.sz=0; lastObj.cOn=false;  // сброс позиций объектов на кадр
     ctx.globalAlpha=1;
-    if(skyBg) ctx.drawImage(skyBg,0,0); else paintSkyInto(ctx,W,H);
+    // Размер назначения задаём в ЛОГИЧЕСКИХ пикселях: контекст уже
+    // масштабирован на DPR, поэтому физически ложится пиксель в пиксель.
+    if(skyBg) ctx.drawImage(skyBg,0,0,W,H); else paintSkyInto(ctx,W,H);
     for(const g of gals) galaxy(g,t);
     for(const s of stars){
       s.x+=s.vx; s.y+=s.vy;
