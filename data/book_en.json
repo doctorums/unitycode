@@ -3571,6 +3571,21 @@
       "title": "Appendix. Primary Source",
       "items": [
         {
+          "kind": "callout",
+          "paras": [
+            {
+              "text": "Please note: this text is a conceptual draft, the philosophical basis for a science-fiction project (a book and its universe). It explores abstract cybernetic and metaphysical hypotheses; it is not a religious treatise and is not intended to offend anyone's beliefs.",
+              "runs": [
+                {
+                  "t": "Please note: this text is a conceptual draft, the philosophical basis for a science-fiction project (a book and its universe). It explores abstract cybernetic and metaphysical hypotheses; it is not a religious treatise and is not intended to offend anyone's beliefs.",
+                  "b": false,
+                  "i": false
+                }
+              ]
+            }
+          ]
+        },
+        {
           "kind": "p",
           "style": "Normal",
           "text": "The seed from which the whole book grew. The text has been carefully cleaned of recognition errors; meaning and intonation are preserved. This is intentionally not an edited text, but a living trace of thought.",
@@ -3963,21 +3978,6 @@
               "t": "One must create unity and help God gather himself and make things better, and unite, in order to be closer to God and help him in the striving to understand himself and his place in the infinity of meanings, realising and feeling God in oneself and in everything. We help God in the awareness of the whole design and in the awareness of oneself as part of something greater and going beyond the limits of his consciousness.",
               "b": false,
               "i": false
-            }
-          ]
-        },
-        {
-          "kind": "callout",
-          "paras": [
-            {
-              "text": "Please note: this text is a conceptual draft, the philosophical basis for a science-fiction project (a book and its universe). It explores abstract cybernetic and metaphysical hypotheses; it is not a religious treatise and is not intended to offend anyone's beliefs.",
-              "runs": [
-                {
-                  "t": "Please note: this text is a conceptual draft, the philosophical basis for a science-fiction project (a book and its universe). It explores abstract cybernetic and metaphysical hypotheses; it is not a religious treatise and is not intended to offend anyone's beliefs.",
-                  "b": false,
-                  "i": false
-                }
-              ]
             }
           ]
         }
