@@ -119,6 +119,12 @@
   .popup-btn.connect:hover { background:#00c8ff; color:#000; }
   .popup-btn.muted { border-color:rgba(255,255,255,0.1); color:#555; cursor:default; }
   .popup-btn.muted:hover { background:transparent; color:#555; }
+  /* Кнопка ключа — служебная: в карточке главный шум, а не она.
+     Мельче, тише и без заливки при наведении (Витя, 17.09). */
+  .popup-btn.tiny { font-size:0.48rem; padding:0.25rem 0.7rem; letter-spacing:0.08em;
+                    border-color:rgba(0,255,136,0.18); color:rgba(0,255,136,0.5); }
+  .popup-btn.tiny:hover { background:transparent; color:var(--accent);
+                          border-color:rgba(0,255,136,0.45); }
   .connect-picker { margin-top:0.8rem; border-top:1px solid rgba(0,200,255,0.2);
                     padding-top:0.8rem; max-height:150px; overflow-y:auto; }
   .picker-head { font-size:0.55rem; color:#00c8ff; letter-spacing:0.15em; margin-bottom:0.5rem; }
@@ -158,6 +164,9 @@
   #netReset span { font-size:0.85rem; line-height:1; }
   #netReset:active { background:rgba(0,255,136,0.15); }
   #netReset.idle { opacity:0.45; border-color:rgba(0,255,136,0.25); box-shadow:none; }
+  /* лента внизу занимает 1.9rem — кнопки встают над ней */
+  body.ticker #netReset  { bottom:calc(env(safe-area-inset-bottom,0px) + 3.3rem); }
+  body.ticker #echoToggle { bottom:calc(env(safe-area-inset-bottom,0px) + 6.6rem); }
   /* Единственная кнопка-переключатель: мир под Сетью либо молчит, либо
      говорит. Отдельного экрана карты больше нет — она и так фон, поэтому
      эху не нужно никуда уводить, оно ложится на свои же места прямо тут. */
@@ -221,6 +230,8 @@
        уносила шторка карточки; теперь она сама поднимает их над собой. */
     #netReset { bottom:calc(env(safe-area-inset-bottom,0px) + 1rem); }
     #echoToggle { bottom:calc(env(safe-area-inset-bottom,0px) + 3.9rem); }
+    body.ticker #netReset  { bottom:calc(env(safe-area-inset-bottom,0px) + 3.1rem); }
+    body.ticker #echoToggle { bottom:calc(env(safe-area-inset-bottom,0px) + 6rem); }
     body.sheet #netReset { bottom:calc(env(safe-area-inset-bottom,0px) + 12.5rem); }
     body.sheet #echoToggle { bottom:calc(env(safe-area-inset-bottom,0px) + 15.4rem); }
     /* Подсказка наверх: внизу её место занимает легенда, и два текста
@@ -412,6 +423,10 @@ function syncTicker(){
   const on = echoOn && ECHO_LOOSE.length > 0;
   document.getElementById('echoTicker').classList.toggle('show', on);
   document.getElementById('net').classList.toggle('with-ticker', on);
+  // Метка нужна и на body: плавающие кнопки прикреплены к окну, а не к
+  // полотну, и правилом «#net.with-ticker …» их было не достать —
+  // «вся сеть» налезала на ленту (Витя, 17.09).
+  document.body.classList.toggle('ticker', on);
 }
 
 // Ромбы считаются в кадре, а не заранее: карта теперь ездит, и
@@ -924,6 +939,7 @@ function fillConnectBtn(pop, n){
     // считает из неё тот же токен, что и везде, и перерисовывает карточку
     // на месте — без перезагрузки страницы (Витя, 17.09: «должна работать
     // и после ввода слова видимо обновлять данные»).
+    b.className = 'popup-btn tiny';
     b.textContent = 'ввести ключ узла';
     b.onclick = () => askKey(n);
     box.appendChild(b);
