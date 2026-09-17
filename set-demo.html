@@ -285,7 +285,11 @@
     <span class="lg-alone">узел ещё ни с чем не сплёлся</span>
   </div>
   <div id="echoTicker"><div id="echoTickerTrack"></div></div>
-  <div id="hint">тап по узлу или эху — приблизит · по пустому месту — вернёт всю Сеть</div>
+  <!-- Строка внизу больше не учит пользоваться (Витя, 17.09: «лишняя»).
+       Остаётся пустой и всплывает ровно в одном случае — когда база не
+       ответила и на полотне снимок, а не живая Сеть. Об этом человек
+       узнать обязан. -->
+  <div id="hint" hidden></div>
 </div>
 
 <div id="fabs">
@@ -527,7 +531,9 @@ async function load(){
   } else {
     // сеть не ответила — показываем снимок, а не пустой экран
     build(SNAPSHOT.nodes.map(n => Object.assign({}, n)), SNAPSHOT.links);
-    document.getElementById('hint').textContent = 'связь не отвечает — показан снимок Сети на 17.09';
+    const h = document.getElementById('hint');
+    h.textContent = 'связь не отвечает — показан снимок Сети на 17.09';
+    h.hidden = false;
   }
   resize();
 }
