@@ -64,7 +64,12 @@
               rgba(3,14,11,var(--v)) 42%,
               rgba(3,14,11,calc(var(--v) * 1.25)) 100%); }
 
-  #netCanvas { position:absolute; inset:0; z-index:2;
+  /* touch-action ОБЯЗАТЕЛЕН здесь, а не только на #net (17.09): жест
+     приходит на канвас, он и решает, отдать его странице или браузеру.
+     Без этого щипок ловил браузер и зумил всю страницу целиком — карта
+     «расползалась», а вернуться было нечем: страница с overflow:hidden
+     обратно не отщипывается. Свойство не наследуется, родитель не спасает. */
+  #netCanvas { position:absolute; inset:0; z-index:2; touch-action:none;
                width:100%; height:100%; display:block; cursor:grab; }
   #netCanvas.drag { cursor:grabbing; }
 
@@ -654,7 +659,11 @@ const pointers = new Map();
 let dragged = false, lastMid = null, lastDist = 0;
 
 cv.addEventListener('pointerdown', e => {
-  cv.setPointerCapture(e.pointerId);
+  // Захват указателя — удобство, а не обязанность: он бросает исключение,
+  // если указатель уже отпущен или пришёл не от живого пальца. Без try
+  // это исключение рвало обработчик на первой строке, и палец переставал
+  // работать совсем (поймано тестом 17.09).
+  try { cv.setPointerCapture(e.pointerId); } catch (err) {}
   pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
   dragged = false;
   if (pointers.size === 2){
@@ -673,17 +682,21 @@ cv.addEventListener('pointermove', e => {
     const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
     if (Math.abs(dx) + Math.abs(dy) > 2) dragged = true;
     view.x += dx; view.y += dy;
-    repositionPopup();
+    clampView(); repositionPopup();
   } else if (pointers.size === 2){
     const [a,b] = [...pointers.values()];
     const dist = Math.hypot(a.x-b.x, a.y-b.y);
     const mid  = { x:(a.x+b.x)/2, y:(a.y+b.y)/2 };
     if (lastDist > 0){
-      zoomAt(mid.x, mid.y, dist/lastDist);
+      // zoomAt считает от угла канваса, а пальцы дают координаты от угла
+      // ОКНА. Разница — высота шапки со строкой состояния, и без вычета
+      // щипок уводил картинку вверх тем сильнее, чем сильнее сжимаешь.
+      const box = cv.getBoundingClientRect();
+      zoomAt(mid.x - box.left, mid.y - box.top, dist/lastDist);
       view.x += mid.x - lastMid.x; view.y += mid.y - lastMid.y;
     }
     lastDist = dist; lastMid = mid; dragged = true;
-    repositionPopup();
+    clampView(); repositionPopup();
   }
 });
 function endPointer(e){
@@ -709,8 +722,30 @@ cv.addEventListener('wheel', e => {
   e.preventDefault();
   const box = cv.getBoundingClientRect();
   zoomAt(e.clientX - box.left, e.clientY - box.top, e.deltaY < 0 ? 1.12 : 1/1.12);
-  repositionPopup();
+  clampView(); repositionPopup();
 }, { passive:false });
+
+// Страховка от «увёл и не вернул»: Сеть нельзя утащить за край целиком.
+// Кнопка ⌖ возвращает вид, но искать её, когда на экране пусто, — плохая
+// минута; проще не давать довести до пустого экрана.
+function clampView(){
+  if (!NODES.length) return;
+  let x0=1e9, y0=1e9, x1=-1e9, y1=-1e9;
+  for (const n of NODES){
+    x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y);
+    x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y);
+  }
+  // Держим в кадре СЕРЕДИНУ Сети, а не край рамки. По рамке не годится:
+  // её угол бывает пустым, и формально «Сеть в кадре», а на экране ничего
+  // нет — ровно это и показал тест 17.09, ноль узлов из тридцати одного.
+  const cx = (x0 + x1)/2 * view.k + view.x;
+  const cy = (y0 + y1)/2 * view.k + view.y;
+  const mx = W * 0.25, my = H * 0.25;
+  if (cx < mx)     view.x += mx - cx;
+  if (cx > W - mx) view.x -= cx - (W - mx);
+  if (cy < my)     view.y += my - cy;
+  if (cy > H - my) view.y -= cy - (H - my);
+}
 
 function zoomAt(sx, sy, f){
   const k = Math.max(0.5, Math.min(6, view.k * f));
