@@ -151,15 +151,26 @@
   .key-btns .popup-btn { flex:1; text-align:center; padding:0.6rem; }
   .key-note { font-size:0.6rem; color:var(--dim); margin-top:0.8rem; min-height:1em; }
 
-  .fab { position:fixed; z-index:1000; background:rgba(0,0,0,0.85);
-         font-family:'Share Tech Mono',monospace; cursor:pointer; }
+  /* ── ПЛАВАЮЩИЕ КНОПКИ ───────────────────────────────────────────
+     Обе в одной стопке, а не по отдельности. Раньше каждая считала свой
+     отступ от низа, и выходило два зла сразу: зазор между ними был
+     великоват, а при включении ленты они дёргались порознь и рывком —
+     «сильно шевелятся» (Витя, 17.09). Теперь двигается контейнер, зазор
+     между кнопками не меняется никогда, и ход у него тот же, что у самой
+     ленты, так что они уезжают вместе с ней. */
+  #fabs { position:fixed; z-index:1000;
+          right:calc(env(safe-area-inset-right,0px) + 0.8rem);
+          bottom:calc(env(safe-area-inset-bottom,0px) + 1.2rem);
+          display:flex; flex-direction:column; align-items:flex-end; gap:0.45rem;
+          transition:bottom 0.25s ease; }
+  body.ticker #fabs { bottom:calc(env(safe-area-inset-bottom,0px) + 3.3rem); }
+
+  .fab { background:rgba(0,0,0,0.85); font-family:'Share Tech Mono',monospace; cursor:pointer; }
   /* Возврат — подписанная кнопка, а не значок в углу. Значок терялся
      ровно тогда, когда нужнее всего: после приближения экран почти пуст,
      и глазу не за что зацепиться (Витя, 17.09). Когда вид уже общий,
      кнопка гаснет до полутона — не мозолит глаза, но остаётся на месте. */
-  #netReset { right:calc(env(safe-area-inset-right,0px) + 0.8rem);
-              bottom:calc(env(safe-area-inset-bottom,0px) + 1.2rem);
-              padding:0.4rem 0.7rem; display:flex; align-items:center; gap:0.45rem;
+  #netReset { padding:0.4rem 0.7rem; display:flex; align-items:center; gap:0.45rem;
               border:1px solid rgba(0,255,136,0.55); color:var(--accent);
               font-size:0.6rem; letter-spacing:0.1em; text-transform:uppercase;
               box-shadow:0 0 14px rgba(0,255,136,0.15);
@@ -167,15 +178,11 @@
   #netReset span { font-size:0.85rem; line-height:1; }
   #netReset:active { background:rgba(0,255,136,0.15); }
   #netReset.idle { opacity:0.45; border-color:rgba(0,255,136,0.25); box-shadow:none; }
-  /* лента внизу занимает 1.9rem — кнопки встают над ней */
-  body.ticker #netReset  { bottom:calc(env(safe-area-inset-bottom,0px) + 3.3rem); }
-  body.ticker #echoToggle { bottom:calc(env(safe-area-inset-bottom,0px) + 6.6rem); }
   /* Единственная кнопка-переключатель: мир под Сетью либо молчит, либо
      говорит. Отдельного экрана карты больше нет — она и так фон, поэтому
      эху не нужно никуда уводить, оно ложится на свои же места прямо тут. */
-  #echoToggle { right:calc(env(safe-area-inset-right,0px) + 0.8rem);
-                bottom:calc(env(safe-area-inset-bottom,0px) + 4.5rem);
-                padding:0.4rem 0.7rem; border:1px solid rgba(255,180,60,0.3); color:rgba(255,180,60,0.6);
+  #echoToggle { padding:0.4rem 0.7rem; border:1px solid rgba(255,180,60,0.3);
+                color:rgba(255,180,60,0.6);
                 font-size:0.6rem; letter-spacing:0.1em; text-transform:uppercase;
                 display:flex; align-items:center; gap:0.45rem; }
   #echoToggle::before { content:''; width:7px; height:7px; background:rgba(255,180,60,0.25);
@@ -281,8 +288,10 @@
   <div id="hint">тап по узлу или эху — приблизит · по пустому месту — вернёт всю Сеть</div>
 </div>
 
-<button class="fab" id="echoToggle" aria-pressed="false">Эхо мира</button>
-<button class="fab" id="netReset" aria-label="Показать всю Сеть"><span>⌖</span>вся сеть</button>
+<div id="fabs">
+  <button class="fab" id="echoToggle" aria-pressed="false">Эхо мира</button>
+  <button class="fab" id="netReset" aria-label="Показать всю Сеть"><span>⌖</span>вся сеть</button>
+</div>
 <div id="loading">// СИНХРОНИЗАЦИЯ...</div>
 <!-- Коробка Turnstile: обычно невидима, всплывает только если заслон
      решит спросить. Та же, что на боевой Сети. -->
@@ -808,9 +817,13 @@ function fitWorld(плавно){
     // масштаб, при котором область заполняет контейнер целиком.
     const B = L.latLngBounds([[-54,-168],[72,178]]);
     const z = mapbg.getBoundsZoom(B, true);
+    // Домашнее положение запоминаем по ЦЕЛИ, а не по текущему состоянию
+    // карты: при плавном возврате в этот момент перелёт ещё не начался, и
+    // в HOME попадали старые масштаб и центр — кнопка потом не гасла,
+    // хотя мы уже дома (поймано тестом 17.09).
+    HOME = { z: z, c: B.getCenter() };
     if (плавно) mapbg.flyTo(B.getCenter(), z, { duration: 0.8 });
     else        mapbg.setView(B.getCenter(), z, { animate:false });
-    HOME = { z: mapbg.getZoom(), c: mapbg.getCenter() };
     syncHome();
   } catch (e) {}
 }
