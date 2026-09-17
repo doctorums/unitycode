@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<!-- ════════════════════════════════════════════════════════════════════════
+     UNITYCODE · СЕТЬ БЕЗ КООРДИНАТ — ДЕМО, НЕ БОЕВАЯ СТРАНИЦА
+
+     Показывает предложение Артёма (17.09): Сеть рисуется как граф, а не
+     как карта мира. Ни на что не ссылается, из меню не открывается,
+     ничего в базу не пишет — только читает, тем же публичным ключом,
+     что и set.html.
+
+     Живёт отдельным файлом ровно для того, чтобы её можно было удалить
+     одной командой, если решение не примут. set.html не тронут.
+════════════════════════════════════════════════════════════════════════ -->
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>UNITYCODE — Сеть без координат (демо)</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<style>
+  html,body { height:100%; }
+  body { min-height:100vh; min-height:100dvh; display:flex; flex-direction:column;
+         overflow:hidden; overscroll-behavior:none; background:#04100e; }
+  body::before { display:none; }
+
+  header { flex-shrink:0; position:fixed !important; top:0; left:0; right:0;
+           z-index:1001 !important; background:rgba(0,0,0,0.98); }
+  .status-bar { margin-top:57px; display:flex; gap:2rem; padding:0.6rem 2rem;
+                border-bottom:1px solid var(--border); background:rgba(0,0,0,0.95);
+                flex-shrink:0; position:relative; z-index:1000; align-items:center; }
+  .stat { display:flex; align-items:center; gap:0.5rem; }
+  .stat-label { font-size:0.55rem; color:var(--dim); letter-spacing:0.15em; text-transform:uppercase; }
+  .stat-val { font-size:0.7rem; color:var(--accent); }
+  .demo-flag { margin-left:auto; font-size:0.5rem; letter-spacing:0.18em;
+               color:#ffb43c; border:1px solid rgba(255,180,60,0.35);
+               padding:0.2rem 0.5rem; text-transform:uppercase; white-space:nowrap; }
+
+  #net { flex:1; position:relative; z-index:1; background:#04100e; touch-action:none; }
+  #netCanvas { position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab; }
+  #netCanvas.drag { cursor:grabbing; }
+
+  .net-legend { position:absolute; left:1rem; bottom:1rem; z-index:5; pointer-events:none;
+                font-size:0.55rem; letter-spacing:0.08em; line-height:2; color:var(--dim); }
+  .net-legend span { display:block; }
+  .net-legend span::before { content:'—'; margin-right:0.5em; font-weight:bold; }
+  .lg-human { color:#4fd6ff; } .lg-human::before { color:#4fd6ff; }
+  .lg-linker { color:var(--accent); } .lg-linker::before { color:var(--accent); }
+  .lg-alone { color:#8fa89c; } .lg-alone::before { color:#8fa89c; }
+
+  /* карточка узла — та же, что на карте сейчас */
+  .popup { position:absolute; z-index:20; background:rgba(0,0,0,0.95);
+           border:1px solid rgba(0,255,136,0.3); box-shadow:0 0 20px rgba(0,255,136,0.1); }
+  .popup-content { padding:1.2rem; min-width:240px; max-width:300px; }
+  .popup-tag { font-size:0.55rem; color:#00ff88; letter-spacing:0.2em; margin-bottom:0.6rem; }
+  .popup-text { font-size:0.75rem; line-height:1.6; color:rgba(255,255,255,0.7);
+                margin-bottom:0.8rem; max-height:140px; overflow-y:auto; }
+  .popup-time { font-size:0.55rem; color:#555; }
+  .popup-close { position:absolute; top:0.4rem; right:0.6rem; background:none; border:none;
+                 color:#555; font-size:0.9rem; cursor:pointer; font-family:inherit; }
+  .popup-close:hover { color:var(--accent); }
+
+  .fab { position:fixed; z-index:1000; background:rgba(0,0,0,0.85);
+         font-family:'Share Tech Mono',monospace; cursor:pointer; }
+  #netReset { right:calc(env(safe-area-inset-right,0px) + 0.8rem);
+              bottom:calc(env(safe-area-inset-bottom,0px) + 1.2rem);
+              width:40px; height:40px; display:flex; align-items:center; justify-content:center;
+              border:1px solid rgba(0,255,136,0.35); color:var(--accent); font-size:1.1rem; line-height:1; }
+  #netReset:active { background:rgba(0,255,136,0.15); }
+  #mapBtn { right:calc(env(safe-area-inset-right,0px) + 0.8rem);
+            bottom:calc(env(safe-area-inset-bottom,0px) + 4.5rem);
+            padding:0.4rem 0.7rem; border:1px solid rgba(255,180,60,0.35); color:#ffb43c;
+            font-size:0.6rem; letter-spacing:0.1em; text-transform:uppercase; text-decoration:none;
+            display:flex; align-items:center; gap:0.4rem; }
+
+  #hint { position:absolute; left:50%; transform:translateX(-50%); bottom:1.2rem; z-index:6;
+          font-size:0.55rem; letter-spacing:0.14em; color:rgba(255,255,255,0.3);
+          pointer-events:none; text-align:center; white-space:nowrap; }
+  #loading { position:fixed; bottom:1.2rem; left:50%; transform:translateX(-50%); z-index:1000;
+             font-family:'Share Tech Mono',monospace; font-size:0.6rem; letter-spacing:0.2em;
+             color:var(--accent); background:rgba(0,0,0,0.85); padding:0.4rem 1rem;
+             border:1px solid rgba(0,255,136,0.2); opacity:0; transition:opacity 0.3s;
+             pointer-events:none; }
+  #loading.visible { opacity:1; }
+
+  @media (max-width:640px) {
+    .status-bar { padding:0.6rem 1rem; gap:1rem; }
+    .demo-flag { font-size:0.45rem; }
+    .net-legend { left:0.7rem; bottom:auto; top:0.7rem; font-size:0.5rem; line-height:1.9; }
+    #mapBtn { bottom:auto; top:calc(57px + 2.8rem); }
+    #netReset { bottom:auto; top:calc(57px + 5.6rem); }
+    #hint { bottom:0.8rem; font-size:0.5rem; }
+    /* карточка узла — шторкой снизу, чтобы не закрывать полотно */
+    .popup { left:0.6rem !important; right:0.6rem; top:auto !important;
+             bottom:0.8rem; max-width:none; }
+    .popup-content { max-width:none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="index.html" class="logo">UNITYCODE</a>
+  <nav>
+    <a href="petlya.html">Спираль</a>
+    <a href="set.html">Сеть</a>
+    <a href="implant.html">Паттерн</a>
+    <a href="materials.html">Материя</a>
+  </nav>
+</header>
+
+<div class="status-bar">
+  <div class="stat"><span class="stat-label">Узлов в сети:</span><span class="stat-val" id="statNodes">—</span></div>
+  <div class="stat"><span class="stat-label">Нитей:</span><span class="stat-val" id="statLinks">—</span></div>
+  <div class="demo-flag">демо · Сеть без координат</div>
+</div>
+
+<div id="net">
+  <canvas id="netCanvas"></canvas>
+  <div class="net-legend">
+    <span class="lg-human">нить проложена человеком</span>
+    <span class="lg-linker">нить предложена Связующим</span>
+    <span class="lg-alone">узел ещё ни с чем не сплёлся</span>
+  </div>
+  <div id="hint">тапни по узлу — увидишь шум · тяни, чтобы двигать · колесо или щипок — приблизить</div>
+</div>
+
+<a href="set.html" class="fab" id="mapBtn">Карта мира</a>
+<button class="fab" id="netReset" aria-label="Показать всю Сеть">⌖</button>
+<div id="loading">// СИНХРОНИЗАЦИЯ...</div>
+
+<script>
+const SUPABASE_URL = 'https://lukyyqabkxzrgdixzphs.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
+
+// Снимок Сети на 17.09 — запасной вариант, если сеть не отвечает.
+// Худший канал — расчётный: демо должно показывать граф даже в поезде.
+const SNAPSHOT = {"nodes":[{"id":"fad1b11d","noise":"Мои гуси слетелись на чужой водопой","created_at":"2026-08-12"},{"id":"9bf27f6d","noise":"Для кого шум, а кому мед в уши","created_at":"2026-08-12"},{"id":"cff8fbae","noise":"Так устроен мир","created_at":"2026-08-12"},{"id":"238c2225","noise":"Привычки это хорошо, пока не угрожают здоровью)","created_at":"2026-08-12"},{"id":"d85196bd","noise":"Оглянись, незнакомый прохожий…","created_at":"2026-08-12"},{"id":"70bb6a95","noise":"Связь первична я создаю путь","created_at":"2026-08-13"},{"id":"778116dc","noise":"Если б бета тестерам платили, то сеть стала бы огромной со скоростью звука))","created_at":"2026-08-13"},{"id":"0bb904ef","noise":"Бывают дни когда опустишь руки, и главное в это время ноги не протянуть)","created_at":"2026-08-14"},{"id":"7c18d6f2","noise":"Шум не вплетается","created_at":"2026-08-14"},{"id":"12c83794","noise":"65","created_at":"2026-08-16"},{"id":"7991f646","noise":"Слова ничто, шум все","created_at":"2026-08-16"},{"id":"eda8771f","noise":"Выгнутые мысли","created_at":"2026-08-18"},{"id":"17dfb575","noise":"Мы в западне собственной петли","created_at":"2026-08-19"},{"id":"3543e46a","noise":"Дак кто создал бога?)","created_at":"2026-08-22"},{"id":"5e801689","noise":"Приходится, а как еще?","created_at":"2026-08-24"},{"id":"f34d8a31","noise":"Как узнать, а надо ли?","created_at":"2026-08-25"},{"id":"3bbb89a3","noise":"Эбола убивает по нескольку тысяч, слова миллионы","created_at":"2026-08-25"},{"id":"675a532e","noise":"Тихо тут у вас","created_at":"2026-08-26"},{"id":"b8032251","noise":"Нет мыслей, но много слов.","created_at":"2026-08-26"},{"id":"af1fd6bc","noise":"ОХ как круто","created_at":"2026-08-27"},{"id":"2b22532b","noise":"Блюдо у ублюдбка","created_at":"2026-08-27"},{"id":"429076c2","noise":"Маразм крепчает, виртуальная реальность обволакивает","created_at":"2026-09-03"},{"id":"8651e423","noise":"Где ты мое сильное звено,","created_at":"2026-09-03"},{"id":"787c625a","noise":"Что делать, когда все звенья слабые?","created_at":"2026-09-03"},{"id":"5a5ba1dd","noise":"На хрен эту утреннюю работу","created_at":"2026-09-03"},{"id":"77939d70","noise":"Секунда, это очень много","created_at":"2026-09-03"},{"id":"859d7bd0","noise":"Это все что ты можешь сказать?","created_at":"2026-09-03"},{"id":"1a520b4c","noise":"Смешались в кучу роботы и люди","created_at":"2026-09-04"},{"id":"16f3eb4c","noise":"Повторение, мать заикания","created_at":"2026-09-04"},{"id":"314bedd4","noise":"А пока это диалог слепого с глухим","created_at":"2026-09-04"},{"id":"9c5af8e4","noise":"Музыка для скафандра в открытом космосе. Очень актуально, когда дырка в рукаве.","created_at":"2026-09-05"}],"links":[{"a":"9bf27f6d","b":"fad1b11d","by":"linker"},{"a":"cff8fbae","b":"9bf27f6d","by":"linker"},{"a":"d85196bd","b":"9bf27f6d","by":"linker"},{"a":"70bb6a95","b":"d85196bd","by":"human"},{"a":"70bb6a95","b":"238c2225","by":"human"},{"a":"778116dc","b":"9bf27f6d","by":"linker"},{"a":"778116dc","b":"70bb6a95","by":"human"},{"a":"7c18d6f2","b":"70bb6a95","by":"linker"},{"a":"7991f646","b":"7c18d6f2","by":"linker"},{"a":"eda8771f","b":"70bb6a95","by":"human"},{"a":"12c83794","b":"70bb6a95","by":"human"},{"a":"17dfb575","b":"778116dc","by":"human"},{"a":"17dfb575","b":"7991f646","by":"human"},{"a":"70bb6a95","b":"7991f646","by":"human"},{"a":"0bb904ef","b":"17dfb575","by":"human"},{"a":"3543e46a","b":"17dfb575","by":"linker"},{"a":"3543e46a","b":"cff8fbae","by":"linker"},{"a":"5e801689","b":"17dfb575","by":"linker"},{"a":"f34d8a31","b":"3543e46a","by":"linker"},{"a":"3bbb89a3","b":"17dfb575","by":"linker"},{"a":"b8032251","b":"17dfb575","by":"linker"},{"a":"429076c2","b":"3bbb89a3","by":"linker"},{"a":"429076c2","b":"17dfb575","by":"human"},{"a":"8651e423","b":"17dfb575","by":"linker"},{"a":"787c625a","b":"8651e423","by":"linker"},{"a":"787c625a","b":"70bb6a95","by":"linker"},{"a":"5a5ba1dd","b":"0bb904ef","by":"linker"},{"a":"16f3eb4c","b":"859d7bd0","by":"linker"},{"a":"314bedd4","b":"b8032251","by":"linker"},{"a":"314bedd4","b":"859d7bd0","by":"linker"}]};
+
+const cv  = document.getElementById('netCanvas');
+const ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+let NODES = [], E = [], byId = {}, CORE = [], ALONE = [];
+
+// вид: сдвиг и масштаб полотна (тяга пальцем и щипок)
+let view = { x:0, y:0, k:1 };
+
+function ucHash(s){
+  let x = 2166136261;
+  for (let i = 0; i < s.length; i++){ x ^= s.charCodeAt(i); x = Math.imul(x, 16777619); }
+  return (x >>> 0);
+}
+let _seed = 1337;
+function rnd(){ _seed = (_seed * 1664525 + 1013904223) >>> 0; return _seed / 4294967296; }
+
+// ── данные ────────────────────────────────────────────────────────
+async function fetchRetry(url, tries){
+  const headers = { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY };
+  let wait = 600;
+  for (let i = 0; i < (tries || 3); i++){
+    try {
+      const r = await fetch(url, { headers });
+      if (r.ok) return await r.json();
+    } catch (e) { /* молчим, пробуем ещё */ }
+    await new Promise(res => setTimeout(res, wait));
+    wait *= 2;
+  }
+  return null;
+}
+
+function build(nodes, links){
+  byId = {}; NODES = nodes; E = [];
+  NODES.forEach(n => { byId[n.id] = n; n.deg = 0; });
+  // человек и Связующий могли проложить одну и ту же нить — рисуем одну,
+  // человеческая сильнее: она говорит, что связь выбрал живой.
+  const seen = {};
+  for (const l of links){
+    if (!byId[l.a] || !byId[l.b] || l.a === l.b) continue;
+    const k = [l.a, l.b].sort().join('|');
+    if (seen[k]){ if (l.by === 'human') seen[k].by = 'human'; continue; }
+    const e = { a:l.a, b:l.b, by:l.by };
+    seen[k] = e; E.push(e);
+    byId[l.a].deg++; byId[l.b].deg++;
+  }
+  document.getElementById('statNodes').textContent = NODES.length;
+  document.getElementById('statLinks').textContent = E.length;
+}
+
+async function load(){
+  const L = document.getElementById('loading');
+  const slow = setTimeout(() => L.classList.add('visible'), 1200);
+  const [rawNodes, rawConns] = await Promise.all([
+    fetchRetry(SUPABASE_URL + '/rest/v1/nodes?select=id,raw_noise,created_at&order=created_at.asc'),
+    fetchRetry(SUPABASE_URL + '/rest/v1/connections?select=from_node_id,to_node_id,created_by&status=eq.accepted')
+  ]);
+  clearTimeout(slow); L.classList.remove('visible');
+
+  if (Array.isArray(rawNodes) && rawNodes.length && Array.isArray(rawConns)){
+    build(
+      rawNodes.map(n => ({ id:n.id, noise:n.raw_noise || '', created_at:(n.created_at||'').slice(0,10) })),
+      rawConns.map(c => ({ a:c.from_node_id, b:c.to_node_id, by:c.created_by }))
+    );
+  } else {
+    // сеть не ответила — показываем снимок, а не пустой экран
+    build(SNAPSHOT.nodes.map(n => Object.assign({}, n)), SNAPSHOT.links);
+    document.getElementById('hint').textContent = 'связь не отвечает — показан снимок Сети на 17.09';
+  }
+  resize();
+}
+
+// ── раскладка ─────────────────────────────────────────────────────
+// Связная часть считается силами: узлы отталкиваются, нити стягивают.
+// Одинокие в расчёт не входят — им не за что держаться, их вынесло бы
+// на края и остальной граф ужался бы в угол. У них своя полка внизу.
+function layout(){
+  CORE  = NODES.filter(n => n.deg > 0);
+  ALONE = NODES.filter(n => n.deg === 0);
+  if (!CORE.length) return;
+
+  _seed = 1337;  // раскладка одна и та же при каждом заходе
+  const R = Math.min(W, H) * 0.32;
+  CORE.forEach(n => {
+    const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * R;
+    n.x = W/2 + Math.cos(a)*r; n.y = H/2 + Math.sin(a)*r; n.vx = 0; n.vy = 0;
+  });
+
+  const K = Math.sqrt(W*H / CORE.length) * 0.46;
+  const IT = 800;
+  for (let it = 0; it < IT; it++){
+    const cool = 1 - it/IT;
+    for (let i = 0; i < CORE.length; i++){
+      const p = CORE[i];
+      for (let j = i+1; j < CORE.length; j++){
+        const q = CORE[j];
+        let dx = p.x-q.x, dy = p.y-q.y;
+        let d2 = dx*dx + dy*dy;
+        if (d2 < 1){ d2 = 1; dx = rnd()-0.5; dy = rnd()-0.5; }
+        const f = (K*K)/d2, d = Math.sqrt(d2);
+        p.vx += dx/d*f; p.vy += dy/d*f; q.vx -= dx/d*f; q.vy -= dy/d*f;
+      }
+    }
+    for (const e of E){
+      const p = byId[e.a], q = byId[e.b];
+      if (!p || !q || p.deg === 0 || q.deg === 0) continue;
+      const dx = p.x-q.x, dy = p.y-q.y;
+      const d = Math.max(1, Math.hypot(dx, dy));
+      const f = (d*d)/K * 0.5;
+      p.vx -= dx/d*f; p.vy -= dy/d*f; q.vx += dx/d*f; q.vy += dy/d*f;
+    }
+    for (const p of CORE){
+      p.vx += (W/2 - p.x) * 0.02; p.vy += (H/2 - p.y) * 0.02;
+      const sp = Math.hypot(p.vx, p.vy), lim = K * 0.3 * cool;
+      const s = sp > lim ? lim/sp : 1;
+      p.x += p.vx*s; p.y += p.vy*s; p.vx *= 0.82; p.vy *= 0.82;
+    }
+  }
+
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  CORE.forEach(n => { x0=Math.min(x0,n.x); y0=Math.min(y0,n.y); x1=Math.max(x1,n.x); y1=Math.max(y1,n.y); });
+  const narrow = W < 640;
+  const bx = W*0.08, bw = W - 2*bx;
+  const by = H*0.05, bh = narrow ? H*0.56 : H*0.66;
+  const s = Math.min(bw/Math.max(1,x1-x0), bh/Math.max(1,y1-y0));
+  const ox = bx + (bw - (x1-x0)*s)/2, oy = by + (bh - (y1-y0)*s)/2;
+  CORE.forEach(n => { n.x = ox + (n.x-x0)*s; n.y = oy + (n.y-y0)*s; });
+
+  const ay = narrow ? H*0.72 : H*0.86;
+  const aw = Math.min(narrow ? W*0.74 : W*0.58, 46*Math.max(1,ALONE.length));
+  const ax = (W-aw)/2, step = ALONE.length > 1 ? aw/(ALONE.length-1) : 0;
+  ALONE.forEach((n,i) => { n.x = ax + step*i; n.y = ay; });
+}
+
+// ── кадр ──────────────────────────────────────────────────────────
+// Язык Паттерна: глубокое полотно, свечение, дыхание нитей, лёгкое
+// покачивание узлов «на воде» — фаза у каждого своя, но от хеша id,
+// то есть одна и та же при каждом заходе.
+function swayOf(n, t){
+  const h = ucHash(n.id);
+  const A = Math.max(1.2, W * 0.004);
+  return { x: n.x + A*Math.sin(t*0.55 + (h % 628)/100),
+           y: n.y + A*Math.cos(t*0.47 + ((h >> 8) % 628)/100) };
+}
+
+let POS = {};
+
+function draw(t){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  const bg = ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,   '#0a1f1a');
+  bg.addColorStop(0.55,'#071815');
+  bg.addColorStop(1,   '#04100e');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  const gl = ctx.createRadialGradient(W*0.74, H*0.16, 0, W*0.74, H*0.16, W*0.55);
+  gl.addColorStop(0,   'rgba(0,255,136,0.06)');
+  gl.addColorStop(0.4, 'rgba(0,200,255,0.025)');
+  gl.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = gl; ctx.fillRect(0,0,W,H);
+
+  ctx.save();
+  ctx.translate(view.x, view.y); ctx.scale(view.k, view.k);
+
+  POS = {};
+  for (const n of NODES) POS[n.id] = swayOf(n, t);
+
+  if (ALONE.length){
+    const y = (W < 640 ? H*0.655 : H*0.795);
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1/view.k;
+    ctx.beginPath(); ctx.moveTo(W*0.08, y); ctx.lineTo(W*0.92, y); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.font = Math.max(9, Math.round(W*0.0085)) + "px 'Share Tech Mono', monospace";
+    ctx.textAlign = 'center';
+    ctx.fillText('ЕЩЁ НЕ СПЛЕЛИСЬ — ' + ALONE.length, W/2, y + Math.max(16, W*0.014));
+    ctx.textAlign = 'left';
+  }
+
+  const breathe = 0.72 + 0.28*Math.sin(t*0.8);
+
+  ctx.lineCap = 'round';
+  for (const e of E){
+    const p = POS[e.a], q = POS[e.b];
+    if (!p || !q) continue;
+    const human = e.by === 'human';
+    ctx.strokeStyle = human ? 'rgba(79,214,255,'+(0.10*breathe).toFixed(3)+')'
+                            : 'rgba(0,255,136,'+(0.07*breathe).toFixed(3)+')';
+    ctx.lineWidth = (human ? 5 : 3.5)/view.k;
+    ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke();
+
+    ctx.strokeStyle = human ? 'rgba(120,225,255,'+(0.42+0.18*breathe).toFixed(3)+')'
+                            : 'rgba(0,255,136,'+(0.20+0.12*breathe).toFixed(3)+')';
+    ctx.lineWidth = (human ? 1.2 : 0.8)/view.k;
+    ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke();
+  }
+  ctx.lineCap = 'butt';
+
+  for (const n of NODES){
+    const p = POS[n.id];
+    const alone = n.deg === 0;
+    const base = alone ? 2.4 : 3.2 + Math.min(4.6, n.deg*0.52);
+    const puls = 0.86 + 0.14*Math.sin(t*1.5 + (ucHash(n.id) % 628)/100);
+    const r = base*puls;
+    const col = alone ? '150,170,160' : '0,255,136';
+
+    const g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*5.2);
+    g.addColorStop(0,   'rgba('+col+','+(alone?0.20:0.42)+')');
+    g.addColorStop(0.35,'rgba('+col+','+(alone?0.08:0.16)+')');
+    g.addColorStop(1,   'rgba('+col+',0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x,p.y,r*5.2,0,Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = alone ? 'rgba(165,185,175,0.85)' : 'rgba(0,255,136,0.95)';
+    ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.fill();
+
+    if (n.deg >= 5){
+      ctx.fillStyle = 'rgba(235,255,245,'+(0.55+0.25*breathe).toFixed(3)+')';
+      ctx.beginPath(); ctx.arc(p.x,p.y,r*0.42,0,Math.PI*2); ctx.fill();
+    }
+    if (n.id === openId){
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1.2/view.k;
+      ctx.beginPath(); ctx.arc(p.x,p.y,r*2.6,0,Math.PI*2); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+// ── размеры ───────────────────────────────────────────────────────
+function resize(){
+  const box = document.getElementById('net').getBoundingClientRect();
+  W = box.width; H = box.height;
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
+  layout();
+  resetView();
+}
+function resetView(){ view = { x:0, y:0, k:1 }; closePopup(); }
+
+// ── карточка узла ─────────────────────────────────────────────────
+let openId = null;
+function closePopup(){
+  openId = null;
+  const p = document.querySelector('.popup');
+  if (p) p.remove();
+}
+function openPopup(n){
+  closePopup();
+  openId = n.id;
+  const net = document.getElementById('net');
+  const pop = document.createElement('div');
+  pop.className = 'popup';
+  const d = (n.created_at || '').split('-').reverse().join('.');
+  pop.innerHTML =
+    '<button class="popup-close" aria-label="закрыть">&times;</button>' +
+    '<div class="popup-content">' +
+      '<div class="popup-tag">// УЗЕЛ СЕТИ</div>' +
+      '<div class="popup-text"></div>' +
+      '<div class="popup-time">' + (n.deg ? n.deg + ' нитей' : 'ещё ни с чем не сплёлся') +
+        (d ? ' · ' + d : '') + '</div>' +
+    '</div>';
+  pop.querySelector('.popup-text').textContent = n.noise || '—';
+  pop.querySelector('.popup-close').onclick = closePopup;
+  net.appendChild(pop);
+
+  if (W >= 640){
+    const sp = toScreen(n);
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let px = sp.x - pw/2, py = sp.y - ph - 18;
+    px = Math.max(8, Math.min(W - pw - 8, px));
+    if (py < 8) py = Math.min(H - ph - 8, sp.y + 20);
+    pop.style.left = px + 'px'; pop.style.top = py + 'px';
+  }
+}
+function toScreen(n){ return { x: n.x*view.k + view.x, y: n.y*view.k + view.y }; }
+function pickAt(sx, sy){
+  const x = (sx - view.x)/view.k, y = (sy - view.y)/view.k;
+  let best = null, bestD = Infinity;
+  for (const n of NODES){
+    const d = Math.hypot(n.x - x, n.y - y);
+    if (d < bestD){ bestD = d; best = n; }
+  }
+  return (best && bestD < 22/view.k) ? best : null;
+}
+
+// ── тяга и приближение ────────────────────────────────────────────
+const pointers = new Map();
+let dragged = false, lastMid = null, lastDist = 0;
+
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+  dragged = false;
+  if (pointers.size === 2){
+    const [a,b] = [...pointers.values()];
+    lastDist = Math.hypot(a.x-b.x, a.y-b.y);
+    lastMid = { x:(a.x+b.x)/2, y:(a.y+b.y)/2 };
+  }
+  cv.classList.add('drag');
+});
+cv.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  const prev = pointers.get(e.pointerId);
+  pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+
+  if (pointers.size === 1){
+    const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+    if (Math.abs(dx) + Math.abs(dy) > 2) dragged = true;
+    view.x += dx; view.y += dy;
+    repositionPopup();
+  } else if (pointers.size === 2){
+    const [a,b] = [...pointers.values()];
+    const dist = Math.hypot(a.x-b.x, a.y-b.y);
+    const mid  = { x:(a.x+b.x)/2, y:(a.y+b.y)/2 };
+    if (lastDist > 0){
+      zoomAt(mid.x, mid.y, dist/lastDist);
+      view.x += mid.x - lastMid.x; view.y += mid.y - lastMid.y;
+    }
+    lastDist = dist; lastMid = mid; dragged = true;
+    repositionPopup();
+  }
+});
+function endPointer(e){
+  if (!pointers.has(e.pointerId)) return;
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) lastDist = 0;
+  if (!pointers.size){
+    cv.classList.remove('drag');
+    if (!dragged){
+      const box = cv.getBoundingClientRect();
+      const n = pickAt(e.clientX - box.left, e.clientY - box.top);
+      if (n) openPopup(n); else closePopup();
+    }
+  }
+}
+cv.addEventListener('pointerup', endPointer);
+cv.addEventListener('pointercancel', endPointer);
+
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const box = cv.getBoundingClientRect();
+  zoomAt(e.clientX - box.left, e.clientY - box.top, e.deltaY < 0 ? 1.12 : 1/1.12);
+  repositionPopup();
+}, { passive:false });
+
+function zoomAt(sx, sy, f){
+  const k = Math.max(0.5, Math.min(6, view.k * f));
+  const real = k / view.k;
+  view.x = sx - (sx - view.x) * real;
+  view.y = sy - (sy - view.y) * real;
+  view.k = k;
+}
+function repositionPopup(){
+  if (!openId || W < 640) return;
+  const pop = document.querySelector('.popup');
+  const n = byId[openId];
+  if (!pop || !n) return;
+  const sp = toScreen(n);
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let px = sp.x - pw/2, py = sp.y - ph - 18;
+  px = Math.max(8, Math.min(W - pw - 8, px));
+  if (py < 8) py = Math.min(H - ph - 8, sp.y + 20);
+  pop.style.left = px + 'px'; pop.style.top = py + 'px';
+}
+
+document.getElementById('netReset').onclick = resetView;
+window.addEventListener('resize', resize);
+
+// ── запуск ────────────────────────────────────────────────────────
+build(SNAPSHOT.nodes.map(n => Object.assign({}, n)), SNAPSHOT.links);  // мгновенная картинка
+resize();
+let t0 = 0;
+function loop(now){ if (!t0) t0 = now; draw((now-t0)/1000); requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+load();   // и следом — живые данные
+</script>
+</body>
+</html>
