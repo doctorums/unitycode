@@ -20,6 +20,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Unbounded:wght@200;400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="leaflet.min.css">
 <style>
   html,body { height:100%; }
   body { min-height:100vh; min-height:100dvh; display:flex; flex-direction:column;
@@ -38,8 +39,33 @@
                color:#ffb43c; border:1px solid rgba(255,180,60,0.35);
                padding:0.2rem 0.5rem; text-transform:uppercase; white-space:nowrap; }
 
-  #net { flex:1; position:relative; z-index:1; background:#04100e; touch-action:none; }
-  #netCanvas { position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab; }
+  #net { flex:1; position:relative; z-index:1; background:#050a08; touch-action:none; }
+
+  /* ── ЗАДНИЙ ФОН — КАРТА ──────────────────────────────────────────
+     Та же карта и те же тайлы, что на set.html, и перекрашена тем же
+     фильтром. Но она здесь не раскладка, а фон: не таскается, не
+     приближается, событий не принимает. Мир остаётся под Сетью, а Сеть
+     больше не приколота к нему булавками. */
+  #mapbg { position:absolute; inset:0; z-index:0; pointer-events:none; background:#050a08; }
+  #mapbg .leaflet-container { background:#050a08 !important; }
+  #mapbg .leaflet-tile-pane { filter:brightness(0.38) saturate(0) hue-rotate(120deg); }
+
+  /* Вуаль поверх карты. Две работы сразу: гасит серый город, чтобы нити
+     не тонули, и притемняет края, чтобы мир не резался рамкой.
+     Плотность — переменная: её можно покрутить адресом ?veil=0..1, не
+     дожидаясь новой выкладки (см. комментарий у VEIL в скрипте). */
+  #veil { position:absolute; inset:0; z-index:1; pointer-events:none;
+          --v:0.52;
+          background:
+            radial-gradient(ellipse at 74% 16%, rgba(0,255,136,0.05) 0%, rgba(0,200,255,0.018) 42%, rgba(0,0,0,0) 72%),
+            radial-gradient(ellipse at 50% 46%, rgba(3,14,11,0) 30%, rgba(3,14,11,calc(var(--v) * 0.55)) 100%),
+            linear-gradient(180deg,
+              rgba(3,14,11,calc(var(--v) * 1.10)) 0%,
+              rgba(3,14,11,var(--v)) 42%,
+              rgba(3,14,11,calc(var(--v) * 1.25)) 100%); }
+
+  #netCanvas { position:absolute; inset:0; z-index:2;
+               width:100%; height:100%; display:block; cursor:grab; }
   #netCanvas.drag { cursor:grabbing; }
 
   .net-legend { position:absolute; left:1rem; bottom:1rem; z-index:5; pointer-events:none;
@@ -118,6 +144,8 @@
 </div>
 
 <div id="net">
+  <div id="mapbg"></div>
+  <div id="veil"></div>
   <canvas id="netCanvas"></canvas>
   <div class="net-legend">
     <span class="lg-human">нить проложена человеком</span>
@@ -131,6 +159,8 @@
 <button class="fab" id="netReset" aria-label="Показать всю Сеть">⌖</button>
 <div id="loading">// СИНХРОНИЗАЦИЯ...</div>
 
+<!-- Leaflet локально — карта нужна только как фон, без зависимости от CDN -->
+<script src="leaflet.min.js"></script>
 <script>
 const SUPABASE_URL = 'https://lukyyqabkxzrgdixzphs.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
@@ -287,19 +317,9 @@ let POS = {};
 
 function draw(t){
   ctx.setTransform(DPR,0,0,DPR,0,0);
+  // Полотно прозрачное: фон рисует карта под канвасом, глубину даёт вуаль.
+  // Своего градиента здесь больше нет — он спорил бы с картой за задний план.
   ctx.clearRect(0,0,W,H);
-
-  const bg = ctx.createLinearGradient(0,0,0,H);
-  bg.addColorStop(0,   '#0a1f1a');
-  bg.addColorStop(0.55,'#071815');
-  bg.addColorStop(1,   '#04100e');
-  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
-
-  const gl = ctx.createRadialGradient(W*0.74, H*0.16, 0, W*0.74, H*0.16, W*0.55);
-  gl.addColorStop(0,   'rgba(0,255,136,0.06)');
-  gl.addColorStop(0.4, 'rgba(0,200,255,0.025)');
-  gl.addColorStop(1,   'rgba(0,0,0,0)');
-  ctx.fillStyle = gl; ctx.fillRect(0,0,W,H);
 
   ctx.save();
   ctx.translate(view.x, view.y); ctx.scale(view.k, view.k);
@@ -325,13 +345,15 @@ function draw(t){
     const p = POS[e.a], q = POS[e.b];
     if (!p || !q) continue;
     const human = e.by === 'human';
-    ctx.strokeStyle = human ? 'rgba(79,214,255,'+(0.10*breathe).toFixed(3)+')'
-                            : 'rgba(0,255,136,'+(0.07*breathe).toFixed(3)+')';
+    // над картой нити держим чуть плотнее, чем на пустом фоне: иначе
+    // тонкая зелёная линия тонет в сером городе под ней
+    ctx.strokeStyle = human ? 'rgba(79,214,255,'+(0.14*breathe).toFixed(3)+')'
+                            : 'rgba(0,255,136,'+(0.11*breathe).toFixed(3)+')';
     ctx.lineWidth = (human ? 5 : 3.5)/view.k;
     ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke();
 
-    ctx.strokeStyle = human ? 'rgba(120,225,255,'+(0.42+0.18*breathe).toFixed(3)+')'
-                            : 'rgba(0,255,136,'+(0.20+0.12*breathe).toFixed(3)+')';
+    ctx.strokeStyle = human ? 'rgba(120,225,255,'+(0.50+0.18*breathe).toFixed(3)+')'
+                            : 'rgba(0,255,136,'+(0.30+0.14*breathe).toFixed(3)+')';
     ctx.lineWidth = (human ? 1.2 : 0.8)/view.k;
     ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke();
   }
@@ -367,6 +389,49 @@ function draw(t){
   ctx.restore();
 }
 
+// ── карта как фон ─────────────────────────────────────────────────
+// Событий не принимает вообще: ни тяги, ни колеса, ни клавиш. Граф
+// сверху двигается сам по себе — если бы карта ездила вместе с ним,
+// пришлось бы отвечать на вопрос «где на карте этот узел», а ответа
+// нет: в том и смысл, что Сеть больше не привязана к месту.
+// Плотность вуали. Значение по умолчанию подобрано на стенде с заглушкой
+// тайлов — настоящую карту я отсюда не вижу, её тайлы до песочницы не
+// доезжают. Поэтому ручка в адресе: ?veil=0 — карта во всю силу,
+// ?veil=1 — почти чёрный фон. Подберёте на живом экране — скажете число,
+// я впишу его в файл и ручку уберу.
+(function(){
+  try {
+    const v = parseFloat(new URLSearchParams(location.search).get('veil'));
+    if (Number.isFinite(v) && v >= 0 && v <= 1)
+      document.getElementById('veil').style.setProperty('--v', v);
+  } catch (e) {}
+})();
+
+let mapbg = null;
+function initMapBg(){
+  if (mapbg || typeof L === 'undefined') return;
+  try {
+    mapbg = L.map('mapbg', {
+      zoomControl:false, attributionControl:false,
+      dragging:false, scrollWheelZoom:false, doubleClickZoom:false,
+      boxZoom:false, keyboard:false, touchZoom:false,
+      inertia:false, tap:false
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:18 }).addTo(mapbg);
+    fitWorld();
+  } catch (e) { mapbg = null; }   // карта не поднялась — Сеть рисуется на пустом фоне
+}
+function fitWorld(){
+  if (!mapbg) return;
+  try {
+    mapbg.invalidateSize(false);
+    // Обитаемая часть мира, без полярных пустошей: они заняли бы треть
+    // кадра и ничего не сообщают. Границы одни и те же на любом экране,
+    // масштаб под них подбирает сам Leaflet.
+    mapbg.fitBounds(L.latLngBounds([[-54,-168],[72,178]]), { animate:false, padding:[0,0] });
+  } catch (e) {}
+}
+
 // ── размеры ───────────────────────────────────────────────────────
 function resize(){
   const box = document.getElementById('net').getBoundingClientRect();
@@ -375,6 +440,7 @@ function resize(){
   cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
   layout();
   resetView();
+  fitWorld();
 }
 function resetView(){ view = { x:0, y:0, k:1 }; closePopup(); }
 
@@ -508,6 +574,7 @@ document.getElementById('netReset').onclick = resetView;
 window.addEventListener('resize', resize);
 
 // ── запуск ────────────────────────────────────────────────────────
+initMapBg();                                                          // мир под Сетью
 build(SNAPSHOT.nodes.map(n => Object.assign({}, n)), SNAPSHOT.links);  // мгновенная картинка
 resize();
 let t0 = 0;
