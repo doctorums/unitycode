@@ -51,7 +51,11 @@
   #mapbg .leaflet-container { cursor:grab; }
   #mapbg .leaflet-container:active { cursor:grabbing; }
   #mapbg .leaflet-container { background:#050a08 !important; }
-  #mapbg .leaflet-tile-pane { filter:brightness(0.38) saturate(0) hue-rotate(120deg); }
+  /* Страны приглушены до текстуры (17.09, по замечанию Вити): узел не
+     должен читаться как «стоящий на США». Материки остаются формой, но
+     не атласом — при этом эхо сохраняет настоящую географию относительно
+     себя: европейская гроздь остаётся гроздью, африканская африканской. */
+  #mapbg .leaflet-tile-pane { filter:brightness(0.17) saturate(0) contrast(0.75) hue-rotate(120deg); }
 
   /* Вуаль поверх карты. Две работы сразу: гасит серый город, чтобы нити
      не тонули, и притемняет края, чтобы мир не резался рамкой.
@@ -189,7 +193,7 @@
     <span class="lg-alone">узел ещё ни с чем не сплёлся</span>
   </div>
   <div id="echoTicker"><div id="echoTickerTrack"></div></div>
-  <div id="hint">тапни по узлу или ромбу · тяни, чтобы двигать · колесо или щипок — приблизить</div>
+  <div id="hint">тапни по узлу или ромбу · по сгустку — приблизит · тяни, чтобы двигать</div>
 </div>
 
 <button class="fab" id="echoToggle" aria-pressed="false">Эхо мира</button>
@@ -283,6 +287,41 @@ function syncTicker(){
 
 // Ромбы считаются в кадре, а не заранее: карта теперь ездит, и
 // кэшировать её проекцию бессмысленно. Девяносто точек на кадр — ничто.
+// Сгустки эха. На дальнем плане десяток новостей из одной страны
+// ложится в одну кашу — раньше это разбирал кластеризатор карты, тапом
+// по кружку с числом. Здесь то же самое: считаем по экранным расстояниям
+// на текущем масштабе, поэтому сгустки распадаются сами, когда
+// приближаешь, и собираются обратно, когда отдаляешь.
+let CLUSTERS = [];
+const CLUSTER_PX = 26;
+
+function clusterEchoes(){
+  CLUSTERS = [];
+  const cell = CLUSTER_PX, grid = new Map();
+  for (const e of ECHO){
+    if (e.ex == null) continue;
+    const key = Math.round(e.ex/cell) + ':' + Math.round(e.ey/cell);
+    if (!grid.has(key)) grid.set(key, []);
+    grid.get(key).push(e);
+  }
+  for (const list of grid.values()){
+    let sx = 0, sy = 0;
+    for (const e of list){ sx += e.ex; sy += e.ey; }
+    CLUSTERS.push({ x: sx/list.length, y: sy/list.length, items: list });
+  }
+}
+
+// Тап по сгустку приближает к нему, как делал кластеризатор на карте.
+function zoomToCluster(c){
+  if (!mapbg) return;
+  try {
+    const b = L.latLngBounds(c.items.map(e => [e.lat, e.lon]));
+    mapbg.fitBounds(b.pad(0.4), { maxZoom: Math.min(9, mapbg.getZoom() + 3) });
+  } catch (err) {
+    try { mapbg.setZoom(mapbg.getZoom() + 2); } catch (e2) {}
+  }
+}
+
 function projectEchoes(){
   if (!mapbg) return;
   for (const e of ECHO){
@@ -458,21 +497,32 @@ function draw(t){
   // единственное, что здесь важно.
   if (echoOn){
     projectEchoes();
-    for (const e of ECHO){
-      if (e.ex == null) continue;
-      const puls = 0.85 + 0.15*Math.sin(t*1.1 + (e.ex + e.ey)*0.05);
-      const r = 4.2*puls;
-      const g = ctx.createRadialGradient(e.ex,e.ey,0,e.ex,e.ey,r*4);
-      g.addColorStop(0,'rgba(255,180,60,0.35)');
+    clusterEchoes();
+    for (const c of CLUSTERS){
+      const many = c.items.length > 1;
+      const puls = 0.85 + 0.15*Math.sin(t*1.1 + (c.x + c.y)*0.05);
+      const r = (many ? 6.4 : 4.2) * puls;
+
+      const g = ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,r*4);
+      g.addColorStop(0,'rgba(255,180,60,' + (many ? 0.42 : 0.35) + ')');
       g.addColorStop(1,'rgba(255,180,60,0)');
       ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(e.ex,e.ey,r*4,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(c.x,c.y,r*4,0,Math.PI*2); ctx.fill();
 
+      const lit = !many && openEcho === c.items[0].id;
       ctx.save();
-      ctx.translate(e.ex, e.ey); ctx.rotate(Math.PI/4);
-      ctx.fillStyle = (openEcho === e.id) ? '#fff2d8' : 'rgba(255,180,60,0.92)';
+      ctx.translate(c.x, c.y); ctx.rotate(Math.PI/4);
+      ctx.fillStyle = lit ? '#fff2d8' : 'rgba(255,180,60,0.92)';
       ctx.fillRect(-r/1.4, -r/1.4, r*1.42, r*1.42);
       ctx.restore();
+
+      if (many){
+        ctx.fillStyle = 'rgba(10,8,2,0.92)';
+        ctx.font = '600 9px \'Share Tech Mono\', monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(c.items.length), c.x, c.y + 0.5);
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      }
     }
   }
 
@@ -646,17 +696,6 @@ function pickAt(sx, sy){
   }
   return (best && bestD < 22) ? best : null;
 }
-function pickEcho(sx, sy){
-  if (!echoOn) return null;
-  let best = null, bestD = Infinity;
-  for (const e of ECHO){
-    if (e.ex == null) continue;
-    const d = Math.hypot(e.ex - sx, e.ey - sy);
-    if (d < bestD){ bestD = d; best = e; }
-  }
-  return (best && bestD < 18) ? best : null;
-}
-
 function openEchoPopup(e){
   closePopup();
   openEcho = e.id;
@@ -694,10 +733,59 @@ function openEchoPopup(e){
 // Остаётся только тап: карта говорит, куда попали, мы ищем, что там.
 function onMapClick(ev){
   const pt = ev.containerPoint;
-  const n = pickAt(pt.x, pt.y);          // Сеть выше мира и по тапу тоже
-  if (n) { openPopup(n); return; }
-  const ec = pickEcho(pt.x, pt.y);
-  if (ec) openEchoPopup(ec); else closePopup();
+
+  // Слоя два, и «Сеть всегда выше» тут не годится: сгусток эха под узлом
+  // стал бы недоступен навсегда. Выигрывает то, что БЛИЖЕ к пальцу —
+  // человек целился именно туда (поймано тестом 17.09: на мониторе узел
+  // перехватывал самый крупный сгусток из одиннадцати новостей).
+  const near = nodesNear(pt.x, pt.y, 22);
+  let dNode = Infinity, node = null;
+  for (const n of near){
+    const p = toScreen(n);
+    const d = Math.hypot(p.x - pt.x, p.y - pt.y);
+    if (d < dNode){ dNode = d; node = n; }
+  }
+  const c = echoOn ? pickCluster(pt.x, pt.y) : null;
+  const dEcho = c ? Math.hypot(c.x - pt.x, c.y - pt.y) : Infinity;
+
+  if (dEcho < dNode){
+    // сгусток — приближаем, одиночный ромб — открываем
+    if (c.items.length > 1) zoomToCluster(c); else openEchoPopup(c.items[0]);
+    return;
+  }
+  if (node){
+    // несколько узлов под пальцем — выбирать за человека неправильно:
+    // приближаем, пусть разойдутся, и он ткнёт в тот, который хотел
+    if (near.length > 1) zoomToNodes(near); else openPopup(node);
+    return;
+  }
+  closePopup();
+}
+
+function nodesNear(sx, sy, rad){
+  const out = [];
+  for (const n of NODES){
+    const p = toScreen(n);
+    if (Math.hypot(p.x - sx, p.y - sy) < rad) out.push(n);
+  }
+  return out;
+}
+function zoomToNodes(list){
+  if (!mapbg) return;
+  try {
+    const lls = list.filter(n => n.ll).map(n => n.ll);
+    if (lls.length > 1) mapbg.fitBounds(L.latLngBounds(lls).pad(0.6),
+                                        { maxZoom: Math.min(9, mapbg.getZoom() + 3) });
+    else mapbg.setZoom(Math.min(9, mapbg.getZoom() + 2));
+  } catch (e) {}
+}
+function pickCluster(sx, sy){
+  let best = null, bestD = Infinity;
+  for (const c of CLUSTERS){
+    const d = Math.hypot(c.x - sx, c.y - sy);
+    if (d < bestD){ bestD = d; best = c; }
+  }
+  return (best && bestD < 20) ? best : null;
 }
 
 // Карточка едет вместе со своим узлом или ромбом: карта двигается, и
