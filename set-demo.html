@@ -116,6 +116,22 @@
               border-bottom:1px solid rgba(0,200,255,0.08); }
   .pick-row.done { color:#555; cursor:default; border-bottom:none; }
 
+  /* окно ключа — тот же язык, что у карточек */
+  .key-over { position:fixed; inset:0; z-index:3000; background:rgba(0,0,0,0.92);
+              display:flex; align-items:center; justify-content:center; padding:1rem; }
+  .key-box { width:100%; max-width:420px; border:1px solid rgba(0,255,136,0.3);
+             background:#050a08; padding:1.8rem; }
+  .key-tag { font-size:0.6rem; color:var(--accent); letter-spacing:0.2em; margin-bottom:1rem; }
+  .key-desc { font-size:0.75rem; line-height:1.7; color:rgba(255,255,255,0.7); margin-bottom:1.3rem; }
+  #key-input { width:100%; background:rgba(255,255,255,0.03);
+               border:1px solid rgba(0,255,136,0.2); color:#fff;
+               font-family:'Share Tech Mono',monospace; font-size:16px;
+               padding:0.6rem 0.8rem; outline:none; margin-bottom:1rem; }
+  #key-input:focus { border-color:rgba(0,255,136,0.5); }
+  .key-btns { display:flex; gap:0.8rem; }
+  .key-btns .popup-btn { flex:1; text-align:center; padding:0.6rem; }
+  .key-note { font-size:0.6rem; color:var(--dim); margin-top:0.8rem; min-height:1em; }
+
   .fab { position:fixed; z-index:1000; background:rgba(0,0,0,0.85);
          font-family:'Share Tech Mono',monospace; cursor:pointer; }
   /* Возврат — подписанная кнопка, а не значок в углу. Значок терялся
@@ -822,6 +838,64 @@ function openPopup(n){
 }
 // Все слои теперь в одних координатах — тех, что даёт карта. Поэтому и
 // попадание считается одинаково для узла и для ромба, без пересчётов.
+// ── КЛЮЧ УЗЛА ─────────────────────────────────────────────────────
+// Токен — SHA-256 ключевой фразы, слово в слово как в Спирали и на
+// боевой Сети. Меняться ему нельзя: та же фраза обязана давать тот же
+// токен, иначе человек перестанет быть собой.
+async function phraseToToken(phrase){
+  try {
+    const enc = new TextEncoder().encode(phrase.trim().toLowerCase());
+    const hash = await crypto.subtle.digest('SHA-256', enc);
+    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
+  } catch (e) {
+    let h = 0;
+    for (const c of phrase.trim().toLowerCase()) h = (Math.imul(31, h) + c.charCodeAt(0)) | 0;
+    return Math.abs(h).toString(16).padStart(8,'0') + phrase.length.toString(16) +
+           Date.now().toString(16).slice(-8);
+  }
+}
+
+function askKey(nодin){
+  const over = document.createElement('div');
+  over.className = 'key-over';
+  over.innerHTML =
+    '<div class="key-box">' +
+      '<div class="key-tag">// КЛЮЧ УЗЛА</div>' +
+      '<p class="key-desc">Введи ключевую фразу, и Сеть узнает твои узлы. ' +
+         'Та же фраза, что в Спирали — она нигде не хранится, из неё считается отпечаток.</p>' +
+      '<input id="key-input" type="text" placeholder="твоя фраза…" autocomplete="off">' +
+      '<div class="key-btns">' +
+        '<button class="popup-btn" id="key-ok">войти</button>' +
+        '<button class="popup-btn muted" id="key-no">отмена</button>' +
+      '</div>' +
+      '<div class="key-note" id="key-note"></div>' +
+    '</div>';
+  document.body.appendChild(over);
+  const input = over.querySelector('#key-input');
+  const note  = over.querySelector('#key-note');
+  setTimeout(() => { try { input.focus(); } catch (e) {} }, 50);
+
+  const close = () => { try { document.body.removeChild(over); } catch (e) {} };
+  over.onclick = ev => { if (ev.target === over) close(); };
+  over.querySelector('#key-no').onclick = close;
+
+  async function войти(){
+    const phrase = input.value.trim();
+    if (!phrase) { close(); return; }        // пустое поле — тот же отказ
+    note.textContent = 'узнаю…';
+    const token = await phraseToToken(phrase);
+    try { localStorage.setItem('uc_token', token); } catch (e) {}
+    MY.token = token;
+    await preloadMine();                     // свои узлы приезжают сразу
+    close();
+    // Карточка перерисовывается на месте: тот же узел, но теперь про него
+    // известно, твой он или чужой, и чем его можно связать.
+    if (nодin) { closePopup(); openPopup(nодin); }
+  }
+  over.querySelector('#key-ok').onclick = войти;
+  input.onkeydown = ev => { if (ev.key === 'Enter') войти(); };
+}
+
 // ── СВЯЗЫВАНИЕ ────────────────────────────────────────────────────
 // Перенесено с боевой Сети как есть: открываешь чужой узел, выбираешь,
 // каким СВОИМ шумом с ним связаться. Ничего не упрощаю на этом заходе —
@@ -833,9 +907,12 @@ function fillConnectBtn(pop, n){
   b.className = 'popup-btn connect';
 
   if (!MY.token){
-    b.className = 'popup-btn muted';
-    b.textContent = 'нужен ключ узла';
-    b.title = 'Ключ выдаётся в Спирали — там же, где вплетается шум';
+    // Кнопка теперь не табличка, а дверь: спрашивает ключевую фразу,
+    // считает из неё тот же токен, что и везде, и перерисовывает карточку
+    // на месте — без перезагрузки страницы (Витя, 17.09: «должна работать
+    // и после ввода слова видимо обновлять данные»).
+    b.textContent = 'ввести ключ узла';
+    b.onclick = () => askKey(n);
     box.appendChild(b);
     return;
   }
