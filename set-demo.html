@@ -793,14 +793,15 @@ function openPopup(n){
   const net = document.getElementById('net');
   const pop = document.createElement('div');
   pop.className = 'popup';
-  const d = (n.created_at || '').split('-').reverse().join('.');
   pop.innerHTML =
     '<button class="popup-close" aria-label="закрыть">&times;</button>' +
     '<div class="popup-content">' +
       '<div class="popup-tag">' + (MY.ids.has(n.id) ? '// ТВОЙ УЗЕЛ' : '// УЗЕЛ СЕТИ') + '</div>' +
       '<div class="popup-text"></div>' +
-      '<div class="popup-time">' + (n.deg ? n.deg + ' нитей' : 'ещё ни с чем не сплёлся') +
-        (d ? ' · ' + d : '') + '</div>' +
+      // Ни числа нитей, ни даты (Витя, 17.09): в карточке узла важен сам
+      // шум, остальное — служебные подробности, которые её утяжеляют.
+      // Сколько у узла нитей, и так видно по размеру точки и по нитям,
+      // которые от неё идут.
       '<div class="popup-btns"></div>' +
       '<div class="connect-picker" style="display:none"></div>' +
     '</div>';
