@@ -99,7 +99,10 @@
   .popup.picking { border-radius:22px; }
   /* по бокам просторнее: у сильной дуги текст иначе цепляет край */
   .popup-content { padding:1.2rem 1.7rem; min-width:240px; max-width:300px; text-align:center; }
-  .popup-tag { font-size:0.55rem; color:#00ff88; letter-spacing:0.2em; margin-bottom:0.6rem; }
+  /* Подпись над шумом — метка, а не заголовок: мельче и без «//»
+     (Витя, 17.09). Главный в карточке шум, остальное ему уступает. */
+  .popup-tag { font-size:0.45rem; color:rgba(0,255,136,0.75); letter-spacing:0.22em;
+               margin-bottom:0.7rem; }
   .popup-text { font-size:0.75rem; line-height:1.6; color:rgba(255,255,255,0.7);
                 margin-bottom:0.8rem; max-height:140px; overflow-y:auto; }
   .popup-time { font-size:0.55rem; color:#555; }
@@ -841,7 +844,7 @@ function openPopup(n){
   pop.className = 'popup';
   pop.innerHTML =
     '<div class="popup-content">' +
-      '<div class="popup-tag">' + (MY.ids.has(n.id) ? '// ТВОЙ УЗЕЛ' : '// УЗЕЛ СЕТИ') + '</div>' +
+      '<div class="popup-tag">' + (MY.ids.has(n.id) ? 'ТВОЙ УЗЕЛ' : 'УЗЕЛ СЕТИ') + '</div>' +
       '<div class="popup-text"></div>' +
       // Ни числа нитей, ни даты (Витя, 17.09): в карточке узла важен сам
       // шум, остальное — служебные подробности, которые её утяжеляют.
@@ -888,7 +891,7 @@ function askKey(nодin){
   over.className = 'key-over';
   over.innerHTML =
     '<div class="key-box">' +
-      '<div class="key-tag">// КЛЮЧ УЗЛА</div>' +
+      '<div class="key-tag">КЛЮЧ УЗЛА</div>' +
       '<p class="key-desc">Введи ключевую фразу, и Сеть узнает твои узлы. ' +
          'Та же фраза, что в Спирали — она нигде не хранится, из неё считается отпечаток.</p>' +
       '<input id="key-input" type="text" placeholder="твоя фраза…" autocomplete="off">' +
@@ -1053,7 +1056,7 @@ function openEchoPopup(e){
   pop.className = 'popup echo';
   pop.innerHTML =
     '<div class="popup-content">' +
-      '<div class="popup-tag">// ЭХО МИРА</div>' +
+      '<div class="popup-tag">ЭХО МИРА</div>' +
       '<div class="popup-text"></div>' +
       // Без даты (Витя, 17.09): место у новости остаётся — оно объясняет,
       // почему ромб лежит именно здесь. Дата не объясняет ничего: эхо и так
