@@ -98,11 +98,20 @@
 
   .fab { position:fixed; z-index:1000; background:rgba(0,0,0,0.85);
          font-family:'Share Tech Mono',monospace; cursor:pointer; }
+  /* Возврат — подписанная кнопка, а не значок в углу. Значок терялся
+     ровно тогда, когда нужнее всего: после приближения экран почти пуст,
+     и глазу не за что зацепиться (Витя, 17.09). Когда вид уже общий,
+     кнопка гаснет до полутона — не мозолит глаза, но остаётся на месте. */
   #netReset { right:calc(env(safe-area-inset-right,0px) + 0.8rem);
               bottom:calc(env(safe-area-inset-bottom,0px) + 1.2rem);
-              width:40px; height:40px; display:flex; align-items:center; justify-content:center;
-              border:1px solid rgba(0,255,136,0.35); color:var(--accent); font-size:1.1rem; line-height:1; }
+              padding:0.4rem 0.7rem; display:flex; align-items:center; gap:0.45rem;
+              border:1px solid rgba(0,255,136,0.55); color:var(--accent);
+              font-size:0.6rem; letter-spacing:0.1em; text-transform:uppercase;
+              box-shadow:0 0 14px rgba(0,255,136,0.15);
+              transition:opacity 0.3s, border-color 0.3s, box-shadow 0.3s; }
+  #netReset span { font-size:0.85rem; line-height:1; }
   #netReset:active { background:rgba(0,255,136,0.15); }
+  #netReset.idle { opacity:0.45; border-color:rgba(0,255,136,0.25); box-shadow:none; }
   /* Единственная кнопка-переключатель: мир под Сетью либо молчит, либо
      говорит. Отдельного экрана карты больше нет — она и так фон, поэтому
      эху не нужно никуда уводить, оно ложится на свои же места прямо тут. */
@@ -153,8 +162,12 @@
     .status-bar { padding:0.6rem 1rem; gap:1rem; }
     .demo-flag { font-size:0.45rem; }
     .net-legend { left:0.7rem; bottom:auto; top:0.7rem; font-size:0.5rem; line-height:1.9; }
-    #echoToggle { bottom:auto; top:calc(57px + 2.8rem); }
-    #netReset { bottom:auto; top:calc(57px + 5.6rem); }
+    /* Возврат и переключатель — внизу, под большим пальцем. Наверх их
+       уносила шторка карточки; теперь она сама поднимает их над собой. */
+    #netReset { bottom:calc(env(safe-area-inset-bottom,0px) + 1rem); }
+    #echoToggle { bottom:calc(env(safe-area-inset-bottom,0px) + 3.9rem); }
+    body.sheet #netReset { bottom:calc(env(safe-area-inset-bottom,0px) + 12.5rem); }
+    body.sheet #echoToggle { bottom:calc(env(safe-area-inset-bottom,0px) + 15.4rem); }
     #hint { bottom:0.8rem; font-size:0.5rem; white-space:normal; padding:0 1rem; line-height:1.7; }
     #net.with-ticker #hint { bottom:2.4rem; }
     /* карточка узла — шторкой снизу, чтобы не закрывать полотно */
@@ -197,7 +210,7 @@
 </div>
 
 <button class="fab" id="echoToggle" aria-pressed="false">Эхо мира</button>
-<button class="fab" id="netReset" aria-label="Показать всю Сеть">⌖</button>
+<button class="fab" id="netReset" aria-label="Показать всю Сеть"><span>⌖</span>вся сеть</button>
 <div id="loading">// СИНХРОНИЗАЦИЯ...</div>
 
 <!-- Leaflet локально — карта нужна только как фон, без зависимости от CDN -->
@@ -616,10 +629,24 @@ function initMapBg(){
                 { maxZoom:9 }).addTo(mapbg);
     // Карта — камера, поэтому она же и рассказывает, куда всё уехало.
     mapbg.on('move zoom', repositionPopup);
+    mapbg.on('moveend zoomend', syncHome);
     mapbg.on('click', onMapClick);
     fitWorld();
   } catch (e) { mapbg = null; }   // карта не поднялась — Сеть рисуется на пустом фоне
 }
+// Кнопка возврата горит ровно тогда, когда возвращаться есть куда.
+let HOME = null;
+function syncHome(){
+  const b = document.getElementById('netReset');
+  if (!b || !mapbg) return;
+  let дома = true;
+  try {
+    дома = HOME !== null && mapbg.getZoom() === HOME.z
+           && mapbg.getCenter().distanceTo(HOME.c) < 50000;
+  } catch (e) {}
+  b.classList.toggle('idle', дома);
+}
+
 function fitWorld(){
   if (!mapbg) return;
   try {
@@ -628,6 +655,8 @@ function fitWorld(){
     // кадра и ничего не сообщают. Границы одни и те же на любом экране,
     // масштаб под них подбирает сам Leaflet.
     mapbg.fitBounds(L.latLngBounds([[-54,-168],[72,178]]), { animate:false, padding:[0,0] });
+    HOME = { z: mapbg.getZoom(), c: mapbg.getCenter() };
+    syncHome();
   } catch (e) {}
 }
 
@@ -648,6 +677,7 @@ function resetView(){ closePopup(); fitWorld(); }
 let openId = null, openEcho = null;
 function closePopup(){
   openId = null; openEcho = null;
+  document.body.classList.remove('sheet');
   const p = document.querySelector('.popup');
   if (p) p.remove();
 }
@@ -669,6 +699,7 @@ function openPopup(n){
   pop.querySelector('.popup-text').textContent = n.noise || '—';
   pop.querySelector('.popup-close').onclick = closePopup;
   net.appendChild(pop);
+  if (W < 640) document.body.classList.add('sheet');
 
   if (W >= 640){
     const sp = toScreen(n);
@@ -717,6 +748,7 @@ function openEchoPopup(e){
   else { a.parentNode.remove(); }
   pop.querySelector('.popup-close').onclick = closePopup;
   document.getElementById('net').appendChild(pop);
+  if (W < 640) document.body.classList.add('sheet');
 
   if (W >= 640){
     const pw = pop.offsetWidth, ph = pop.offsetHeight;
@@ -751,7 +783,6 @@ function onMapClick(ev){
   if (dEcho < dNode){
     if (c.items.length > 1) { zoomToCluster(c); return; }   // сгусток разводим
     openEchoPopup(c.items[0]);
-    approach(c.items[0].lat != null ? L.latLng(c.items[0].lat, c.items[0].lon) : null);
     return;
   }
   if (node){
@@ -759,26 +790,18 @@ function onMapClick(ev){
     // приближаем, пусть разойдутся, и он ткнёт в тот, который хотел
     if (near.length > 1) { zoomToNodes(near); return; }
     openPopup(node);
-    approach(node.ll);
     return;
   }
   closePopup();
 }
 
-// Одно правило на всё: тап по объекту ПОДТЯГИВАЕТ к нему камеру, если
-// смотришь издалека. Без этого тап по узлу не приближал вообще никогда —
-// замер на обзорном виде показал, что на мониторе ни у одного узла нет
-// соседа в радиусе пальца, и ветка «несколько узлов» просто не
-// срабатывала. Вблизи камеру не трогаем: человек уже там, куда хотел.
-const APPROACH_BELOW = 5;
-function approach(ll){
-  if (!mapbg || !ll) return;
-  try {
-    const z = mapbg.getZoom();
-    if (z >= APPROACH_BELOW) return;
-    mapbg.flyTo(ll, Math.min(APPROACH_BELOW, z + 2), { duration: 0.7 });
-  } catch (e) {}
-}
+// ПОЧЕМУ ТАП ПО ОДИНОЧНОМУ ОБЪЕКТУ НЕ ПРИБЛИЖАЕТ (17.09, второй заход).
+// Сначала я сделал наоборот: тап подтягивал камеру к узлу. Витя сразу
+// нашёл, во что это превращается — страны приглушены до текстуры, и
+// после полёта к одинокому узлу на экране остаётся один зелёный кружок
+// в черноте: ни Сети, ни ориентиров, «пропадает вообще всё».
+// Приближение осмысленно ровно там, где под пальцем НЕСКОЛЬКО объектов
+// и выбор действительно надо развести. Одиночный — просто карточка.
 
 function nodesNear(sx, sy, rad){
   const out = [];
