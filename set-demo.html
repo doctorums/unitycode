@@ -3,9 +3,11 @@
      UNITYCODE · СЕТЬ БЕЗ КООРДИНАТ — ДЕМО, НЕ БОЕВАЯ СТРАНИЦА
 
      Показывает предложение Артёма (17.09): Сеть рисуется как граф, а не
-     как карта мира. Ни на что не ссылается, из меню не открывается,
-     ничего в базу не пишет — только читает, тем же публичным ключом,
-     что и set.html.
+     как карта мира. Ни на что не ссылается и из меню не открывается.
+
+     ЧИТАЕТ напрямую из Supabase публичным ключом, как set.html.
+     ПИШЕТ только одно и только через unitycode-write: связь, которую
+     человек проложил сам. Браузер в базу не пишет — правило не нарушено.
 
      Живёт отдельным файлом ровно для того, чтобы её можно было удалить
      одной командой, если решение не примут. set.html не тронут.
@@ -96,6 +98,23 @@
   .popup-close { position:absolute; top:0.4rem; right:0.6rem; background:none; border:none;
                  color:#555; font-size:0.9rem; cursor:pointer; font-family:inherit; }
   .popup-close:hover { color:var(--accent); }
+  /* кнопки в карточке — те же, что на карте */
+  .popup-btns { display:flex; gap:0.5rem; margin-top:0.8rem; flex-wrap:wrap; }
+  .popup-btn { display:inline-block; padding:0.4rem 0.8rem; border:1px solid rgba(0,255,136,0.3);
+               color:#00ff88; font-size:0.6rem; letter-spacing:0.1em; cursor:pointer;
+               background:transparent; text-transform:uppercase; text-decoration:none;
+               font-family:'Share Tech Mono',monospace; transition:background 0.2s, color 0.2s; }
+  .popup-btn:hover { background:#00ff88; color:#000; }
+  .popup-btn.connect { border-color:rgba(0,200,255,0.4); color:#00c8ff; }
+  .popup-btn.connect:hover { background:#00c8ff; color:#000; }
+  .popup-btn.muted { border-color:rgba(255,255,255,0.1); color:#555; cursor:default; }
+  .popup-btn.muted:hover { background:transparent; color:#555; }
+  .connect-picker { margin-top:0.8rem; border-top:1px solid rgba(0,200,255,0.2);
+                    padding-top:0.8rem; max-height:150px; overflow-y:auto; }
+  .picker-head { font-size:0.55rem; color:#00c8ff; letter-spacing:0.15em; margin-bottom:0.5rem; }
+  .pick-row { font-size:0.65rem; color:#00c8ff; padding:0.4rem 0.2rem; cursor:pointer;
+              border-bottom:1px solid rgba(0,200,255,0.08); }
+  .pick-row.done { color:#555; cursor:default; border-bottom:none; }
 
   .fab { position:fixed; z-index:1000; background:rgba(0,0,0,0.85);
          font-family:'Share Tech Mono',monospace; cursor:pointer; }
@@ -225,6 +244,9 @@
 <button class="fab" id="echoToggle" aria-pressed="false">Эхо мира</button>
 <button class="fab" id="netReset" aria-label="Показать всю Сеть"><span>⌖</span>вся сеть</button>
 <div id="loading">// СИНХРОНИЗАЦИЯ...</div>
+<!-- Коробка Turnstile: обычно невидима, всплывает только если заслон
+     решит спросить. Та же, что на боевой Сети. -->
+<div id="ts-box" style="position:fixed;z-index:4000;bottom:1rem;left:1rem;visibility:hidden;"></div>
 
 <!-- Leaflet локально — карта нужна только как фон, без зависимости от CDN -->
 <script src="leaflet.min.js"></script>
@@ -235,6 +257,61 @@ const SUPABASE_KEY = 'sb_publishable_c94zOuVnId_NFhHZgRzQ2Q_h3tljPjf';
 // Снимок Сети на 17.09 — запасной вариант, если сеть не отвечает.
 // Худший канал — расчётный: демо должно показывать граф даже в поезде.
 const SNAPSHOT = {"nodes":[{"id":"fad1b11d","noise":"Мои гуси слетелись на чужой водопой","created_at":"2026-08-12"},{"id":"9bf27f6d","noise":"Для кого шум, а кому мед в уши","created_at":"2026-08-12"},{"id":"cff8fbae","noise":"Так устроен мир","created_at":"2026-08-12"},{"id":"238c2225","noise":"Привычки это хорошо, пока не угрожают здоровью)","created_at":"2026-08-12"},{"id":"d85196bd","noise":"Оглянись, незнакомый прохожий…","created_at":"2026-08-12"},{"id":"70bb6a95","noise":"Связь первична я создаю путь","created_at":"2026-08-13"},{"id":"778116dc","noise":"Если б бета тестерам платили, то сеть стала бы огромной со скоростью звука))","created_at":"2026-08-13"},{"id":"0bb904ef","noise":"Бывают дни когда опустишь руки, и главное в это время ноги не протянуть)","created_at":"2026-08-14"},{"id":"7c18d6f2","noise":"Шум не вплетается","created_at":"2026-08-14"},{"id":"12c83794","noise":"65","created_at":"2026-08-16"},{"id":"7991f646","noise":"Слова ничто, шум все","created_at":"2026-08-16"},{"id":"eda8771f","noise":"Выгнутые мысли","created_at":"2026-08-18"},{"id":"17dfb575","noise":"Мы в западне собственной петли","created_at":"2026-08-19"},{"id":"3543e46a","noise":"Дак кто создал бога?)","created_at":"2026-08-22"},{"id":"5e801689","noise":"Приходится, а как еще?","created_at":"2026-08-24"},{"id":"f34d8a31","noise":"Как узнать, а надо ли?","created_at":"2026-08-25"},{"id":"3bbb89a3","noise":"Эбола убивает по нескольку тысяч, слова миллионы","created_at":"2026-08-25"},{"id":"675a532e","noise":"Тихо тут у вас","created_at":"2026-08-26"},{"id":"b8032251","noise":"Нет мыслей, но много слов.","created_at":"2026-08-26"},{"id":"af1fd6bc","noise":"ОХ как круто","created_at":"2026-08-27"},{"id":"2b22532b","noise":"Блюдо у ублюдбка","created_at":"2026-08-27"},{"id":"429076c2","noise":"Маразм крепчает, виртуальная реальность обволакивает","created_at":"2026-09-03"},{"id":"8651e423","noise":"Где ты мое сильное звено,","created_at":"2026-09-03"},{"id":"787c625a","noise":"Что делать, когда все звенья слабые?","created_at":"2026-09-03"},{"id":"5a5ba1dd","noise":"На хрен эту утреннюю работу","created_at":"2026-09-03"},{"id":"77939d70","noise":"Секунда, это очень много","created_at":"2026-09-03"},{"id":"859d7bd0","noise":"Это все что ты можешь сказать?","created_at":"2026-09-03"},{"id":"1a520b4c","noise":"Смешались в кучу роботы и люди","created_at":"2026-09-04"},{"id":"16f3eb4c","noise":"Повторение, мать заикания","created_at":"2026-09-04"},{"id":"314bedd4","noise":"А пока это диалог слепого с глухим","created_at":"2026-09-04"},{"id":"9c5af8e4","noise":"Музыка для скафандра в открытом космосе. Очень актуально, когда дырка в рукаве.","created_at":"2026-09-05"}],"links":[{"a":"9bf27f6d","b":"fad1b11d","by":"linker"},{"a":"cff8fbae","b":"9bf27f6d","by":"linker"},{"a":"d85196bd","b":"9bf27f6d","by":"linker"},{"a":"70bb6a95","b":"d85196bd","by":"human"},{"a":"70bb6a95","b":"238c2225","by":"human"},{"a":"778116dc","b":"9bf27f6d","by":"linker"},{"a":"778116dc","b":"70bb6a95","by":"human"},{"a":"7c18d6f2","b":"70bb6a95","by":"linker"},{"a":"7991f646","b":"7c18d6f2","by":"linker"},{"a":"eda8771f","b":"70bb6a95","by":"human"},{"a":"12c83794","b":"70bb6a95","by":"human"},{"a":"17dfb575","b":"778116dc","by":"human"},{"a":"17dfb575","b":"7991f646","by":"human"},{"a":"70bb6a95","b":"7991f646","by":"human"},{"a":"0bb904ef","b":"17dfb575","by":"human"},{"a":"3543e46a","b":"17dfb575","by":"linker"},{"a":"3543e46a","b":"cff8fbae","by":"linker"},{"a":"5e801689","b":"17dfb575","by":"linker"},{"a":"f34d8a31","b":"3543e46a","by":"linker"},{"a":"3bbb89a3","b":"17dfb575","by":"linker"},{"a":"b8032251","b":"17dfb575","by":"linker"},{"a":"429076c2","b":"3bbb89a3","by":"linker"},{"a":"429076c2","b":"17dfb575","by":"human"},{"a":"8651e423","b":"17dfb575","by":"linker"},{"a":"787c625a","b":"8651e423","by":"linker"},{"a":"787c625a","b":"70bb6a95","by":"linker"},{"a":"5a5ba1dd","b":"0bb904ef","by":"linker"},{"a":"16f3eb4c","b":"859d7bd0","by":"linker"},{"a":"314bedd4","b":"b8032251","by":"linker"},{"a":"314bedd4","b":"859d7bd0","by":"linker"}]};
+
+const WRITE_WORKER_URL  = 'https://unitycode-write.sv2txxznjm.workers.dev/';
+const TURNSTILE_SITEKEY = '0x4AAAAAADipuIhRBHuABO1Z';
+
+function esc(x){ return (x==null?'':String(x))
+  .replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Turnstile — одноразовый токен по требованию, как на боевой Сети.
+// Не поднялся (нет сети, блокировщик) — отдаём пустую строку: заслон на
+// воркере тогда считает запись непроверенной и пускает по узкой калитке.
+let _tsId = null, _tsResolve = null;
+window.onloadTurnstileCallback = function(){
+  try {
+    _tsId = turnstile.render('#ts-box', {
+      sitekey: TURNSTILE_SITEKEY, appearance:'interaction-only', execution:'execute',
+      callback: t => { if(_tsResolve){ _tsResolve(t); _tsResolve = null; }
+                       try { document.getElementById('ts-box').style.visibility='hidden'; } catch(e){} },
+      'error-callback': () => { if(_tsResolve){ _tsResolve(''); _tsResolve = null; }
+                       try { document.getElementById('ts-box').style.visibility='hidden'; } catch(e){} },
+    });
+  } catch(e){}
+};
+function getTurnstileToken(){
+  return new Promise(resolve => {
+    if (!window.turnstile || _tsId === null) { resolve(''); return; }
+    _tsResolve = resolve;
+    try { document.getElementById('ts-box').style.visibility='visible'; } catch(e){}
+    try { turnstile.reset(_tsId); } catch(e){}
+    try { turnstile.execute(_tsId); } catch(e){ resolve(''); }
+  });
+}
+
+// ── СВОИ УЗЛЫ ─────────────────────────────────────────────────────
+// Ключ узла берём тот же, что на всех страницах — uc_token. Своего
+// окна ввода фразы демо не заводит: у кого ключ уже есть, тот его и
+// принесёт, а кому нужен — идёт в Спираль, где он и выдаётся.
+const MY = { token:null, nodes:[], ids:new Set(), pairs:new Set() };
+try { MY.token = localStorage.getItem('uc_token'); } catch (e) {}
+
+async function preloadMine(){
+  if (!MY.token) return;
+  const [mine, conns] = await Promise.all([
+    fetchRetry(SUPABASE_URL + '/rest/v1/nodes?user_token=eq.' +
+               encodeURIComponent(MY.token) + '&select=id,raw_noise&order=created_at.desc'),
+    fetchRetry(SUPABASE_URL + '/rest/v1/connections?select=from_node_id,to_node_id&status=eq.accepted')
+  ]);
+  MY.nodes = Array.isArray(mine) ? mine : [];
+  MY.ids = new Set(MY.nodes.map(n => n.id));
+  MY.pairs = new Set();
+  if (Array.isArray(conns)) for (const c of conns){
+    // пара в обе стороны: мост A↔B существует независимо от направления
+    MY.pairs.add(c.from_node_id + '|' + c.to_node_id);
+    MY.pairs.add(c.to_node_id + '|' + c.from_node_id);
+  }
+}
 
 const cv  = document.getElementById('netCanvas');
 const ctx = cv.getContext('2d');
@@ -387,6 +464,7 @@ async function load(){
     fetchRetry(SUPABASE_URL + '/rest/v1/connections?select=from_node_id,to_node_id,created_by&status=eq.accepted')
   ]);
   clearTimeout(slow); L.classList.remove('visible');
+  preloadMine();      // свои узлы — отдельно и не блокируя рисование
 
   if (Array.isArray(rawNodes) && rawNodes.length && Array.isArray(rawConns)){
     build(
@@ -723,9 +801,12 @@ function openPopup(n){
       '<div class="popup-text"></div>' +
       '<div class="popup-time">' + (n.deg ? n.deg + ' нитей' : 'ещё ни с чем не сплёлся') +
         (d ? ' · ' + d : '') + '</div>' +
+      '<div class="popup-btns"></div>' +
+      '<div class="connect-picker" style="display:none"></div>' +
     '</div>';
   pop.querySelector('.popup-text').textContent = n.noise || '—';
   pop.querySelector('.popup-close').onclick = closePopup;
+  fillConnectBtn(pop, n);
   net.appendChild(pop);
   if (W < 640) document.body.classList.add('sheet');
 
@@ -740,6 +821,106 @@ function openPopup(n){
 }
 // Все слои теперь в одних координатах — тех, что даёт карта. Поэтому и
 // попадание считается одинаково для узла и для ромба, без пересчётов.
+// ── СВЯЗЫВАНИЕ ────────────────────────────────────────────────────
+// Перенесено с боевой Сети как есть: открываешь чужой узел, выбираешь,
+// каким СВОИМ шумом с ним связаться. Ничего не упрощаю на этом заходе —
+// сначала смотрим, как оно живёт на графе, потом будем убирать лишнее.
+function fillConnectBtn(pop, n){
+  const box = pop.querySelector('.popup-btns');
+  if (!box) return;
+  const b = document.createElement('button');
+  b.className = 'popup-btn connect';
+
+  if (!MY.token){
+    b.className = 'popup-btn muted';
+    b.textContent = 'нужен ключ узла';
+    b.title = 'Ключ выдаётся в Спирали — там же, где вплетается шум';
+    box.appendChild(b);
+    return;
+  }
+  if (MY.ids.has(n.id)){
+    b.className = 'popup-btn muted';
+    b.textContent = 'твой узел';
+    box.appendChild(b);
+    return;
+  }
+  if (!MY.nodes.length){
+    b.textContent = 'сначала вплети шум';
+    b.onclick = () => { window.location.href = 'petlya.html'; };
+    box.appendChild(b);
+    return;
+  }
+  b.textContent = 'предложить связь';
+  b.onclick = () => togglePicker(pop, n, b);
+  box.appendChild(b);
+}
+
+function togglePicker(pop, target, btn){
+  const picker = pop.querySelector('.connect-picker');
+  if (!picker) return;
+  if (picker.style.display === 'block'){
+    picker.style.display = 'none';
+    btn.textContent = 'предложить связь';
+    return;
+  }
+  btn.textContent = 'выбери свой шум';
+  picker.innerHTML = '<div class="picker-head">КАКИМ СВОИМ ШУМОМ СВЯЗАТЬ</div>' +
+    MY.nodes.map(m => {
+      const было = MY.pairs.has(m.id + '|' + target.id);
+      const кратко = esc((m.raw_noise || '').slice(0, 40) +
+                         ((m.raw_noise || '').length > 40 ? '…' : ''));
+      return было
+        ? '<div class="pick-row done">✓ ' + кратко + '</div>'
+        : '<div class="pick-row" data-from="' + m.id + '">→ ' + кратко + '</div>';
+    }).join('');
+  picker.querySelectorAll('.pick-row[data-from]').forEach(row => {
+    row.onclick = () => createConnection(row.dataset.from, target, row);
+  });
+  picker.style.display = 'block';
+}
+
+async function createConnection(fromId, target, row){
+  if (fromId === target.id) return;           // самосвязывание не бывает
+  row.style.pointerEvents = 'none';
+  const было = row.textContent;
+  row.textContent = 'вплетаю…';
+  try {
+    const ts = await getTurnstileToken();
+    const res = await fetch(WRITE_WORKER_URL, {
+      method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ action:'connection', token: MY.token || '', turnstile: ts,
+                             from_node_id: fromId, to_node_id: target.id })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+
+    MY.pairs.add(fromId + '|' + target.id);
+    MY.pairs.add(target.id + '|' + fromId);
+    addThread(fromId, target.id);             // нить появляется сразу, без перезагрузки
+    row.className = 'pick-row done';
+    row.style.color = '#00ff88';
+    row.textContent = '✓ связь вплетена';
+  } catch (e){
+    row.style.pointerEvents = 'auto';
+    row.style.color = '#f55';
+    row.textContent = 'не ушло, попробуй ещё';
+    setTimeout(() => { row.textContent = было; row.style.color = '#00c8ff'; }, 2000);
+  }
+}
+
+// Новая нить рисуется сразу: раскладка приколота к карте и не едет,
+// поэтому достаточно добавить ребро и поправить счётчики. Перекладывать
+// граф под одну связь нельзя — у человека уехало бы всё, на что он смотрит.
+function addThread(a, b){
+  if (!byId[a] || !byId[b]) return;
+  if (E.some(e => (e.a===a && e.b===b) || (e.a===b && e.b===a))) return;
+  E.push({ a, b, by:'human' });
+  byId[a].deg++; byId[b].deg++;
+  const links = document.getElementById('statLinks');
+  const alone = document.getElementById('statAlone');
+  if (links) links.textContent = E.length;
+  if (alone) alone.textContent = NODES.filter(n => n.deg === 0).length;
+}
+
 function toScreen(n){
   if (mapbg && n.ll){
     try { const p = mapbg.latLngToContainerPoint(n.ll); return { x:p.x, y:p.y }; } catch (e) {}
@@ -899,5 +1080,6 @@ function loop(now){ if (!t0) t0 = now; draw((now-t0)/1000); requestAnimationFram
 requestAnimationFrame(loop);
 load();   // и следом — живые данные
 </script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onloadTurnstileCallback&render=explicit" async defer></script>
 </body>
 </html>
