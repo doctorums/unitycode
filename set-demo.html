@@ -166,21 +166,29 @@
   #fabs { position:fixed; z-index:1000;
           right:calc(env(safe-area-inset-right,0px) + 0.8rem);
           bottom:calc(env(safe-area-inset-bottom,0px) + 1.2rem);
-          display:flex; flex-direction:column; align-items:flex-end; gap:0.45rem;
+          /* stretch, а не flex-end: кнопки берут ширину самой длинной из
+             них и становятся одинаковыми. По правому краю они и так
+             выровнены — контейнер прижат к нему. */
+          display:flex; flex-direction:column; align-items:stretch; gap:0.45rem;
           transition:bottom 0.25s ease; }
   body.ticker #fabs { bottom:calc(env(safe-area-inset-bottom,0px) + 3.3rem); }
 
-  .fab { background:rgba(0,0,0,0.85); font-family:'Share Tech Mono',monospace; cursor:pointer; }
+  /* Общая высота: значок ⌖ выше строчных букв и тянул «всю сеть» на два
+     пикселя вверх — рядом это читалось как разнобой. */
+  .fab { background:rgba(0,0,0,0.85); font-family:'Share Tech Mono',monospace; cursor:pointer;
+         min-height:1.75rem; box-sizing:border-box; }
   /* Возврат — подписанная кнопка, а не значок в углу. Значок терялся
      ровно тогда, когда нужнее всего: после приближения экран почти пуст,
      и глазу не за что зацепиться (Витя, 17.09). Когда вид уже общий,
      кнопка гаснет до полутона — не мозолит глаза, но остаётся на месте. */
-  #netReset { padding:0.4rem 0.7rem; display:flex; align-items:center; gap:0.45rem;
+  #netReset { padding:0.4rem 0.7rem; display:flex; align-items:center;
+              justify-content:center; gap:0.45rem;
               border:1px solid rgba(0,255,136,0.55); color:var(--accent);
               font-size:0.6rem; letter-spacing:0.1em; text-transform:uppercase;
               box-shadow:0 0 14px rgba(0,255,136,0.15);
               transition:opacity 0.3s, border-color 0.3s, box-shadow 0.3s; }
   #netReset span { font-size:0.85rem; line-height:1; }
+  #netReset, #echoToggle { padding-top:0; padding-bottom:0; }
   #netReset:active { background:rgba(0,255,136,0.15); }
   #netReset.idle { opacity:0.45; border-color:rgba(0,255,136,0.25); box-shadow:none; }
   /* Единственная кнопка-переключатель: мир под Сетью либо молчит, либо
@@ -189,7 +197,7 @@
   #echoToggle { padding:0.4rem 0.7rem; border:1px solid rgba(255,180,60,0.3);
                 color:rgba(255,180,60,0.6);
                 font-size:0.6rem; letter-spacing:0.1em; text-transform:uppercase;
-                display:flex; align-items:center; gap:0.45rem; }
+                display:flex; align-items:center; justify-content:center; gap:0.45rem; }
   #echoToggle::before { content:''; width:7px; height:7px; background:rgba(255,180,60,0.25);
                         transform:rotate(45deg); transition:background 0.2s, box-shadow 0.2s; }
   #echoToggle[aria-pressed="true"] { color:#ffb43c; border-color:rgba(255,180,60,0.6); }
