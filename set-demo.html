@@ -41,12 +41,15 @@
 
   #net { flex:1; position:relative; z-index:1; background:#050a08; touch-action:none; }
 
-  /* ── ЗАДНИЙ ФОН — КАРТА ──────────────────────────────────────────
-     Та же карта и те же тайлы, что на set.html, и перекрашена тем же
-     фильтром. Но она здесь не раскладка, а фон: не таскается, не
-     приближается, событий не принимает. Мир остаётся под Сетью, а Сеть
-     больше не приколота к нему булавками. */
-  #mapbg { position:absolute; inset:0; z-index:0; pointer-events:none; background:#050a08; }
+  /* ── КАРТА — ОБЩАЯ КАМЕРА ────────────────────────────────────────
+     Карта не фон и не раскладка, а система координат для всех слоёв
+     сразу. Тяга и приближение — её работа: она это умеет лучше любого
+     моего кода, и главное — двигает ОДНОВРЕМЕННО мир, эхо и Сеть.
+     Раньше камер было две (Сеть ездила сама, мир стоял), и это не
+     сходилось ни при каком масштабе. */
+  #mapbg { position:absolute; inset:0; z-index:0; background:#050a08; }
+  #mapbg .leaflet-container { cursor:grab; }
+  #mapbg .leaflet-container:active { cursor:grabbing; }
   #mapbg .leaflet-container { background:#050a08 !important; }
   #mapbg .leaflet-tile-pane { filter:brightness(0.38) saturate(0) hue-rotate(120deg); }
 
@@ -64,14 +67,10 @@
               rgba(3,14,11,var(--v)) 42%,
               rgba(3,14,11,calc(var(--v) * 1.25)) 100%); }
 
-  /* touch-action ОБЯЗАТЕЛЕН здесь, а не только на #net (17.09): жест
-     приходит на канвас, он и решает, отдать его странице или браузеру.
-     Без этого щипок ловил браузер и зумил всю страницу целиком — карта
-     «расползалась», а вернуться было нечем: страница с overflow:hidden
-     обратно не отщипывается. Свойство не наследуется, родитель не спасает. */
-  #netCanvas { position:absolute; inset:0; z-index:2; touch-action:none;
-               width:100%; height:100%; display:block; cursor:grab; }
-  #netCanvas.drag { cursor:grabbing; }
+  /* Канвас — стекло поверх карты: рисует, но событий не берёт. Все
+     жесты уходят карте под ним, тап ловится её же обработчиком. */
+  #netCanvas { position:absolute; inset:0; z-index:2; pointer-events:none;
+               width:100%; height:100%; display:block; }
 
   .net-legend { position:absolute; left:1rem; bottom:1rem; z-index:5; pointer-events:none;
                 font-size:0.55rem; letter-spacing:0.08em; line-height:2; color:var(--dim); }
@@ -176,6 +175,7 @@
 <div class="status-bar">
   <div class="stat"><span class="stat-label">Узлов в сети:</span><span class="stat-val" id="statNodes">—</span></div>
   <div class="stat"><span class="stat-label">Нитей:</span><span class="stat-val" id="statLinks">—</span></div>
+  <div class="stat"><span class="stat-label">Не сплелись:</span><span class="stat-val" id="statAlone">—</span></div>
   <div class="demo-flag">демо · Сеть без координат</div>
 </div>
 
@@ -189,7 +189,7 @@
     <span class="lg-alone">узел ещё ни с чем не сплёлся</span>
   </div>
   <div id="echoTicker"><div id="echoTickerTrack"></div></div>
-  <div id="hint">тапни по узлу — увидишь шум · тяни, чтобы двигать · колесо или щипок — приблизить</div>
+  <div id="hint">тапни по узлу или ромбу · тяни, чтобы двигать · колесо или щипок — приблизить</div>
 </div>
 
 <button class="fab" id="echoToggle" aria-pressed="false">Эхо мира</button>
@@ -211,8 +211,6 @@ const ctx = cv.getContext('2d');
 let W = 0, H = 0, DPR = 1;
 let NODES = [], E = [], byId = {}, CORE = [], ALONE = [];
 
-// вид: сдвиг и масштаб полотна (тяга пальцем и щипок)
-let view = { x:0, y:0, k:1 };
 
 function ucHash(s){
   let x = 2166136261;
@@ -253,6 +251,7 @@ function build(nodes, links){
   }
   document.getElementById('statNodes').textContent = NODES.length;
   document.getElementById('statLinks').textContent = E.length;
+  document.getElementById('statAlone').textContent = NODES.filter(n => n.deg === 0).length;
 }
 
 // ── эхо мира ──────────────────────────────────────────────────────
@@ -282,15 +281,13 @@ function syncTicker(){
   document.getElementById('net').classList.toggle('with-ticker', on);
 }
 
-// Экранные координаты ромбов считает сама карта — один раз на размер
-// окна, не на кадр: карта неподвижна, пересчитывать нечего.
+// Ромбы считаются в кадре, а не заранее: карта теперь ездит, и
+// кэшировать её проекцию бессмысленно. Девяносто точек на кадр — ничто.
 function projectEchoes(){
   if (!mapbg) return;
   for (const e of ECHO){
-    try {
-      const p = mapbg.latLngToContainerPoint([e.lat, e.lon]);
-      e.ex = p.x; e.ey = p.y;
-    } catch (err) { e.ex = null; }
+    const p = screenOfEcho(e);
+    e.ex = p ? p.x : null; e.ey = p ? p.y : null;
   }
 }
 
@@ -389,27 +386,63 @@ function layout(){
   let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
   CORE.forEach(n => { x0=Math.min(x0,n.x); y0=Math.min(y0,n.y); x1=Math.max(x1,n.x); y1=Math.max(y1,n.y); });
   const narrow = W < 640;
-  const bx = W*0.08, bw = W - 2*bx;
-  const by = H*0.05, bh = narrow ? H*0.56 : H*0.66;
-  const s = Math.min(bw/Math.max(1,x1-x0), bh/Math.max(1,y1-y0));
-  const ox = bx + (bw - (x1-x0)*s)/2, oy = by + (bh - (y1-y0)*s)/2;
-  CORE.forEach(n => { n.x = ox + (n.x-x0)*s; n.y = oy + (n.y-y0)*s; });
+  const bx = W*0.16, bw = W - 2*bx;          // поле шире: кольцу одиноких нужно место
+  const by = H*0.16, bh = H*0.58;
+  const sc = Math.min(bw/Math.max(1,x1-x0), bh/Math.max(1,y1-y0));
+  const ox = bx + (bw - (x1-x0)*sc)/2, oy = by + (bh - (y1-y0)*sc)/2;
+  CORE.forEach(n => { n.x = ox + (n.x-x0)*sc; n.y = oy + (n.y-y0)*sc; });
+  let x0c=1e9,y0c=1e9,x1c=-1e9,y1c=-1e9;
+  CORE.forEach(n => { x0c=Math.min(x0c,n.x); y0c=Math.min(y0c,n.y); x1c=Math.max(x1c,n.x); y1c=Math.max(y1c,n.y); });
 
-  const ay = narrow ? H*0.72 : H*0.86;
-  const aw = Math.min(narrow ? W*0.74 : W*0.58, 46*Math.max(1,ALONE.length));
-  const ax = (W-aw)/2, step = ALONE.length > 1 ? aw/(ALONE.length-1) : 0;
-  ALONE.forEach((n,i) => { n.x = ax + step*i; n.y = ay; });
+  // Одинокие — кольцом вокруг связной части, а не полкой внизу. Полка
+  // была привязана к экрану, а теперь всё живёт в пространстве карты и
+  // едет вместе с ней; экранной полке там места нет. Кольцо держится на
+  // хеше id, то есть у каждого узла своё постоянное место.
+  const rcx = (x0c + x1c)/2, rcy = (y0c + y1c)/2;
+  const rad = Math.max(x1c - x0c, y1c - y0c) * 0.78 + Math.min(W,H) * 0.06;
+  ALONE.forEach(n => {
+    const h = ucHash(n.id);
+    const a = (h % 6283) / 1000;
+    const rr = rad * (0.92 + ((h >>> 12) % 200) / 1000);
+    n.x = rcx + Math.cos(a) * rr;
+    n.y = rcy + Math.sin(a) * rr * 0.72;
+  });
+
+  pinToMap();
+}
+
+// Раскладка считается в пикселях экрана — так проще и так она и была.
+// Дальше каждый узел получает точку в пространстве КАРТЫ и живёт уже в
+// ней: карту двигают — узлы едут вместе с миром и эхом, сами собой.
+// Это не «узел находится в Африке»: место в раскладке, не место человека.
+function pinToMap(){
+  if (!mapbg) return;
+  for (const n of NODES){
+    try { n.ll = mapbg.containerPointToLatLng([n.x, n.y]); } catch (e) { n.ll = null; }
+  }
 }
 
 // ── кадр ──────────────────────────────────────────────────────────
 // Язык Паттерна: глубокое полотно, свечение, дыхание нитей, лёгкое
 // покачивание узлов «на воде» — фаза у каждого своя, но от хеша id,
 // то есть одна и та же при каждом заходе.
-function swayOf(n, t){
+// Экранное место узла: спрашиваем у карты, потом добавляем покачивание.
+// Покачивание — в пикселях экрана и не зависит от масштаба: это дыхание
+// живого, а не размер объекта.
+function screenOf(n, t){
+  let x = n.x, y = n.y;
+  if (mapbg && n.ll){
+    try { const p = mapbg.latLngToContainerPoint(n.ll); x = p.x; y = p.y; } catch (e) {}
+  }
   const h = ucHash(n.id);
-  const A = Math.max(1.2, W * 0.004);
-  return { x: n.x + A*Math.sin(t*0.55 + (h % 628)/100),
-           y: n.y + A*Math.cos(t*0.47 + ((h >> 8) % 628)/100) };
+  const A = 2.2;
+  return { x: x + A*Math.sin(t*0.55 + (h % 628)/100),
+           y: y + A*Math.cos(t*0.47 + ((h >> 8) % 628)/100) };
+}
+function screenOfEcho(e){
+  if (!mapbg) return null;
+  try { const p = mapbg.latLngToContainerPoint([e.lat, e.lon]); return { x:p.x, y:p.y }; }
+  catch (err) { return null; }
 }
 
 let POS = {};
@@ -420,9 +453,11 @@ function draw(t){
   // Своего градиента здесь больше нет — он спорил бы с картой за задний план.
   ctx.clearRect(0,0,W,H);
 
-  // Слой мира — ДО тяги и приближения: эхо приколото к карте, а не к
-  // Сети. Сеть можно возить по экрану, мир под ней остаётся на месте.
+  // Камера одна на всех, поэтому порядок слоёв — только про глубину:
+  // мир внизу, Сеть поверх. Приближение двигает их вместе, и это
+  // единственное, что здесь важно.
   if (echoOn){
+    projectEchoes();
     for (const e of ECHO){
       if (e.ex == null) continue;
       const puls = 0.85 + 0.15*Math.sin(t*1.1 + (e.ex + e.ey)*0.05);
@@ -441,22 +476,8 @@ function draw(t){
     }
   }
 
-  ctx.save();
-  ctx.translate(view.x, view.y); ctx.scale(view.k, view.k);
-
   POS = {};
-  for (const n of NODES) POS[n.id] = swayOf(n, t);
-
-  if (ALONE.length){
-    const y = (W < 640 ? H*0.655 : H*0.795);
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1/view.k;
-    ctx.beginPath(); ctx.moveTo(W*0.08, y); ctx.lineTo(W*0.92, y); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.28)';
-    ctx.font = Math.max(9, Math.round(W*0.0085)) + "px 'Share Tech Mono', monospace";
-    ctx.textAlign = 'center';
-    ctx.fillText('ЕЩЁ НЕ СПЛЕЛИСЬ — ' + ALONE.length, W/2, y + Math.max(16, W*0.014));
-    ctx.textAlign = 'left';
-  }
+  for (const n of NODES) POS[n.id] = screenOf(n, t);
 
   const breathe = 0.72 + 0.28*Math.sin(t*0.8);
 
@@ -469,12 +490,12 @@ function draw(t){
     // тонкая зелёная линия тонет в сером городе под ней
     ctx.strokeStyle = human ? 'rgba(79,214,255,'+(0.14*breathe).toFixed(3)+')'
                             : 'rgba(0,255,136,'+(0.11*breathe).toFixed(3)+')';
-    ctx.lineWidth = (human ? 5 : 3.5)/view.k;
+    ctx.lineWidth = human ? 5 : 3.5;
     ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke();
 
     ctx.strokeStyle = human ? 'rgba(120,225,255,'+(0.50+0.18*breathe).toFixed(3)+')'
                             : 'rgba(0,255,136,'+(0.30+0.14*breathe).toFixed(3)+')';
-    ctx.lineWidth = (human ? 1.2 : 0.8)/view.k;
+    ctx.lineWidth = human ? 1.2 : 0.8;
     ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke();
   }
   ctx.lineCap = 'butt';
@@ -502,11 +523,10 @@ function draw(t){
       ctx.beginPath(); ctx.arc(p.x,p.y,r*0.42,0,Math.PI*2); ctx.fill();
     }
     if (n.id === openId){
-      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1.2/view.k;
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.arc(p.x,p.y,r*2.6,0,Math.PI*2); ctx.stroke();
     }
   }
-  ctx.restore();
 }
 
 // ── карта как фон ─────────────────────────────────────────────────
@@ -533,11 +553,18 @@ function initMapBg(){
   try {
     mapbg = L.map('mapbg', {
       zoomControl:false, attributionControl:false,
-      dragging:false, scrollWheelZoom:false, doubleClickZoom:false,
-      boxZoom:false, keyboard:false, touchZoom:false,
-      inertia:false, tap:false
+      minZoom:1, maxZoom:9,
+      // Мир не даём укрутить в ленту и увести в пустоту: за краями карты
+      // ничего нет, а «уехал и не вернулся» мы уже проходили.
+      maxBounds: L.latLngBounds([[-85, -180],[85, 180]]),
+      maxBoundsViscosity: 0.9,
+      worldCopyJump: false
     });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:18 }).addTo(mapbg);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                { maxZoom:9, noWrap:true }).addTo(mapbg);
+    // Карта — камера, поэтому она же и рассказывает, куда всё уехало.
+    mapbg.on('move zoom', repositionPopup);
+    mapbg.on('click', onMapClick);
     fitWorld();
   } catch (e) { mapbg = null; }   // карта не поднялась — Сеть рисуется на пустом фоне
 }
@@ -558,12 +585,12 @@ function resize(){
   W = box.width; H = box.height;
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
-  layout();
-  resetView();
-  fitWorld();
+  closePopup();
+  fitWorld();      // сначала камера встаёт на мир…
+  layout();        // …и только потом раскладка прикалывается к нему
   projectEchoes();
 }
-function resetView(){ view = { x:0, y:0, k:1 }; closePopup(); }
+function resetView(){ closePopup(); fitWorld(); }
 
 // ── карточка узла ─────────────────────────────────────────────────
 let openId = null, openEcho = null;
@@ -600,18 +627,23 @@ function openPopup(n){
     pop.style.left = px + 'px'; pop.style.top = py + 'px';
   }
 }
-function toScreen(n){ return { x: n.x*view.k + view.x, y: n.y*view.k + view.y }; }
+// Все слои теперь в одних координатах — тех, что даёт карта. Поэтому и
+// попадание считается одинаково для узла и для ромба, без пересчётов.
+function toScreen(n){
+  if (mapbg && n.ll){
+    try { const p = mapbg.latLngToContainerPoint(n.ll); return { x:p.x, y:p.y }; } catch (e) {}
+  }
+  return { x:n.x, y:n.y };
+}
 function pickAt(sx, sy){
-  const x = (sx - view.x)/view.k, y = (sy - view.y)/view.k;
   let best = null, bestD = Infinity;
   for (const n of NODES){
-    const d = Math.hypot(n.x - x, n.y - y);
+    const p = toScreen(n);
+    const d = Math.hypot(p.x - sx, p.y - sy);
     if (d < bestD){ bestD = d; best = n; }
   }
-  return (best && bestD < 22/view.k) ? best : null;
+  return (best && bestD < 22) ? best : null;
 }
-// Эхо живёт в экранных координатах — тяга и приближение Сети его не
-// трогают, поэтому и попадание считается без пересчёта через вид.
 function pickEcho(sx, sy){
   if (!echoOn) return null;
   let best = null, bestD = Infinity;
@@ -654,112 +686,31 @@ function openEchoPopup(e){
   }
 }
 
-// ── тяга и приближение ────────────────────────────────────────────
-const pointers = new Map();
-let dragged = false, lastMid = null, lastDist = 0;
-
-cv.addEventListener('pointerdown', e => {
-  // Захват указателя — удобство, а не обязанность: он бросает исключение,
-  // если указатель уже отпущен или пришёл не от живого пальца. Без try
-  // это исключение рвало обработчик на первой строке, и палец переставал
-  // работать совсем (поймано тестом 17.09).
-  try { cv.setPointerCapture(e.pointerId); } catch (err) {}
-  pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
-  dragged = false;
-  if (pointers.size === 2){
-    const [a,b] = [...pointers.values()];
-    lastDist = Math.hypot(a.x-b.x, a.y-b.y);
-    lastMid = { x:(a.x+b.x)/2, y:(a.y+b.y)/2 };
-  }
-  cv.classList.add('drag');
-});
-cv.addEventListener('pointermove', e => {
-  if (!pointers.has(e.pointerId)) return;
-  const prev = pointers.get(e.pointerId);
-  pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
-
-  if (pointers.size === 1){
-    const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
-    if (Math.abs(dx) + Math.abs(dy) > 2) dragged = true;
-    view.x += dx; view.y += dy;
-    clampView(); repositionPopup();
-  } else if (pointers.size === 2){
-    const [a,b] = [...pointers.values()];
-    const dist = Math.hypot(a.x-b.x, a.y-b.y);
-    const mid  = { x:(a.x+b.x)/2, y:(a.y+b.y)/2 };
-    if (lastDist > 0){
-      // zoomAt считает от угла канваса, а пальцы дают координаты от угла
-      // ОКНА. Разница — высота шапки со строкой состояния, и без вычета
-      // щипок уводил картинку вверх тем сильнее, чем сильнее сжимаешь.
-      const box = cv.getBoundingClientRect();
-      zoomAt(mid.x - box.left, mid.y - box.top, dist/lastDist);
-      view.x += mid.x - lastMid.x; view.y += mid.y - lastMid.y;
-    }
-    lastDist = dist; lastMid = mid; dragged = true;
-    clampView(); repositionPopup();
-  }
-});
-function endPointer(e){
-  if (!pointers.has(e.pointerId)) return;
-  pointers.delete(e.pointerId);
-  if (pointers.size < 2) lastDist = 0;
-  if (!pointers.size){
-    cv.classList.remove('drag');
-    if (!dragged){
-      const box = cv.getBoundingClientRect();
-      const sx = e.clientX - box.left, sy = e.clientY - box.top;
-      // Сеть сверху, мир под ней — и по тапу порядок такой же
-      const n = pickAt(sx, sy);
-      if (n) openPopup(n);
-      else { const ec = pickEcho(sx, sy); if (ec) openEchoPopup(ec); else closePopup(); }
-    }
-  }
-}
-cv.addEventListener('pointerup', endPointer);
-cv.addEventListener('pointercancel', endPointer);
-
-cv.addEventListener('wheel', e => {
-  e.preventDefault();
-  const box = cv.getBoundingClientRect();
-  zoomAt(e.clientX - box.left, e.clientY - box.top, e.deltaY < 0 ? 1.12 : 1/1.12);
-  clampView(); repositionPopup();
-}, { passive:false });
-
-// Страховка от «увёл и не вернул»: Сеть нельзя утащить за край целиком.
-// Кнопка ⌖ возвращает вид, но искать её, когда на экране пусто, — плохая
-// минута; проще не давать довести до пустого экрана.
-function clampView(){
-  if (!NODES.length) return;
-  let x0=1e9, y0=1e9, x1=-1e9, y1=-1e9;
-  for (const n of NODES){
-    x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y);
-    x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y);
-  }
-  // Держим в кадре СЕРЕДИНУ Сети, а не край рамки. По рамке не годится:
-  // её угол бывает пустым, и формально «Сеть в кадре», а на экране ничего
-  // нет — ровно это и показал тест 17.09, ноль узлов из тридцати одного.
-  const cx = (x0 + x1)/2 * view.k + view.x;
-  const cy = (y0 + y1)/2 * view.k + view.y;
-  const mx = W * 0.25, my = H * 0.25;
-  if (cx < mx)     view.x += mx - cx;
-  if (cx > W - mx) view.x -= cx - (W - mx);
-  if (cy < my)     view.y += my - cy;
-  if (cy > H - my) view.y -= cy - (H - my);
+// ── тап ───────────────────────────────────────────────────────────
+// Тяга, приближение и щипок — работа карты, своего кода для них больше
+// нет: две камеры на одном экране не сходились ни при каком масштабе.
+// Остаётся только тап: карта говорит, куда попали, мы ищем, что там.
+function onMapClick(ev){
+  const pt = ev.containerPoint;
+  const n = pickAt(pt.x, pt.y);          // Сеть выше мира и по тапу тоже
+  if (n) { openPopup(n); return; }
+  const ec = pickEcho(pt.x, pt.y);
+  if (ec) openEchoPopup(ec); else closePopup();
 }
 
-function zoomAt(sx, sy, f){
-  const k = Math.max(0.5, Math.min(6, view.k * f));
-  const real = k / view.k;
-  view.x = sx - (sx - view.x) * real;
-  view.y = sy - (sy - view.y) * real;
-  view.k = k;
-}
+// Карточка едет вместе со своим узлом или ромбом: карта двигается, и
+// оставлять карточку висеть на прежнем месте было бы враньём.
 function repositionPopup(){
-  if (!openId || W < 640) return;
+  if (W < 640) return;
   const pop = document.querySelector('.popup');
-  const n = byId[openId];
-  if (!pop || !n) return;
-  const sp = toScreen(n);
+  if (!pop) return;
+  let sp = null;
+  if (openId && byId[openId]) sp = toScreen(byId[openId]);
+  else if (openEcho){
+    const e = ECHO.find(x => x.id === openEcho);
+    if (e) sp = screenOfEcho(e);
+  }
+  if (!sp) return;
   const pw = pop.offsetWidth, ph = pop.offsetHeight;
   let px = sp.x - pw/2, py = sp.y - ph - 18;
   px = Math.max(8, Math.min(W - pw - 8, px));
