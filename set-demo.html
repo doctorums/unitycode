@@ -943,13 +943,15 @@ function openEchoPopup(e){
   openEcho = e.id;
   const pop = document.createElement('div');
   pop.className = 'popup echo';
-  const d = (e.created_at || '').slice(0,10).split('-').reverse().join('.');
   pop.innerHTML =
     '<button class="popup-close" aria-label="закрыть">&times;</button>' +
     '<div class="popup-content">' +
       '<div class="popup-tag">// ЭХО МИРА</div>' +
       '<div class="popup-text"></div>' +
-      '<div class="popup-time"><span class="echo-place"></span>' + (d ? ' · ' + d : '') + '</div>' +
+      // Без даты (Витя, 17.09): место у новости остаётся — оно объясняет,
+      // почему ромб лежит именно здесь. Дата не объясняет ничего: эхо и так
+      // свежее, старое до карты не доезжает.
+      '<div class="popup-time"><span class="echo-place"></span></div>' +
       '<div class="popup-time" style="margin-top:0.5rem"><a target="_blank" rel="noopener"></a></div>' +
     '</div>';
   pop.querySelector('.popup-text').textContent = e.text || '—';
