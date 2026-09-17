@@ -554,14 +554,16 @@ function initMapBg(){
     mapbg = L.map('mapbg', {
       zoomControl:false, attributionControl:false,
       minZoom:1, maxZoom:9,
-      // Мир не даём укрутить в ленту и увести в пустоту: за краями карты
-      // ничего нет, а «уехал и не вернулся» мы уже проходили.
-      maxBounds: L.latLngBounds([[-85, -180],[85, 180]]),
-      maxBoundsViscosity: 0.9,
-      worldCopyJump: false
+      // Держим только по широте: за полюсами ничего нет, а по долготе
+      // мир замкнут и должен заполнять кадр целиком. Жёсткие границы по
+      // долготе давали чёрные поля слева и справа, когда мир уже кончился,
+      // а экран ещё нет (видно на снимке Вити 17.09).
+      maxBounds: L.latLngBounds([[-85, -Infinity],[85, Infinity]]),
+      maxBoundsViscosity: 0.6,
+      worldCopyJump: true
     });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                { maxZoom:9, noWrap:true }).addTo(mapbg);
+                { maxZoom:9 }).addTo(mapbg);
     // Карта — камера, поэтому она же и рассказывает, куда всё уехало.
     mapbg.on('move zoom', repositionPopup);
     mapbg.on('click', onMapClick);
