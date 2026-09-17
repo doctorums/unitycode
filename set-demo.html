@@ -98,22 +98,21 @@
            border-radius:999px; transition:border-radius 0.25s ease; }
   .popup.picking { border-radius:22px; }
   /* по бокам просторнее: у сильной дуги текст иначе цепляет край */
-  .popup-content { padding:1.2rem 1.7rem; min-width:240px; max-width:300px; }
+  .popup-content { padding:1.2rem 1.7rem; min-width:240px; max-width:300px; text-align:center; }
   .popup-tag { font-size:0.55rem; color:#00ff88; letter-spacing:0.2em; margin-bottom:0.6rem; }
   .popup-text { font-size:0.75rem; line-height:1.6; color:rgba(255,255,255,0.7);
                 margin-bottom:0.8rem; max-height:140px; overflow-y:auto; }
   .popup-time { font-size:0.55rem; color:#555; }
-  /* Крестик уходит внутрь: у сильной дуги прежнее место оказалось за
-     краем карточки, на пустом полотне. */
-  .popup-close { position:absolute; top:0.7rem; right:1.5rem; background:none; border:none;
-                 color:#555; font-size:0.9rem; cursor:pointer; font-family:inherit;
-                 line-height:1; padding:0.2rem; }
-  .popup-close:hover { color:var(--accent); }
+  /* Крестика нет (Витя, 17.09). Карточка закрывается тем же жестом, что
+     возвращает общий вид, — тапом по пустому месту. Отдельная кнопка для
+     того же действия была лишней, и она единственная нарушала симметрию
+     скруглённой карточки. */
   /* кнопки в карточке — те же, что на карте */
-  .popup-btns { display:flex; gap:0.5rem; margin-top:0.8rem; flex-wrap:wrap; }
-  .popup-btn { display:inline-block; padding:0.4rem 0.8rem; border:1px solid rgba(0,255,136,0.3);
+  .popup-btns { display:flex; gap:0.5rem; margin-top:0.8rem; flex-wrap:wrap; justify-content:center; }
+  .popup-btn { display:inline-block; padding:0.45rem 1.1rem; border:1px solid rgba(0,255,136,0.3);
                color:#00ff88; font-size:0.6rem; letter-spacing:0.1em; cursor:pointer;
                background:transparent; text-transform:uppercase; text-decoration:none;
+               border-radius:999px;
                font-family:'Share Tech Mono',monospace; transition:background 0.2s, color 0.2s; }
   .popup-btn:hover { background:#00ff88; color:#000; }
   .popup-btn.connect { border-color:rgba(0,200,255,0.4); color:#00c8ff; }
@@ -124,7 +123,7 @@
                     padding-top:0.8rem; max-height:150px; overflow-y:auto; }
   .picker-head { font-size:0.55rem; color:#00c8ff; letter-spacing:0.15em; margin-bottom:0.5rem; }
   .pick-row { font-size:0.65rem; color:#00c8ff; padding:0.4rem 0.2rem; cursor:pointer;
-              border-bottom:1px solid rgba(0,200,255,0.08); }
+              border-bottom:1px solid rgba(0,200,255,0.08); text-align:center; }
   .pick-row.done { color:#555; cursor:default; border-bottom:none; }
 
   /* окно ключа — тот же язык, что у карточек */
@@ -821,7 +820,6 @@ function openPopup(n){
   const pop = document.createElement('div');
   pop.className = 'popup';
   pop.innerHTML =
-    '<button class="popup-close" aria-label="закрыть">&times;</button>' +
     '<div class="popup-content">' +
       '<div class="popup-tag">' + (MY.ids.has(n.id) ? '// ТВОЙ УЗЕЛ' : '// УЗЕЛ СЕТИ') + '</div>' +
       '<div class="popup-text"></div>' +
@@ -833,7 +831,6 @@ function openPopup(n){
       '<div class="connect-picker" style="display:none"></div>' +
     '</div>';
   pop.querySelector('.popup-text').textContent = n.noise || '—';
-  pop.querySelector('.popup-close').onclick = closePopup;
   fillConnectBtn(pop, n);
   net.appendChild(pop);
   if (W < 640) document.body.classList.add('sheet');
@@ -1034,7 +1031,6 @@ function openEchoPopup(e){
   const pop = document.createElement('div');
   pop.className = 'popup echo';
   pop.innerHTML =
-    '<button class="popup-close" aria-label="закрыть">&times;</button>' +
     '<div class="popup-content">' +
       '<div class="popup-tag">// ЭХО МИРА</div>' +
       '<div class="popup-text"></div>' +
@@ -1049,7 +1045,6 @@ function openEchoPopup(e){
   const a = pop.querySelector('a');
   if (e.source_url){ a.href = e.source_url; a.textContent = e.source_name || 'источник'; }
   else { a.parentNode.remove(); }
-  pop.querySelector('.popup-close').onclick = closePopup;
   document.getElementById('net').appendChild(pop);
   if (W < 640) document.body.classList.add('sheet');
 
