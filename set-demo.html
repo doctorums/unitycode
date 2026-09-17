@@ -193,7 +193,7 @@
     <span class="lg-alone">узел ещё ни с чем не сплёлся</span>
   </div>
   <div id="echoTicker"><div id="echoTickerTrack"></div></div>
-  <div id="hint">тапни по узлу или ромбу · по сгустку — приблизит · тяни, чтобы двигать</div>
+  <div id="hint">тап приближает и показывает · сгусток разводит · тяни, чтобы двигать</div>
 </div>
 
 <button class="fab" id="echoToggle" aria-pressed="false">Эхо мира</button>
@@ -749,17 +749,35 @@ function onMapClick(ev){
   const dEcho = c ? Math.hypot(c.x - pt.x, c.y - pt.y) : Infinity;
 
   if (dEcho < dNode){
-    // сгусток — приближаем, одиночный ромб — открываем
-    if (c.items.length > 1) zoomToCluster(c); else openEchoPopup(c.items[0]);
+    if (c.items.length > 1) { zoomToCluster(c); return; }   // сгусток разводим
+    openEchoPopup(c.items[0]);
+    approach(c.items[0].lat != null ? L.latLng(c.items[0].lat, c.items[0].lon) : null);
     return;
   }
   if (node){
     // несколько узлов под пальцем — выбирать за человека неправильно:
     // приближаем, пусть разойдутся, и он ткнёт в тот, который хотел
-    if (near.length > 1) zoomToNodes(near); else openPopup(node);
+    if (near.length > 1) { zoomToNodes(near); return; }
+    openPopup(node);
+    approach(node.ll);
     return;
   }
   closePopup();
+}
+
+// Одно правило на всё: тап по объекту ПОДТЯГИВАЕТ к нему камеру, если
+// смотришь издалека. Без этого тап по узлу не приближал вообще никогда —
+// замер на обзорном виде показал, что на мониторе ни у одного узла нет
+// соседа в радиусе пальца, и ветка «несколько узлов» просто не
+// срабатывала. Вблизи камеру не трогаем: человек уже там, куда хотел.
+const APPROACH_BELOW = 5;
+function approach(ll){
+  if (!mapbg || !ll) return;
+  try {
+    const z = mapbg.getZoom();
+    if (z >= APPROACH_BELOW) return;
+    mapbg.flyTo(ll, Math.min(APPROACH_BELOW, z + 2), { duration: 0.7 });
+  } catch (e) {}
 }
 
 function nodesNear(sx, sy, rad){
