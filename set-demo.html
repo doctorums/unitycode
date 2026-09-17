@@ -78,9 +78,14 @@
   #netCanvas { position:absolute; inset:0; z-index:2; pointer-events:none;
                width:100%; height:100%; display:block; }
 
+  /* Легенда показывается при заходе и медленно гаснет (Витя, 17.09:
+     «может она появляется после открытия или обновления страницы и потом
+     гаснет медленно»). Прочитать раз — достаточно; висеть на экране
+     постоянно ей незачем, полотно дальше говорит само. */
   .net-legend { position:absolute; left:1rem; bottom:1rem; z-index:5; pointer-events:none;
-                transition:opacity 0.25s ease;
-                font-size:0.55rem; letter-spacing:0.08em; line-height:2; color:var(--dim); }
+                font-size:0.55rem; letter-spacing:0.08em; line-height:2; color:var(--dim);
+                opacity:1; transition:opacity 2.5s ease; }
+  .net-legend.faded { opacity:0; }
   .net-legend span { display:block; }
   .net-legend span::before { content:'—'; margin-right:0.5em; font-weight:bold; }
   .lg-human { color:#4fd6ff; } .lg-human::before { color:#4fd6ff; }
@@ -214,7 +219,10 @@
           transition:bottom 0.25s ease, opacity 0.25s ease; }
   /* лента занимает низ — подсказка и легенда уступают ей место */
   #net.with-ticker #hint { bottom:2.8rem; }
-  .net-legend { transition:bottom 0.25s ease; }
+  /* Переход перечисляем ЦЕЛИКОМ: это правило идёт позже базового и
+     переписывает свойство, а не дополняет его. Из-за одной забытой
+     половины легенда гасла мгновенно вместо двух с половиной секунд. */
+  .net-legend { transition:opacity 2.5s ease, bottom 0.25s ease; }
   #net.with-ticker .net-legend { bottom:2.6rem; }
   #loading { position:fixed; bottom:1.2rem; left:50%; transform:translateX(-50%); z-index:1000;
              font-family:'Share Tech Mono',monospace; font-size:0.6rem; letter-spacing:0.2em;
@@ -1266,6 +1274,13 @@ function repositionPopup(){
   }
   placeCard(pop, sp);
 }
+
+// Легенда гаснет через шесть секунд после захода — успеть прочитать три
+// строки хватает с запасом, а дальше она только отнимает угол.
+setTimeout(() => {
+  const l = document.querySelector('.net-legend');
+  if (l) l.classList.add('faded');
+}, 6000);
 
 document.getElementById('netReset').onclick = resetView;
 document.getElementById('echoToggle').onclick = () => setEcho(!echoOn);
