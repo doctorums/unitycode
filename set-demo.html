@@ -232,27 +232,24 @@
     .stat-label { font-size:0.48rem; letter-spacing:0.08em; }
     .stat-val { font-size:0.65rem; }
     .demo-flag { display:none; }
-    /* Легенда остаётся внизу, где ей и место; когда открыта шторка
-       карточки — уступает ей, а не переезжает наверх насовсем. */
     .net-legend { left:0.7rem; bottom:1rem; top:auto; font-size:0.5rem; line-height:1.9; }
-    body.sheet .net-legend, body.sheet #hint { opacity:0; }
-    /* Возврат и переключатель — внизу, под большим пальцем. Наверх их
-       уносила шторка карточки; теперь она сама поднимает их над собой. */
-    #netReset { bottom:calc(env(safe-area-inset-bottom,0px) + 1rem); }
-    #echoToggle { bottom:calc(env(safe-area-inset-bottom,0px) + 3.9rem); }
-    body.ticker #netReset  { bottom:calc(env(safe-area-inset-bottom,0px) + 3.1rem); }
-    body.ticker #echoToggle { bottom:calc(env(safe-area-inset-bottom,0px) + 6rem); }
-    body.sheet #netReset { bottom:calc(env(safe-area-inset-bottom,0px) + 12.5rem); }
-    body.sheet #echoToggle { bottom:calc(env(safe-area-inset-bottom,0px) + 15.4rem); }
+    /* Стопка кнопок внизу, под большим пальцем. Правил на отдельные
+       кнопки здесь больше нет: они давно живут в одном контейнере, а
+       старые строки просто не срабатывали — из-за них кнопки и оказались
+       поверх карточки на айфоне (снимок Вити 17.09). */
+    #fabs { bottom:calc(env(safe-area-inset-bottom,0px) + 1rem); }
+    body.ticker #fabs { bottom:calc(env(safe-area-inset-bottom,0px) + 3.1rem); }
     /* Подсказка наверх: внизу её место занимает легенда, и два текста
        ложились друг на друга (снимок 17.09). */
     #hint { bottom:auto; top:0.6rem; font-size:0.5rem; white-space:normal;
             padding:0 1rem; line-height:1.7; max-width:92vw; }
     #net.with-ticker #hint { bottom:auto; }
-    /* карточка узла — шторкой снизу, чтобы не закрывать полотно */
-    .popup { left:0.6rem !important; right:0.6rem; top:auto !important;
-             bottom:0.8rem; max-width:none; }
-    .popup-content { max-width:none; }
+    /* Шторки снизу больше нет (Витя, 17.09: «окно с шумом не на точке
+       появляется, а внизу и слипается с кнопками»). Карточка везде
+       появляется У ТОЧКИ — так же, как на мониторе. На узком экране ей
+       только даём поместиться: минимальную ширину снимаем, предельную
+       считаем от экрана. */
+    .popup-content { min-width:0; max-width:min(300px, calc(100vw - 2rem)); }
   }
 </style>
 </head>
@@ -879,7 +876,6 @@ function resetView(){ closePopup(); fitWorld(true); }
 let openId = null, openEcho = null;
 function closePopup(){
   openId = null; openEcho = null;
-  document.body.classList.remove('sheet');
   const p = document.querySelector('.popup');
   if (p) p.remove();
 }
@@ -903,16 +899,33 @@ function openPopup(n){
   pop.querySelector('.popup-text').textContent = n.noise || '—';
   fillConnectBtn(pop, n);
   net.appendChild(pop);
-  if (W < 640) document.body.classList.add('sheet');
 
-  if (W >= 640){
-    const sp = toScreen(n);
-    const pw = pop.offsetWidth, ph = pop.offsetHeight;
-    let px = sp.x - pw/2, py = sp.y - ph - 18;
-    px = Math.max(8, Math.min(W - pw - 8, px));
-    if (py < 8) py = Math.min(H - ph - 8, sp.y + 20);
-    pop.style.left = px + 'px'; pop.style.top = py + 'px';
+  placeCard(pop, toScreen(n));
+}
+
+// Карточка всегда у своей точки — и на мониторе, и на телефоне. Ставим
+// над ней, не хватило места сверху — под ней, и в обоих случаях не даём
+// заехать ни за край экрана, ни под стопку кнопок: на айфоне карточка
+// ложилась ровно под них и текст было не прочитать (снимок Вити 17.09).
+function placeCard(pop, точка){
+  if (!pop || !точка) return;
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  const поле = 8;
+  let низ = H - поле;
+  const fabs = document.getElementById('fabs');
+  if (fabs){
+    const f = fabs.getBoundingClientRect();
+    const сетка = document.getElementById('net').getBoundingClientRect();
+    // кнопки прикреплены к окну, карточка — к полотну: приводим к одному
+    const верх_кнопок = f.top - сетка.top;
+    if (верх_кнопок > 0) низ = Math.min(низ, верх_кнопок - 10);
   }
+  let px = точка.x - pw/2;
+  let py = точка.y - ph - 18;
+  px = Math.max(поле, Math.min(W - pw - поле, px));
+  if (py < поле) py = точка.y + 20;                 // сверху не влезло — снизу
+  py = Math.max(поле, Math.min(низ - ph, py));      // и никогда под кнопками
+  pop.style.left = px + 'px'; pop.style.top = py + 'px';
 }
 // Все слои теперь в одних координатах — тех, что даёт карта. Поэтому и
 // попадание считается одинаково для узла и для ромба, без пересчётов.
@@ -1117,15 +1130,8 @@ function openEchoPopup(e){
   if (e.source_url){ a.href = e.source_url; a.textContent = e.source_name || 'источник'; }
   else { a.parentNode.remove(); }
   document.getElementById('net').appendChild(pop);
-  if (W < 640) document.body.classList.add('sheet');
 
-  if (W >= 640){
-    const pw = pop.offsetWidth, ph = pop.offsetHeight;
-    let px = e.ex - pw/2, py = e.ey - ph - 16;
-    px = Math.max(8, Math.min(W - pw - 8, px));
-    if (py < 8) py = Math.min(H - ph - 8, e.ey + 18);
-    pop.style.left = px + 'px'; pop.style.top = py + 'px';
-  }
+  placeCard(pop, screenOfEcho(e));
 }
 
 // ── тап ───────────────────────────────────────────────────────────
@@ -1250,7 +1256,6 @@ function pickCluster(sx, sy){
 // Карточка едет вместе со своим узлом или ромбом: карта двигается, и
 // оставлять карточку висеть на прежнем месте было бы враньём.
 function repositionPopup(){
-  if (W < 640) return;
   const pop = document.querySelector('.popup');
   if (!pop) return;
   let sp = null;
@@ -1259,12 +1264,7 @@ function repositionPopup(){
     const e = ECHO.find(x => x.id === openEcho);
     if (e) sp = screenOfEcho(e);
   }
-  if (!sp) return;
-  const pw = pop.offsetWidth, ph = pop.offsetHeight;
-  let px = sp.x - pw/2, py = sp.y - ph - 18;
-  px = Math.max(8, Math.min(W - pw - 8, px));
-  if (py < 8) py = Math.min(H - ph - 8, sp.y + 20);
-  pop.style.left = px + 'px'; pop.style.top = py + 'px';
+  placeCard(pop, sp);
 }
 
 document.getElementById('netReset').onclick = resetView;
