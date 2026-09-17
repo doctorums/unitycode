@@ -95,15 +95,45 @@
               width:40px; height:40px; display:flex; align-items:center; justify-content:center;
               border:1px solid rgba(0,255,136,0.35); color:var(--accent); font-size:1.1rem; line-height:1; }
   #netReset:active { background:rgba(0,255,136,0.15); }
-  #mapBtn { right:calc(env(safe-area-inset-right,0px) + 0.8rem);
-            bottom:calc(env(safe-area-inset-bottom,0px) + 4.5rem);
-            padding:0.4rem 0.7rem; border:1px solid rgba(255,180,60,0.35); color:#ffb43c;
-            font-size:0.6rem; letter-spacing:0.1em; text-transform:uppercase; text-decoration:none;
-            display:flex; align-items:center; gap:0.4rem; }
+  /* Единственная кнопка-переключатель: мир под Сетью либо молчит, либо
+     говорит. Отдельного экрана карты больше нет — она и так фон, поэтому
+     эху не нужно никуда уводить, оно ложится на свои же места прямо тут. */
+  #echoToggle { right:calc(env(safe-area-inset-right,0px) + 0.8rem);
+                bottom:calc(env(safe-area-inset-bottom,0px) + 4.5rem);
+                padding:0.4rem 0.7rem; border:1px solid rgba(255,180,60,0.3); color:rgba(255,180,60,0.6);
+                font-size:0.6rem; letter-spacing:0.1em; text-transform:uppercase;
+                display:flex; align-items:center; gap:0.45rem; }
+  #echoToggle::before { content:''; width:7px; height:7px; background:rgba(255,180,60,0.25);
+                        transform:rotate(45deg); transition:background 0.2s, box-shadow 0.2s; }
+  #echoToggle[aria-pressed="true"] { color:#ffb43c; border-color:rgba(255,180,60,0.6); }
+  #echoToggle[aria-pressed="true"]::before { background:#ffb43c; box-shadow:0 0 8px #ffb43c; }
+
+  /* Лента безместных эхо: у трети новостей нет города, на карте их
+     показать нечем, а терять не хочется. Живёт вместе со слоем эха. */
+  #echoTicker { position:absolute; left:0; right:0; bottom:0; z-index:6; height:0;
+                overflow:hidden; background:rgba(0,0,0,0.82);
+                border-top:1px solid rgba(255,180,60,0.22); transition:height 0.25s ease; }
+  #echoTicker.show { height:1.9rem; }
+  #echoTickerTrack { display:flex; align-items:center; height:1.9rem; white-space:nowrap;
+                     will-change:transform; animation:echoScroll linear infinite; }
+  .echo-ticker-item { color:#ffb43c; font-size:0.62rem; letter-spacing:0.03em;
+                      padding:0 1.4rem; flex-shrink:0; }
+  .echo-ticker-item::before { content:'◆'; margin-right:1.4rem; opacity:0.5; font-size:0.5rem; }
+  @keyframes echoScroll { from { transform:translateX(0); } to { transform:translateX(-50%); } }
+
+  /* карточка эха — янтарная, чтобы не путалась с карточкой узла */
+  .popup.echo { border-color:rgba(255,180,60,0.4); box-shadow:0 0 20px rgba(255,180,60,0.08); }
+  .popup.echo .popup-tag { color:#ffb43c; }
+  .popup.echo a { color:#ffb43c; text-decoration:none; border-bottom:1px solid rgba(255,180,60,0.3); }
 
   #hint { position:absolute; left:50%; transform:translateX(-50%); bottom:1.2rem; z-index:6;
           font-size:0.55rem; letter-spacing:0.14em; color:rgba(255,255,255,0.3);
-          pointer-events:none; text-align:center; white-space:nowrap; }
+          pointer-events:none; text-align:center; white-space:nowrap;
+          transition:bottom 0.25s ease; }
+  /* лента занимает низ — подсказка и легенда уступают ей место */
+  #net.with-ticker #hint { bottom:2.8rem; }
+  .net-legend { transition:bottom 0.25s ease; }
+  #net.with-ticker .net-legend { bottom:2.6rem; }
   #loading { position:fixed; bottom:1.2rem; left:50%; transform:translateX(-50%); z-index:1000;
              font-family:'Share Tech Mono',monospace; font-size:0.6rem; letter-spacing:0.2em;
              color:var(--accent); background:rgba(0,0,0,0.85); padding:0.4rem 1rem;
@@ -115,9 +145,10 @@
     .status-bar { padding:0.6rem 1rem; gap:1rem; }
     .demo-flag { font-size:0.45rem; }
     .net-legend { left:0.7rem; bottom:auto; top:0.7rem; font-size:0.5rem; line-height:1.9; }
-    #mapBtn { bottom:auto; top:calc(57px + 2.8rem); }
+    #echoToggle { bottom:auto; top:calc(57px + 2.8rem); }
     #netReset { bottom:auto; top:calc(57px + 5.6rem); }
-    #hint { bottom:0.8rem; font-size:0.5rem; }
+    #hint { bottom:0.8rem; font-size:0.5rem; white-space:normal; padding:0 1rem; line-height:1.7; }
+    #net.with-ticker #hint { bottom:2.4rem; }
     /* карточка узла — шторкой снизу, чтобы не закрывать полотно */
     .popup { left:0.6rem !important; right:0.6rem; top:auto !important;
              bottom:0.8rem; max-width:none; }
@@ -152,10 +183,11 @@
     <span class="lg-linker">нить предложена Связующим</span>
     <span class="lg-alone">узел ещё ни с чем не сплёлся</span>
   </div>
+  <div id="echoTicker"><div id="echoTickerTrack"></div></div>
   <div id="hint">тапни по узлу — увидишь шум · тяни, чтобы двигать · колесо или щипок — приблизить</div>
 </div>
 
-<a href="set.html" class="fab" id="mapBtn">Карта мира</a>
+<button class="fab" id="echoToggle" aria-pressed="false">Эхо мира</button>
 <button class="fab" id="netReset" aria-label="Показать всю Сеть">⌖</button>
 <div id="loading">// СИНХРОНИЗАЦИЯ...</div>
 
@@ -216,6 +248,68 @@ function build(nodes, links){
   }
   document.getElementById('statNodes').textContent = NODES.length;
   document.getElementById('statLinks').textContent = E.length;
+}
+
+// ── эхо мира ──────────────────────────────────────────────────────
+// Эхо остаётся географическим — и это не уступка, а смысл: у новости
+// есть место, у шума человека места больше нет. Поэтому ромбы ложатся
+// на свои настоящие координаты прямо на карте-фоне, а Сеть плывёт над
+// ними. Отдельный экран под это не нужен, и кнопка нужна ровно одна.
+let ECHO = [], ECHO_LOOSE = [], echoOn = false, echoLoaded = false;
+
+async function loadEchoes(){
+  if (echoLoaded) return;
+  const rows = await fetchRetry(SUPABASE_URL +
+    '/rest/v1/echoes?select=id,text,place,lat,lon,source_name,source_url,created_at' +
+    '&order=created_at.desc&limit=500');
+  if (!Array.isArray(rows)) return;          // не приехало — просто нет слоя
+  echoLoaded = true;
+  ECHO = rows.filter(r => Number.isFinite(r.lat) && Number.isFinite(r.lon));
+  ECHO_LOOSE = rows.filter(r => !Number.isFinite(r.lat) || !Number.isFinite(r.lon));
+  projectEchoes();
+  buildTicker();
+  syncTicker();          // эхо приехало уже после нажатия — лента включается тут
+}
+
+function syncTicker(){
+  const on = echoOn && ECHO_LOOSE.length > 0;
+  document.getElementById('echoTicker').classList.toggle('show', on);
+  document.getElementById('net').classList.toggle('with-ticker', on);
+}
+
+// Экранные координаты ромбов считает сама карта — один раз на размер
+// окна, не на кадр: карта неподвижна, пересчитывать нечего.
+function projectEchoes(){
+  if (!mapbg) return;
+  for (const e of ECHO){
+    try {
+      const p = mapbg.latLngToContainerPoint([e.lat, e.lon]);
+      e.ex = p.x; e.ey = p.y;
+    } catch (err) { e.ex = null; }
+  }
+}
+
+function buildTicker(){
+  const track = document.getElementById('echoTickerTrack');
+  if (!track || !ECHO_LOOSE.length) return;
+  const items = ECHO_LOOSE.slice(0, 24);
+  const one = items.map(e => {
+    const s = document.createElement('span');
+    s.className = 'echo-ticker-item';
+    s.textContent = e.text || '';
+    return s.outerHTML;
+  }).join('');
+  track.innerHTML = one + one;                       // два прохода — для бесшовной прокрутки
+  track.style.animationDuration = Math.max(40, items.length * 6) + 's';
+}
+
+function setEcho(on){
+  echoOn = on;
+  const b = document.getElementById('echoToggle');
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  syncTicker();
+  if (on) loadEchoes();
+  if (!on && openEcho) closePopup();
 }
 
 async function load(){
@@ -320,6 +414,27 @@ function draw(t){
   // Полотно прозрачное: фон рисует карта под канвасом, глубину даёт вуаль.
   // Своего градиента здесь больше нет — он спорил бы с картой за задний план.
   ctx.clearRect(0,0,W,H);
+
+  // Слой мира — ДО тяги и приближения: эхо приколото к карте, а не к
+  // Сети. Сеть можно возить по экрану, мир под ней остаётся на месте.
+  if (echoOn){
+    for (const e of ECHO){
+      if (e.ex == null) continue;
+      const puls = 0.85 + 0.15*Math.sin(t*1.1 + (e.ex + e.ey)*0.05);
+      const r = 4.2*puls;
+      const g = ctx.createRadialGradient(e.ex,e.ey,0,e.ex,e.ey,r*4);
+      g.addColorStop(0,'rgba(255,180,60,0.35)');
+      g.addColorStop(1,'rgba(255,180,60,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(e.ex,e.ey,r*4,0,Math.PI*2); ctx.fill();
+
+      ctx.save();
+      ctx.translate(e.ex, e.ey); ctx.rotate(Math.PI/4);
+      ctx.fillStyle = (openEcho === e.id) ? '#fff2d8' : 'rgba(255,180,60,0.92)';
+      ctx.fillRect(-r/1.4, -r/1.4, r*1.42, r*1.42);
+      ctx.restore();
+    }
+  }
 
   ctx.save();
   ctx.translate(view.x, view.y); ctx.scale(view.k, view.k);
@@ -441,13 +556,14 @@ function resize(){
   layout();
   resetView();
   fitWorld();
+  projectEchoes();
 }
 function resetView(){ view = { x:0, y:0, k:1 }; closePopup(); }
 
 // ── карточка узла ─────────────────────────────────────────────────
-let openId = null;
+let openId = null, openEcho = null;
 function closePopup(){
-  openId = null;
+  openId = null; openEcho = null;
   const p = document.querySelector('.popup');
   if (p) p.remove();
 }
@@ -488,6 +604,49 @@ function pickAt(sx, sy){
     if (d < bestD){ bestD = d; best = n; }
   }
   return (best && bestD < 22/view.k) ? best : null;
+}
+// Эхо живёт в экранных координатах — тяга и приближение Сети его не
+// трогают, поэтому и попадание считается без пересчёта через вид.
+function pickEcho(sx, sy){
+  if (!echoOn) return null;
+  let best = null, bestD = Infinity;
+  for (const e of ECHO){
+    if (e.ex == null) continue;
+    const d = Math.hypot(e.ex - sx, e.ey - sy);
+    if (d < bestD){ bestD = d; best = e; }
+  }
+  return (best && bestD < 18) ? best : null;
+}
+
+function openEchoPopup(e){
+  closePopup();
+  openEcho = e.id;
+  const pop = document.createElement('div');
+  pop.className = 'popup echo';
+  const d = (e.created_at || '').slice(0,10).split('-').reverse().join('.');
+  pop.innerHTML =
+    '<button class="popup-close" aria-label="закрыть">&times;</button>' +
+    '<div class="popup-content">' +
+      '<div class="popup-tag">// ЭХО МИРА</div>' +
+      '<div class="popup-text"></div>' +
+      '<div class="popup-time"><span class="echo-place"></span>' + (d ? ' · ' + d : '') + '</div>' +
+      '<div class="popup-time" style="margin-top:0.5rem"><a target="_blank" rel="noopener"></a></div>' +
+    '</div>';
+  pop.querySelector('.popup-text').textContent = e.text || '—';
+  pop.querySelector('.echo-place').textContent = e.place || 'место не указано';
+  const a = pop.querySelector('a');
+  if (e.source_url){ a.href = e.source_url; a.textContent = e.source_name || 'источник'; }
+  else { a.parentNode.remove(); }
+  pop.querySelector('.popup-close').onclick = closePopup;
+  document.getElementById('net').appendChild(pop);
+
+  if (W >= 640){
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let px = e.ex - pw/2, py = e.ey - ph - 16;
+    px = Math.max(8, Math.min(W - pw - 8, px));
+    if (py < 8) py = Math.min(H - ph - 8, e.ey + 18);
+    pop.style.left = px + 'px'; pop.style.top = py + 'px';
+  }
 }
 
 // ── тяга и приближение ────────────────────────────────────────────
@@ -535,8 +694,11 @@ function endPointer(e){
     cv.classList.remove('drag');
     if (!dragged){
       const box = cv.getBoundingClientRect();
-      const n = pickAt(e.clientX - box.left, e.clientY - box.top);
-      if (n) openPopup(n); else closePopup();
+      const sx = e.clientX - box.left, sy = e.clientY - box.top;
+      // Сеть сверху, мир под ней — и по тапу порядок такой же
+      const n = pickAt(sx, sy);
+      if (n) openPopup(n);
+      else { const ec = pickEcho(sx, sy); if (ec) openEchoPopup(ec); else closePopup(); }
     }
   }
 }
@@ -571,6 +733,7 @@ function repositionPopup(){
 }
 
 document.getElementById('netReset').onclick = resetView;
+document.getElementById('echoToggle').onclick = () => setEcho(!echoOn);
 window.addEventListener('resize', resize);
 
 // ── запуск ────────────────────────────────────────────────────────
