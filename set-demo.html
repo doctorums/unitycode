@@ -32,7 +32,7 @@
   .status-bar { margin-top:57px; display:flex; gap:2rem; padding:0.6rem 2rem;
                 border-bottom:1px solid var(--border); background:rgba(0,0,0,0.95);
                 flex-shrink:0; position:relative; z-index:1000; align-items:center; }
-  .stat { display:flex; align-items:center; gap:0.5rem; }
+  .stat { display:flex; align-items:center; gap:0.5rem; white-space:nowrap; }
   .stat-label { font-size:0.55rem; color:var(--dim); letter-spacing:0.15em; text-transform:uppercase; }
   .stat-val { font-size:0.7rem; color:var(--accent); }
   .demo-flag { margin-left:auto; font-size:0.5rem; letter-spacing:0.18em;
@@ -77,6 +77,7 @@
                width:100%; height:100%; display:block; }
 
   .net-legend { position:absolute; left:1rem; bottom:1rem; z-index:5; pointer-events:none;
+                transition:opacity 0.25s ease;
                 font-size:0.55rem; letter-spacing:0.08em; line-height:2; color:var(--dim); }
   .net-legend span { display:block; }
   .net-legend span::before { content:'—'; margin-right:0.5em; font-weight:bold; }
@@ -146,7 +147,7 @@
   #hint { position:absolute; left:50%; transform:translateX(-50%); bottom:1.2rem; z-index:6;
           font-size:0.55rem; letter-spacing:0.14em; color:rgba(255,255,255,0.3);
           pointer-events:none; text-align:center; white-space:nowrap;
-          transition:bottom 0.25s ease; }
+          transition:bottom 0.25s ease, opacity 0.25s ease; }
   /* лента занимает низ — подсказка и легенда уступают ей место */
   #net.with-ticker #hint { bottom:2.8rem; }
   .net-legend { transition:bottom 0.25s ease; }
@@ -159,17 +160,29 @@
   #loading.visible { opacity:1; }
 
   @media (max-width:640px) {
-    .status-bar { padding:0.6rem 1rem; gap:1rem; }
-    .demo-flag { font-size:0.45rem; }
-    .net-legend { left:0.7rem; bottom:auto; top:0.7rem; font-size:0.5rem; line-height:1.9; }
+    /* Три счётчика и флажок в 390px не влезают — строка разъезжалась на
+       три ряда, а флажок уходил за край (поймано снимком 17.09). На узком
+       экране флажок прячем, подписи ужимаем: строка снова в один ряд. */
+    .status-bar { padding:0.5rem 0.8rem; gap:0.9rem; overflow:hidden; }
+    .stat { gap:0.35rem; }
+    .stat-label { font-size:0.48rem; letter-spacing:0.08em; }
+    .stat-val { font-size:0.65rem; }
+    .demo-flag { display:none; }
+    /* Легенда остаётся внизу, где ей и место; когда открыта шторка
+       карточки — уступает ей, а не переезжает наверх насовсем. */
+    .net-legend { left:0.7rem; bottom:1rem; top:auto; font-size:0.5rem; line-height:1.9; }
+    body.sheet .net-legend, body.sheet #hint { opacity:0; }
     /* Возврат и переключатель — внизу, под большим пальцем. Наверх их
        уносила шторка карточки; теперь она сама поднимает их над собой. */
     #netReset { bottom:calc(env(safe-area-inset-bottom,0px) + 1rem); }
     #echoToggle { bottom:calc(env(safe-area-inset-bottom,0px) + 3.9rem); }
     body.sheet #netReset { bottom:calc(env(safe-area-inset-bottom,0px) + 12.5rem); }
     body.sheet #echoToggle { bottom:calc(env(safe-area-inset-bottom,0px) + 15.4rem); }
-    #hint { bottom:0.8rem; font-size:0.5rem; white-space:normal; padding:0 1rem; line-height:1.7; }
-    #net.with-ticker #hint { bottom:2.4rem; }
+    /* Подсказка наверх: внизу её место занимает легенда, и два текста
+       ложились друг на друга (снимок 17.09). */
+    #hint { bottom:auto; top:0.6rem; font-size:0.5rem; white-space:normal;
+            padding:0 1rem; line-height:1.7; max-width:92vw; }
+    #net.with-ticker #hint { bottom:auto; }
     /* карточка узла — шторкой снизу, чтобы не закрывать полотно */
     .popup { left:0.6rem !important; right:0.6rem; top:auto !important;
              bottom:0.8rem; max-width:none; }
@@ -206,7 +219,7 @@
     <span class="lg-alone">узел ещё ни с чем не сплёлся</span>
   </div>
   <div id="echoTicker"><div id="echoTickerTrack"></div></div>
-  <div id="hint">тап приближает и показывает · сгусток разводит · тяни, чтобы двигать</div>
+  <div id="hint">тап по узлу или эху — приблизит · по пустому месту — вернёт всю Сеть</div>
 </div>
 
 <button class="fab" id="echoToggle" aria-pressed="false">Эхо мира</button>
@@ -452,12 +465,17 @@ function layout(){
   // хеше id, то есть у каждого узла своё постоянное место.
   const rcx = (x0c + x1c)/2, rcy = (y0c + y1c)/2;
   const rad = Math.max(x1c - x0c, y1c - y0c) * 0.78 + Math.min(W,H) * 0.06;
+  // Кольцо прижимаем к кадру: без этого пара одиноких узлов уезжала за
+  // край и на обзорном виде их было не видно совсем — 28 из 31 в кадре
+  // вместо всех (замер 17.09). Они и так на отшибе, но отшиб должен быть
+  // виден, иначе счётчик «не сплелись: 6» не с чем сверить.
+  const mx = W*0.05, my = H*0.07;
   ALONE.forEach(n => {
     const h = ucHash(n.id);
     const a = (h % 6283) / 1000;
     const rr = rad * (0.92 + ((h >>> 12) % 200) / 1000);
-    n.x = rcx + Math.cos(a) * rr;
-    n.y = rcy + Math.sin(a) * rr * 0.72;
+    n.x = Math.min(W - mx, Math.max(mx, rcx + Math.cos(a) * rr));
+    n.y = Math.min(H - my, Math.max(my, rcy + Math.sin(a) * rr * 0.72));
   });
 
   pinToMap();
@@ -647,14 +665,24 @@ function syncHome(){
   b.classList.toggle('idle', дома);
 }
 
-function fitWorld(){
+// Возврат к общему рисунку. С плавностью, когда его попросил человек
+// (тап по пустому месту или кнопка), и без — когда это просто пересчёт
+// после смены размера окна: там анимировать нечего.
+function fitWorld(плавно){
   if (!mapbg) return;
   try {
     mapbg.invalidateSize(false);
     // Обитаемая часть мира, без полярных пустошей: они заняли бы треть
     // кадра и ничего не сообщают. Границы одни и те же на любом экране,
     // масштаб под них подбирает сам Leaflet.
-    mapbg.fitBounds(L.latLngBounds([[-54,-168],[72,178]]), { animate:false, padding:[0,0] });
+    // Не «вписать», а «закрыть кадр»: на высоком телефоне вписанный мир
+    // оставлял пустые полосы сверху и снизу — экран выше, чем карта при
+    // этом масштабе (поймано снимком 17.09). getBoundsZoom(B, true) даёт
+    // масштаб, при котором область заполняет контейнер целиком.
+    const B = L.latLngBounds([[-54,-168],[72,178]]);
+    const z = mapbg.getBoundsZoom(B, true);
+    if (плавно) mapbg.flyTo(B.getCenter(), z, { duration: 0.8 });
+    else        mapbg.setView(B.getCenter(), z, { animate:false });
     HOME = { z: mapbg.getZoom(), c: mapbg.getCenter() };
     syncHome();
   } catch (e) {}
@@ -671,7 +699,7 @@ function resize(){
   layout();        // …и только потом раскладка прикалывается к нему
   projectEchoes();
 }
-function resetView(){ closePopup(); fitWorld(); }
+function resetView(){ closePopup(); fitWorld(true); }
 
 // ── карточка узла ─────────────────────────────────────────────────
 let openId = null, openEcho = null;
@@ -768,8 +796,7 @@ function onMapClick(ev){
 
   // Слоя два, и «Сеть всегда выше» тут не годится: сгусток эха под узлом
   // стал бы недоступен навсегда. Выигрывает то, что БЛИЖЕ к пальцу —
-  // человек целился именно туда (поймано тестом 17.09: на мониторе узел
-  // перехватывал самый крупный сгусток из одиннадцати новостей).
+  // человек целился именно туда.
   const near = nodesNear(pt.x, pt.y, 22);
   let dNode = Infinity, node = null;
   for (const n of near){
@@ -780,28 +807,38 @@ function onMapClick(ev){
   const c = echoOn ? pickCluster(pt.x, pt.y) : null;
   const dEcho = c ? Math.hypot(c.x - pt.x, c.y - pt.y) : Infinity;
 
+  // ПРАВИЛО ЦЕЛИКОМ (17.09, сформулировал Витя):
+  //   попал в узел, ромб или сгусток — приближаемся, неважно шум это или эхо;
+  //   попал в пустое место — возвращаемся к общему рисунку.
+  // Приближение стало безопасным именно потому, что у него появился
+  // парный жест: раньше улететь было можно, а вернуться — нечем.
   if (dEcho < dNode){
-    if (c.items.length > 1) { zoomToCluster(c); return; }   // сгусток разводим
+    if (c.items.length > 1) { zoomToCluster(c); return; }
     openEchoPopup(c.items[0]);
+    zoomTo(L.latLng(c.items[0].lat, c.items[0].lon));
     return;
   }
   if (node){
-    // несколько узлов под пальцем — выбирать за человека неправильно:
-    // приближаем, пусть разойдутся, и он ткнёт в тот, который хотел
     if (near.length > 1) { zoomToNodes(near); return; }
     openPopup(node);
+    zoomTo(node.ll);
     return;
   }
   closePopup();
+  fitWorld(true);
 }
 
-// ПОЧЕМУ ТАП ПО ОДИНОЧНОМУ ОБЪЕКТУ НЕ ПРИБЛИЖАЕТ (17.09, второй заход).
-// Сначала я сделал наоборот: тап подтягивал камеру к узлу. Витя сразу
-// нашёл, во что это превращается — страны приглушены до текстуры, и
-// после полёта к одинокому узлу на экране остаётся один зелёный кружок
-// в черноте: ни Сети, ни ориентиров, «пропадает вообще всё».
-// Приближение осмысленно ровно там, где под пальцем НЕСКОЛЬКО объектов
-// и выбор действительно надо развести. Одиночный — просто карточка.
+// Шаг приближения к одиночному объекту. Потолок ниже общего: дальше
+// смысла нет — вокруг одна текстура, а Сеть уже вся за кадром.
+const TAP_ZOOM_MAX = 6;
+function zoomTo(ll){
+  if (!mapbg || !ll) return;
+  try {
+    const z = mapbg.getZoom();
+    if (z >= TAP_ZOOM_MAX) return;
+    mapbg.flyTo(ll, Math.min(TAP_ZOOM_MAX, z + 2), { duration: 0.7 });
+  } catch (e) {}
+}
 
 function nodesNear(sx, sy, rad){
   const out = [];
