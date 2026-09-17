@@ -88,15 +88,26 @@
   .lg-alone { color:#8fa89c; } .lg-alone::before { color:#8fa89c; }
 
   /* карточка узла — та же, что на карте сейчас */
+  /* Скругление «до упора»: 999px браузер сам зажимает до половины
+     высоты, а высота карточки задаётся длиной шума — значит короткая
+     реплика станет капсулой, длинная скруглится мягче, и подбирать
+     ничего не нужно. Когда внутри открыт список своих шумов, радиус
+     умеряем: в капсуле строки списка упирались бы в дугу. */
   .popup { position:absolute; z-index:20; background:rgba(0,0,0,0.95);
-           border:1px solid rgba(0,255,136,0.3); box-shadow:0 0 20px rgba(0,255,136,0.1); }
-  .popup-content { padding:1.2rem; min-width:240px; max-width:300px; }
+           border:1px solid rgba(0,255,136,0.3); box-shadow:0 0 20px rgba(0,255,136,0.1);
+           border-radius:999px; transition:border-radius 0.25s ease; }
+  .popup.picking { border-radius:22px; }
+  /* по бокам просторнее: у сильной дуги текст иначе цепляет край */
+  .popup-content { padding:1.2rem 1.7rem; min-width:240px; max-width:300px; }
   .popup-tag { font-size:0.55rem; color:#00ff88; letter-spacing:0.2em; margin-bottom:0.6rem; }
   .popup-text { font-size:0.75rem; line-height:1.6; color:rgba(255,255,255,0.7);
                 margin-bottom:0.8rem; max-height:140px; overflow-y:auto; }
   .popup-time { font-size:0.55rem; color:#555; }
-  .popup-close { position:absolute; top:0.4rem; right:0.6rem; background:none; border:none;
-                 color:#555; font-size:0.9rem; cursor:pointer; font-family:inherit; }
+  /* Крестик уходит внутрь: у сильной дуги прежнее место оказалось за
+     краем карточки, на пустом полотне. */
+  .popup-close { position:absolute; top:0.7rem; right:1.5rem; background:none; border:none;
+                 color:#555; font-size:0.9rem; cursor:pointer; font-family:inherit;
+                 line-height:1; padding:0.2rem; }
   .popup-close:hover { color:var(--accent); }
   /* кнопки в карточке — те же, что на карте */
   .popup-btns { display:flex; gap:0.5rem; margin-top:0.8rem; flex-wrap:wrap; }
@@ -939,10 +950,12 @@ function togglePicker(pop, target, btn){
   if (!picker) return;
   if (picker.style.display === 'block'){
     picker.style.display = 'none';
+    pop.classList.remove('picking');
     btn.textContent = 'предложить связь';
     return;
   }
   btn.textContent = 'выбери свой шум';
+  pop.classList.add('picking');
   picker.innerHTML = '<div class="picker-head">КАКИМ СВОИМ ШУМОМ СВЯЗАТЬ</div>' +
     MY.nodes.map(m => {
       const было = MY.pairs.has(m.id + '|' + target.id);
