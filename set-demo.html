@@ -797,7 +797,7 @@ function openPopup(n){
   pop.innerHTML =
     '<button class="popup-close" aria-label="закрыть">&times;</button>' +
     '<div class="popup-content">' +
-      '<div class="popup-tag">// УЗЕЛ СЕТИ</div>' +
+      '<div class="popup-tag">' + (MY.ids.has(n.id) ? '// ТВОЙ УЗЕЛ' : '// УЗЕЛ СЕТИ') + '</div>' +
       '<div class="popup-text"></div>' +
       '<div class="popup-time">' + (n.deg ? n.deg + ' нитей' : 'ещё ни с чем не сплёлся') +
         (d ? ' · ' + d : '') + '</div>' +
@@ -839,9 +839,10 @@ function fillConnectBtn(pop, n){
     return;
   }
   if (MY.ids.has(n.id)){
-    b.className = 'popup-btn muted';
-    b.textContent = 'твой узел';
-    box.appendChild(b);
+    // Своему узлу кнопка не нужна: связать его с собой нельзя, а надпись
+    // «твой узел» внизу повторяла бы заголовок карточки. Снимаем и саму
+    // полосу кнопок, иначе она оставит пустой отступ (Витя, 17.09).
+    box.remove();
     return;
   }
   if (!MY.nodes.length){
