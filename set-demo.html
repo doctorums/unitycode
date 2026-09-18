@@ -694,25 +694,29 @@ function draw(t){
     projectEchoes();
     clusterEchoes();
     for (const c of CLUSTERS){
+      // Янтарь приглушён (Витя, 18.09: «на эхо жёлтый сильно ярко») — той
+      // же мерой, что и зелень узлов накануне: слабее гало, уже охват,
+      // спокойнее сам ромб. Эхо — фон мира под Сетью, а не её сообщение,
+      // и кричать ему незачем.
       const many = c.items.length > 1;
-      const puls = 0.85 + 0.15*Math.sin(t*1.1 + (c.x + c.y)*0.05);
-      const r = (many ? 6.4 : 4.2) * puls;
+      const puls = 0.9 + 0.1*Math.sin(t*1.1 + (c.x + c.y)*0.05);
+      const r = (many ? 5.8 : 4.0) * puls;
 
-      const g = ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,r*4);
-      g.addColorStop(0,'rgba(255,180,60,' + (many ? 0.42 : 0.35) + ')');
-      g.addColorStop(1,'rgba(255,180,60,0)');
+      const g = ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,r*3.4);
+      g.addColorStop(0,'rgba(232,168,64,' + (many ? 0.24 : 0.19) + ')');
+      g.addColorStop(1,'rgba(232,168,64,0)');
       ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(c.x,c.y,r*4,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(c.x,c.y,r*3.4,0,Math.PI*2); ctx.fill();
 
       const lit = !many && openEcho === c.items[0].id;
       ctx.save();
       ctx.translate(c.x, c.y); ctx.rotate(Math.PI/4);
-      ctx.fillStyle = lit ? '#fff2d8' : 'rgba(255,180,60,0.92)';
+      ctx.fillStyle = lit ? 'rgba(255,230,190,0.95)' : 'rgba(232,168,64,0.68)';
       ctx.fillRect(-r/1.4, -r/1.4, r*1.42, r*1.42);
       ctx.restore();
 
       if (many){
-        ctx.fillStyle = 'rgba(10,8,2,0.92)';
+        ctx.fillStyle = 'rgba(12,9,3,0.9)';
         ctx.font = '600 9px \'Share Tech Mono\', monospace';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(String(c.items.length), c.x, c.y + 0.5);
