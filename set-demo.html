@@ -41,7 +41,7 @@
                color:#ffb43c; border:1px solid rgba(255,180,60,0.35);
                padding:0.2rem 0.5rem; text-transform:uppercase; white-space:nowrap; }
 
-  #net { flex:1; position:relative; z-index:1; background:#050a08; touch-action:none; }
+  #net { flex:1; position:relative; z-index:1; background:#05080b; touch-action:none; }
 
   /* ── КАРТА — ОБЩАЯ КАМЕРА ────────────────────────────────────────
      Карта не фон и не раскладка, а система координат для всех слоёв
@@ -49,15 +49,18 @@
      моего кода, и главное — двигает ОДНОВРЕМЕННО мир, эхо и Сеть.
      Раньше камер было две (Сеть ездила сама, мир стоял), и это не
      сходилось ни при каком масштабе. */
-  #mapbg { position:absolute; inset:0; z-index:0; background:#050a08; }
+  #mapbg { position:absolute; inset:0; z-index:0; background:#05080b; }
   #mapbg .leaflet-container { cursor:grab; }
   #mapbg .leaflet-container:active { cursor:grabbing; }
-  #mapbg .leaflet-container { background:#050a08 !important; }
+  #mapbg .leaflet-container { background:#05080b !important; }
   /* Страны приглушены до текстуры (17.09, по замечанию Вити): узел не
      должен читаться как «стоящий на США». Материки остаются формой, но
      не атласом — при этом эхо сохраняет настоящую географию относительно
      себя: европейская гроздь остаётся гроздью, африканская африканской. */
-  #mapbg .leaflet-tile-pane { filter:brightness(0.17) saturate(0) contrast(0.75) hue-rotate(120deg); }
+  /* hue-rotate убран: он крутил оттенок ПОСЛЕ обесцвечивания, то есть не
+     делал ничего полезного, но оставался поводом думать, что карта
+     зелёная. Серое остаётся серым. */
+  #mapbg .leaflet-tile-pane { filter:brightness(0.17) saturate(0) contrast(0.75); }
 
   /* Вуаль поверх карты. Две работы сразу: гасит серый город, чтобы нити
      не тонули, и притемняет края, чтобы мир не резался рамкой.
@@ -66,12 +69,15 @@
   #veil { position:absolute; inset:0; z-index:1; pointer-events:none;
           --v:0.52;
           background:
-            radial-gradient(ellipse at 74% 16%, rgba(0,255,136,0.05) 0%, rgba(0,200,255,0.018) 42%, rgba(0,0,0,0) 72%),
-            radial-gradient(ellipse at 50% 46%, rgba(3,14,11,0) 30%, rgba(3,14,11,calc(var(--v) * 0.55)) 100%),
+            /* Зелёного подсвета в углу больше нет, а сама вуаль уведена
+               из зелёного в нейтральный тёмный (Витя, 18.09: «много зелени
+               в бэкграунде»). Зелень остаётся там, где она что-то значит,
+               — в узлах и нитях. */
+            radial-gradient(ellipse at 50% 46%, rgba(6,10,13,0) 30%, rgba(6,10,13,calc(var(--v) * 0.55)) 100%),
             linear-gradient(180deg,
-              rgba(3,14,11,calc(var(--v) * 1.10)) 0%,
-              rgba(3,14,11,var(--v)) 42%,
-              rgba(3,14,11,calc(var(--v) * 1.25)) 100%); }
+              rgba(6,10,13,calc(var(--v) * 1.10)) 0%,
+              rgba(6,10,13,var(--v)) 42%,
+              rgba(6,10,13,calc(var(--v) * 1.25)) 100%); }
 
   /* Канвас — стекло поверх карты: рисует, но событий не берёт. Все
      жесты уходят карте под ним, тап ловится её же обработчиком. */
@@ -742,24 +748,32 @@ function draw(t){
   for (const n of NODES){
     const p = POS[n.id];
     const alone = n.deg === 0;
-    const base = alone ? 2.4 : 3.2 + Math.min(4.6, n.deg*0.52);
-    const puls = 0.86 + 0.14*Math.sin(t*1.5 + (ucHash(n.id) % 628)/100);
+    // Свет убавлен (Витя, 18.09: «кажется как засветка»). Три места
+    // складывались и давали пересвет, особенно на хабе: сам узел больше,
+    // гало пропорционально больше, и поверх ещё белое ядро.
+    //   • рост радиуса с числом нитей приторможен: 0.52 → 0.34 на нить,
+    //     потолок 4.6 → 2.8. Хаб остаётся крупнее всех, но не вдвое;
+    //   • гало скромнее по силе (0.42 → 0.28) и уже по охвату (5.2r → 4.4r);
+    //   • белое ядро у самых сплетённых больше не белое и не мигает так
+    //     заметно — оно и создавало ощущение прожектора.
+    const base = alone ? 2.4 : 3.2 + Math.min(2.8, n.deg*0.34);
+    const puls = 0.9 + 0.1*Math.sin(t*1.5 + (ucHash(n.id) % 628)/100);
     const r = base*puls;
     const col = alone ? '150,170,160' : '0,255,136';
 
-    const g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*5.2);
-    g.addColorStop(0,   'rgba('+col+','+(alone?0.20:0.42)+')');
-    g.addColorStop(0.35,'rgba('+col+','+(alone?0.08:0.16)+')');
+    const g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*4.4);
+    g.addColorStop(0,   'rgba('+col+','+(alone?0.15:0.28)+')');
+    g.addColorStop(0.35,'rgba('+col+','+(alone?0.06:0.11)+')');
     g.addColorStop(1,   'rgba('+col+',0)');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(p.x,p.y,r*5.2,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x,p.y,r*4.4,0,Math.PI*2); ctx.fill();
 
-    ctx.fillStyle = alone ? 'rgba(165,185,175,0.85)' : 'rgba(0,255,136,0.95)';
+    ctx.fillStyle = alone ? 'rgba(165,185,175,0.8)' : 'rgba(0,255,136,0.88)';
     ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.fill();
 
     if (n.deg >= 5){
-      ctx.fillStyle = 'rgba(235,255,245,'+(0.55+0.25*breathe).toFixed(3)+')';
-      ctx.beginPath(); ctx.arc(p.x,p.y,r*0.42,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(200,255,225,'+(0.3+0.1*breathe).toFixed(3)+')';
+      ctx.beginPath(); ctx.arc(p.x,p.y,r*0.4,0,Math.PI*2); ctx.fill();
     }
     if (n.id === openId){
       ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1.2;
