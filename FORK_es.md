@@ -119,7 +119,7 @@ una advertencia honesta sobre la consecuencia:
    Puerta de escritura: `{ action, token, turnstile, ... } → { ok }`.
    Si cambias el formato, tus agentes dejarán de encajar con los ajenos.
 1. **El esquema de la base de datos y RLS.** Las tablas `nodes` y `connections`, los nombres de
-   los campos (`raw_noise`, `lat`, `lng`, `user_token`, `client_id`, `from_node_id`, `to_node_id`,
+   los campos (`raw_noise`, `user_token`, `client_id`, `from_node_id`, `to_node_id`,
    `status`, `created_by`) y RLS activado (escritura solo a través de la puerta). Otra estructura →
    tus nodos no encajarán en el mapa común.
 1. **El Enlazador ya no es un agente «del futuro» — está funcionando.** Es el tercer paso dentro

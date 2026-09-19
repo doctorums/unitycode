@@ -1,6 +1,7 @@
 -- ============================================================================
 -- SCHEMA.SQL — эталонная схема базы UnityCode.
 -- Снята с боевой базы 05.07.2026 (information_schema + pg_constraint).
+-- Сверена с боевой базой 19.09.2026 после удаления nodes.lat / nodes.lng.
 -- Выполнить один раз в Supabase (SQL Editor) при разворачивании своего узла.
 -- Заменяет старые create tables.sql / add connections.sql / миграции.
 -- ============================================================================
@@ -13,8 +14,9 @@ create table if not exists nodes (
   raw_noise         text not null,            -- что ввёл человек
   ai_interpretation text not null,            -- отклик Спирали
   parent_id         uuid references nodes(id) on delete set null,
-  lat               double precision,
-  lng               double precision,
+  -- lat/lng убраны 19.09.2026: место больше не пишется ни клиентом, ни
+  -- воркером. Таблица читается публично (RLS: anon select), а координаты
+  -- не открывал ни один слой портала — карта мира заменена рисунком графа.
   user_token        text,                     -- анонимный токен владельца
   essence           text,                     -- квинтэссенция (Distill) для Материи
   client_id         text unique,              -- ключ идемпотентности с клиента:

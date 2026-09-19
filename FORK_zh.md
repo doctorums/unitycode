@@ -114,7 +114,7 @@ UnityCode 不是一个网站，而是一套协议。任何人都可以拿走它�
    写入之门：`{ action, token, turnstile, ... } → { ok }`。
    如果你改动格式，你的智能体将无法与别人的对接。
 1. **数据库结构与 RLS。** `nodes` 与 `connections` 两张表、字段名
-   （`raw_noise`、`lat`、`lng`、`user_token`、`client_id`、`from_node_id`、`to_node_id`、
+   （`raw_noise`、`user_token`、`client_id`、`from_node_id`、`to_node_id`、
    `status`、`created_by`），以及启用的 RLS（只允许通过门写入）。结构不同 →
    你的节点将无法融入共同的地图。
 1. **联结者不再是「未来的」智能体 —— 它已经在运行。** 它是 write-worker 内部的第三步：

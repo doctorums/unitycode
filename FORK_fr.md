@@ -119,7 +119,7 @@ une interdiction — c'est un avertissement honnête sur la conséquence :
    Porte d'écriture : `{ action, token, turnstile, ... } → { ok }`.
    Si vous changez le format, vos agents cesseront de s'emboîter avec ceux des autres.
 1. **Le schéma de la base et RLS.** Les tables `nodes` et `connections`, les noms des
-   champs (`raw_noise`, `lat`, `lng`, `user_token`, `client_id`, `from_node_id`, `to_node_id`,
+   champs (`raw_noise`, `user_token`, `client_id`, `from_node_id`, `to_node_id`,
    `status`, `created_by`) et RLS activé (écriture uniquement par la porte). Une autre structure →
    vos nœuds ne s'inscriront pas dans la carte commune.
 1. **Le Liant n'est plus un agent «du futur» — il tourne.** C'est la troisième étape dans

@@ -119,7 +119,7 @@ portals. This is not a prohibition — it's an honest warning about the conseque
    Write gateway: `{ action, token, turnstile, ... } → { ok }`.
    Change the format — and your agents will no longer dock with the others'.
 1. **The database schema and RLS.** The tables `nodes` and `connections`, the field
-   names (`raw_noise`, `lat`, `lng`, `user_token`, `client_id`, `from_node_id`,
+   names (`raw_noise`, `user_token`, `client_id`, `from_node_id`,
    `to_node_id`, `status`, `created_by`), plus RLS enabled (writes only via the gateway).
    A different structure → your nodes won't fit into the shared map.
 1. **The Linker is no longer a "future" agent — it already works.** The third step
