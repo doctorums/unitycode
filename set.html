@@ -194,11 +194,16 @@
              background:#050a08; padding:1.8rem; }
   .key-tag { font-size:0.6rem; color:var(--accent); letter-spacing:0.2em; margin-bottom:1rem; }
   .key-desc { font-size:0.75rem; line-height:1.7; color:rgba(255,255,255,0.7); margin-bottom:1.3rem; }
-  #key-input { width:100%; background:rgba(255,255,255,0.03);
-               border:1px solid rgba(0,255,136,0.2); color:#fff;
+  /* Класс, а не id: окон ввода ключа два — дверь на входе и карточка
+     узла. Правило на #key-input дверь не доставало, и она открывалась
+     голым полем браузера с синей рамкой (снимок Вити 19.09). */
+  .key-input { width:100%; box-sizing:border-box; display:block;
+               background:rgba(255,255,255,0.03);
+               border:1px solid rgba(0,255,136,0.2); border-radius:0;
+               color:#fff; -webkit-appearance:none; appearance:none;
                font-family:'Share Tech Mono',monospace; font-size:16px;
                padding:0.6rem 0.8rem; outline:none; margin-bottom:1rem; }
-  #key-input:focus { border-color:rgba(0,255,136,0.5); }
+  .key-input:focus { border-color:rgba(0,255,136,0.5); }
   .key-btns { display:flex; gap:0.8rem; }
   .key-btns .popup-btn { flex:1; text-align:center; padding:0.6rem; }
   .key-note { font-size:0.6rem; color:var(--dim); margin-top:0.8rem; min-height:1em; }
@@ -1194,7 +1199,7 @@ function askKey(nодin){
     '<div class="key-box">' +
       '<div class="key-tag">' + словоГолое('set.keyTitle','КЛЮЧ УЗЛА') + '</div>' +
       '<p class="key-desc"></p>' +
-      '<input id="key-input" type="text" autocomplete="off">' +
+      '<input id="key-input" class="key-input" type="text" autocomplete="off">' +
       '<div class="key-btns">' +
         '<button class="popup-btn" id="key-ok">' + словоГолое('set.keyEnter','войти') + '</button>' +
         '<button class="popup-btn muted" id="key-no">' + слово('set.keyCancel','отмена') + '</button>' +
@@ -1631,7 +1636,7 @@ function skipIntro(){
     '<div class="key-box">' +
       '<div class="key-tag"></div>' +
       '<p class="key-desc"></p>' +
-      '<input id="door-input" type="text" autocomplete="off">' +
+      '<input id="door-input" class="key-input" type="text" autocomplete="off">' +
       '<div class="key-btns">' +
         '<button class="popup-btn" id="door-ok"></button>' +
         '<button class="popup-btn muted" id="door-no"></button>' +
