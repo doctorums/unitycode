@@ -41,15 +41,10 @@
 // в котором реально появились связи, — снимок метрик сети в network_snapshots.
 // Право вызова у функции отозвано у anon и выдано service_role, поэтому ходить
 // туда может только воркер, а не браузер.
-//   ECHO_TEST_KEY         (secret) опционально; ТОТ ЖЕ секрет, что уже стоит у воркера
-//                                  unitycode-echo для его диагностического fetch(). Если задан
-//                                  здесь тоже — каждое успешное вплетение узла заодно будит
-//                                  unitycode-echo на один прогон сбора новостей (см.
-//                                  triggerEchoCollection). Без секрета — тихо пропускается,
-//                                  вплетение работает как раньше.
 //
 // Клиент шлёт POST JSON:
-//   { action:'node',        token, turnstile, raw_noise, ai_interpretation, lat?, lng?, echo_id? }
+//   { action:'node',        token, turnstile, raw_noise, ai_interpretation, tz?, echo_id? }
+//     (lat/lng приняты и проигнорированы — место не пишется с 19.09)
 //   { action:'connection',  token, turnstile, from_node_id, to_node_id }
 //   { action:'voice_check', token, turnstile, user_token }
 //   { action:'voice_write', token, turnstile, user_token, text, lang?, client_id? }
@@ -453,7 +448,9 @@ async function logLinker(env, nodeId, trace) {
 }
 
 const EVENT_SCHEMA_V = {
-  node_created: 2,        // v2 (25.07): + geo_source ('client'|'last_known'|'ip_geo'|null). v1: raw_noise, ai_interpretation, essence?, lat?, lng?, tz?
+  node_created: 3,        // v3 (19.09): − lat, lng, geo_source — место больше не пишется.
+                          //     Осталось: raw_noise, ai_interpretation, essence?, tz?
+                          // v2 (25.07): + geo_source ('client'|'last_known'|'ip_geo'|null). v1: raw_noise, ai_interpretation, essence?, lat?, lng?, tz?
   connection_created: 2,  // v2 (04.09): + weight (0–1 или null, если модель не назвала). v1: from_node_id, to_node_id, created_by
   node_duplicate_retry: 1,// v1: пустой payload, значим только client_id строки
   essence_failed: 1,      // v1: reason (строка из distill().fail) — фикс 25.07
@@ -931,31 +928,6 @@ async function recordEchoResponse(env, echoId, nodeId) {
   } catch (e) { /* тихо: не критичный путь */ }
 }
 
-// ── ЭХО МИРА: разовый пинок сборщику при вплетении ─────────────────
-// Предложение Вити (22.08): «оставил шум → мир откликнулся» — каждое
-// успешное вплетение заодно будит unitycode-echo на один прогон сбора
-// новостей, вместо того чтобы полагаться только на Cron Trigger или
-// ручные заходы по диагностической ссылке.
-//
-// Секрет не новый: тот же ECHO_TEST_KEY, что уже стоит у unitycode-echo,
-// нужно продублировать сюда как переменную этого воркера — без неё вызов
-// молча пропускается, ничего не ломая.
-//
-// Не ждём результата (fetch без await результата тела) — у echo свой
-// full=1 сам не блокирует ответ (уходит в собственный ctx.waitUntil и
-// отвечает started:true почти сразу), так что здесь это лёгкий «толчок»,
-// а не долгий вызов. У unitycode-echo свой отдельный бюджет подзапросов
-// (SUBREQUEST_STOP_AT в его коде) — к бюджету ctx.waitUntil ЭТОГО воркера
-// (общему на runLinker/logEvent) это не имеет отношения, это отдельный
-// инвок отдельного воркера.
-const ECHO_WORKER_URL = 'https://unitycode-echo.sv2txxznjm.workers.dev/';
-async function triggerEchoCollection(env) {
-  if (!env.ECHO_TEST_KEY) return;
-  try {
-    await fetch(`${ECHO_WORKER_URL}?key=${encodeURIComponent(env.ECHO_TEST_KEY)}&full=1`);
-  } catch (e) { /* эхо не критично для вплетения — тихий fail-safe */ }
-}
-
 // ── «ВТОРЫЕ ВОРОТА» — ГОЛОСА ──────────────────────────────────────
 // Порог вплетённых шумов, дающий доступ к длинным осознанным текстам.
 // Голоса — отдельная таблица (migrations/voices.sql), не узлы графа.
@@ -1055,68 +1027,33 @@ async function reviewVoice(env, voice) {
   } catch (e) { /* тихо: не критичный путь, ретрая нет */ }
 }
 
-// ── КООРДИНАТЫ, КОГДА БРАУЗЕР ИХ НЕ ДАЛ (25.07) ──────────────────
-// Предложение Вити: не оставлять узел совсем без места на карте, если
-// человек не разрешил геолокацию (отказ, таймаут, выключенные службы —
-// причины не различаем, см. фикс geo diagnostics отдельно). Вместо
-// повторного запроса разрешения — два уровня отката:
-//   1) последняя известная позиция ЭТОГО ЖЕ токена — если человек уже
-//      делился местом раньше, переиспользуем, ничего заново не спрашивая;
-//   2) если для токена ещё ни разу не было геопривязанной записи — грубая
-//      гео по IP от Cloudflare (request.cf.latitude/longitude, точность
-//      города, не точки). Бесплатно, без браузера, без стороннего API —
-//      Cloudflare отдаёт это на каждом запросе штатно.
-// Если не сработало и то, и другое — узел остаётся без места, как раньше
-// (ничего не ломаем, это худший случай, не новый).
-// ── РАЗБРОС ОТКАТА (07.08) ───────────────────────────────────────
-// Когда 07.08 у клиента убрали запрос геолокации, откат стал основным
-// путём — и вылезло: last_known возвращает ТЕ ЖЕ координаты до шестого
-// знака, поэтому все узлы одного человека вставали в одну точку.
-// MarkerCluster схлопывал их в один кружок, и карта переставала
-// показывать, что мыслей много. Раньше этого не было видно только
-// потому, что GPS каждый раз давал чуть другое число.
+// ── МЕСТО БОЛЬШЕ НЕ ПИШЕТСЯ (19.09) ──────────────────────────────
+// Здесь жили координаты: разброс точки (spreadCoords), приём lat/lng от
+// браузера с размытием на 100 м и откат — грубое гео по IP от Cloudflare
+// (request.cf.latitude/longitude, точность города) с разбросом на 150 м.
+// Вся ветка убрана целиком. Узел теперь вплетается без места, всегда.
 //
-// Разброс — не подделка точности, а отказ от ложной: и last_known, и
-// гео по IP приблизительны по своей природе, и утверждать, что шесть
-// мыслей случились на одном и том же метре, — большее враньё, чем
-// честно показать «где-то здесь».
-const FALLBACK_SPREAD_M = 150;
-
-// ФИКС 13.08 (предложение Вити): настоящий GPS раньше не трогали вовсе —
-// «там точность реальная», и это было правдой в ущерб человеку. Карта
-// публичная: чей-то реальный GPS — это чей-то дом с точностью до
-// нескольких метров. 100 м держит узел в границах района, не подъезда.
-// Триггер: узел с точным немецким IP-фолбэком навёл на мысль, что и
-// настоящие координаты стоит размывать тем же способом — раз уж один
-// человек легко узнаваем по геосигналу, нечего давать точный сигнал
-// и тем, кто об этом не думал.
-const CLIENT_SPREAD_M = 100;
-
-function spreadCoords(lat, lng, metres) {
-  const r = metres * Math.sqrt(Math.random());     // равномерно по площади круга
-  const a = Math.random() * Math.PI * 2;
-  const dLat = (r * Math.cos(a)) / 111320;
-  const cosLat = Math.cos(lat * Math.PI / 180) || 1e-6;
-  const dLng = (r * Math.sin(a)) / (111320 * cosLat);
-  return { lat: lat + dLat, lng: lng + dLng };
-}
-
-async function fallbackCoords(env, req) {
-  // ОТКАТ last_known УБРАН (07.08). Он брал координаты последнего
-  // геопривязанного узла этого токена — то есть место, где человек был в
-  // ПРОШЛЫЙ раз. Пока браузер спрашивали, это не всплывало; когда запрос
-  // убрали и откат стал основным путём, узлы встали в четырёх километрах
-  // от настоящего места, и с точностью до шестого знака. Точная неправда
-  // хуже честной неточности, поэтому остаётся только гео по IP: грубо,
-  // до города, зато про сегодня.
-  const cf = req.cf || {};
-  const lat = parseFloat(cf.latitude), lng = parseFloat(cf.longitude);
-  if (Number.isFinite(lat) && Number.isFinite(lng)) {
-    const s = spreadCoords(lat, lng, FALLBACK_SPREAD_M);
-    return { lat: s.lat, lng: s.lng, source: 'ip_geo' };
-  }
-  return null;
-}
+// Почему. Сеть перестала быть картой мира: узел стоит там, где его держат
+// нити, а не там, где сидел человек. Координаты читал только старый слой
+// карты, которого больше нет; Связующий географию не смотрит вовсе,
+// Паттерн и Материя тоже. Тридцать один узел в базе записан с местом, и
+// не открывает его никто.
+//
+// В тот же день Спираль перестала спрашивать геолокацию (7bb3de2) — и
+// откат по IP остался единственным, кто пишет место. Это худший из
+// вариантов: человек не спрошен, отказать ему негде, а строчку всё равно
+// никто не читает. Молча записывать город того, кто только что доверил
+// нам свой шум, — плохая сделка даже при точности до города.
+//
+// Что это стоило: ветка ip_geo за всю историю сработала ровно один раз,
+// остальные тридцать один узел пришли с координатами от браузера. То
+// есть убираемый путь не был источником данных — он был источником
+// записи, которую никто не заказывал.
+//
+// Вернуть — это вернуть сюда spreadCoords и разбор request.cf; путь
+// вплетения трогать не придётся, строка места в него не вплетена.
+// Колонки nodes.lat / nodes.lng и старые записи оставлены как есть:
+// история не переписывается, просто больше не продолжается.
 
 export default {
   async fetch(req, env, ctx) {
@@ -1245,20 +1182,12 @@ export default {
           ai_interpretation: (body.ai_interpretation || '').toString().slice(0, 2000),
           user_token: token,
         };
-        if (typeof body.lat === 'number' && typeof body.lng === 'number') {
-          // Приватность (13.08): реальный GPS размывается тем же способом,
-          // что и IP-фолбэк — просто на меньший радиус, точность района,
-          // не подъезда. См. комментарий у CLIENT_SPREAD_M.
-          const s = spreadCoords(body.lat, body.lng, CLIENT_SPREAD_M);
-          row.lat = s.lat; row.lng = s.lng;
-        }
-        // Фолбэк координат (25.07, предложение Вити): браузер не дал место —
-        // последняя известная позиция токена, иначе грубая гео по IP.
-        let geoSource = row.lat != null ? 'client' : null;
-        if (row.lat == null) {
-          const fb = await fallbackCoords(env, req);
-          if (fb) { row.lat = fb.lat; row.lng = fb.lng; geoSource = fb.source; }
-        }
+        // Место (lat/lng) не пишется с 19.09 — см. «МЕСТО БОЛЬШЕ НЕ
+        // ПИШЕТСЯ» выше. body.lat / body.lng молча игнорируются: старый
+        // клиент из кэша GitHub Pages или шум, пролежавший в очереди
+        // localStorage с прошлой версии Спирали, могут их ещё прислать —
+        // это не ошибка запроса и не повод отказать в записи, просто
+        // координаты никуда не идут.
         if (typeof body.tz === 'string' && body.tz.length > 0 && body.tz.length <= 64) {
           row.tz = body.tz.slice(0, 64);
         }
@@ -1295,10 +1224,7 @@ export default {
               raw_noise: noise,
               ai_interpretation: row.ai_interpretation,
               essence: row.essence,
-              lat: row.lat,
-              lng: row.lng,
               tz: row.tz,
-              geo_source: geoSource,
             },
           }));
           if (essenceFail) {
@@ -1331,7 +1257,6 @@ export default {
           // и его можно отличить от полного исхода при подсчёте метрик.
           await logLinker(env, created.id, 'started');
           ctx.waitUntil(runLinker(env, { id: created.id, raw_noise: t }));
-          ctx.waitUntil(triggerEchoCollection(env));
           if (typeof body.echo_id === 'string' && ID_RE.test(body.echo_id)) {
             ctx.waitUntil(recordEchoResponse(env, body.echo_id, created.id));
           }

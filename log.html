@@ -304,7 +304,6 @@ async function checkQueue(){
       + '<div class="noise-meta">'
       + 'поставлен в очередь: ' + fmtTime(item.queued_at || item.ts) + '<br>'
       + 'попыток отправки: ' + esc(item.attempts != null ? item.attempts : '—') + '<br>'
-      + (item.lat != null ? 'место: записано' : 'место: <span class="warn">не записано</span>') + '<br>'
       + '</div>'
       + '<div class="status-line" data-cid="' + esc(item.client_id) + '">' + serverState + '</div>'
       + '</div>';
@@ -337,7 +336,7 @@ async function checkServer(){
   if (!token) { el.innerHTML = '<span class="warn">нет токена на этом устройстве — нечего искать</span>'; return; }
   try {
     const r = await UCData.fetchRetry(SUPABASE_URL + '/rest/v1/nodes?user_token=eq.' + encodeURIComponent(token)
-      + '&select=id,client_id,created_at,raw_noise,lat,lng,tz&order=created_at.desc&limit=15', { headers });
+      + '&select=id,client_id,created_at,raw_noise,tz&order=created_at.desc&limit=15', { headers });
     if (!r.ok) throw new Error('http ' + r.status);
     const rows = await r.json();
     if (!rows.length) { el.innerHTML = '<span class="warn">под этим токеном на сервере пока ничего нет</span>'; return; }
@@ -355,15 +354,12 @@ async function checkServer(){
     } catch(e){ /* связи не критичны для журнала */ }
 
     el.innerHTML = rows.map(n => {
-      const place = (n.lat != null && n.lng != null)
-        ? '<span class="ok">записано</span>' + (n.tz ? ' (' + esc(n.tz) + ')' : '')
-        : '<span class="warn">без места</span>' + (n.tz ? ' (пояс: ' + esc(n.tz) + ')' : '');
       const cc = connCount[n.id] || 0;
       return '<div class="noise-item">'
         + '<div class="noise-text">«' + esc(short(n.raw_noise, 120)) + '»</div>'
         + '<div class="noise-meta">'
-        + 'вплетён: <span class="ok">' + fmtTime(n.created_at) + '</span><br>'
-        + 'место: ' + place + '<br>'
+        + 'вплетён: <span class="ok">' + fmtTime(n.created_at) + '</span>'
+        + (n.tz ? ' (пояс: ' + esc(n.tz) + ')' : '') + '<br>'
         + 'связей в Сети: ' + (cc ? '<span class="ok">' + cc + '</span>' : '0 (пока одинокий)')
         + '</div></div>';
     }).join('');
@@ -377,7 +373,7 @@ async function checkNet(){
   const el = document.getElementById('net-body');
   try {
     const [nr, cr] = await Promise.all([
-      UCData.fetchRetry(SUPABASE_URL + '/rest/v1/nodes?select=id,created_at,user_token,lat&order=created_at.desc&limit=1000', { headers }),
+      UCData.fetchRetry(SUPABASE_URL + '/rest/v1/nodes?select=id,created_at,user_token&order=created_at.desc&limit=1000', { headers }),
       UCData.fetchRetry(SUPABASE_URL + '/rest/v1/connections?select=id,created_by&status=eq.accepted&limit=1000', { headers }),
     ]);
     if (!nr.ok || !cr.ok) throw new Error('http');
@@ -385,14 +381,12 @@ async function checkNet(){
     const conns = await cr.json();
     const tokens = new Set(nodes.map(n => n.user_token).filter(Boolean));
     const guestTokens = [...tokens].filter(isGuestToken).length;
-    const noPlace = nodes.filter(n => n.lat == null).length;
     const byLinker = conns.filter(c => c.created_by === 'linker').length;
     const last = nodes[0];
     el.innerHTML =
       '<div class="row"><span class="k">Всего шумов</span><span class="v">' + nodes.length + '</span></div>' +
       '<div class="row"><span class="k">Разных сознаний (токенов)</span><span class="v">' + tokens.size + '</span></div>' +
       '<div class="row"><span class="k">— из них гостевых сеансов</span><span class="v">' + (guestTokens ? '<span class="warn">' + guestTokens + '</span>' : '0') + ' из ' + tokens.size + '</span></div>' +
-      '<div class="row"><span class="k">Шумов без места</span><span class="v">' + (noPlace ? '<span class="warn">' + noPlace + '</span>' : '0') + '</span></div>' +
       '<div class="row"><span class="k">Связей принято</span><span class="v">' + conns.length + ' (Связующий: ' + byLinker + ')</span></div>' +
       '<div class="row"><span class="k">Последнее вплетение</span><span class="v">' + (last ? fmtTime(last.created_at) : '—') + '</span></div>';
   } catch(e){
@@ -409,13 +403,13 @@ async function lookup(){
   try {
     // сначала как client_id (точное совпадение одного вплетения)
     let r = await UCData.fetchRetry(SUPABASE_URL + '/rest/v1/nodes?client_id=eq.' + encodeURIComponent(q)
-      + '&select=id,client_id,created_at,raw_noise,lat,lng,tz,user_token&limit=1', { headers });
+      + '&select=id,client_id,created_at,raw_noise,tz,user_token&limit=1', { headers });
     let rows = r.ok ? await r.json() : [];
     let mode = 'client_id';
     if (!rows.length) {
       // затем как токен (все шумы этого устройства/фразы)
       r = await UCData.fetchRetry(SUPABASE_URL + '/rest/v1/nodes?user_token=eq.' + encodeURIComponent(q)
-        + '&select=id,client_id,created_at,raw_noise,lat,lng,tz&order=created_at.desc&limit=25', { headers });
+        + '&select=id,client_id,created_at,raw_noise,tz&order=created_at.desc&limit=25', { headers });
       rows = r.ok ? await r.json() : [];
       mode = 'токен';
     }
@@ -426,7 +420,7 @@ async function lookup(){
         // хэш фразы — общей реализацией из uc-data.js (та же, что в Спирали)
         const hashed = await UCData.phraseToToken(q);
         r = await UCData.fetchRetry(SUPABASE_URL + '/rest/v1/nodes?user_token=eq.' + hashed
-          + '&select=id,client_id,created_at,raw_noise,lat,lng,tz&order=created_at.desc&limit=25', { headers });
+          + '&select=id,client_id,created_at,raw_noise,tz&order=created_at.desc&limit=25', { headers });
         rows = r.ok ? await r.json() : [];
         mode = 'ключевая фраза';
       } catch(e){ /* crypto.subtle недоступен — пропускаем */ }
@@ -438,15 +432,14 @@ async function lookup(){
     if (mode === 'токен') modeNote = isGuestToken(q) ? ' — <span class="warn">гостевой сеанс</span>' : ' — <span class="ok">из ключевой фразы</span>';
     el.innerHTML = '<div class="hint" style="margin:0 0 0.4rem">найдено как ' + mode + ': ' + rows.length + modeNote + '</div>'
       + rows.map(n => {
-        const place = (n.lat != null && n.lng != null) ? '<span class="ok">записано</span>' : '<span class="warn">без места</span>';
         const sessionNote = (mode === 'client_id' && n.user_token)
           ? '<br>сеанс: ' + (isGuestToken(n.user_token) ? '<span class="warn">гостевой</span>' : '<span class="ok">из ключевой фразы</span>')
           : '';
         return '<div class="noise-item">'
           + '<div class="noise-text">«' + esc(short(n.raw_noise, 120)) + '»</div>'
           + '<div class="noise-meta">'
-          + 'вплетён: <span class="ok">' + fmtTime(n.created_at) + '</span><br>'
-          + 'место: ' + place + (n.tz ? ' (' + esc(n.tz) + ')' : '') + sessionNote + '<br>'
+          + 'вплетён: <span class="ok">' + fmtTime(n.created_at) + '</span>'
+          + (n.tz ? ' (пояс: ' + esc(n.tz) + ')' : '') + sessionNote + '<br>'
           + 'client_id: ' + esc(short(n.client_id, 20))
           + '</div></div>';
       }).join('');
