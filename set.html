@@ -243,7 +243,9 @@
               font-size:0.6rem; letter-spacing:0.1em; text-transform:uppercase;
               box-shadow:0 0 14px rgba(0,255,136,0.15);
               transition:opacity 0.3s, border-color 0.3s, box-shadow 0.3s; }
-  #netReset span { font-size:0.85rem; line-height:1; }
+  /* Только значок, а не «любой span»: подпись живёт в своём span ради
+     перевода, и под общим правилом вырастала крупнее «Эха мира». */
+  #netReset .glyph { font-size:0.85rem; line-height:1; }
   #netReset, #echoToggle { padding-top:0; padding-bottom:0; }
   #netReset:active { background:rgba(0,255,136,0.15); }
   #netReset.idle { opacity:0.45; border-color:rgba(0,255,136,0.25); box-shadow:none; }
@@ -398,7 +400,7 @@
 
 <div id="fabs">
   <button class="fab" id="echoToggle" aria-pressed="false" data-i18n="set.echoToggle">Эхо мира</button>
-  <button class="fab" id="netReset" data-i18n-aria="set.resetView" aria-label="Показать всю Сеть"><span>⌖</span><span data-i18n="set.resetLabel">вся сеть</span></button>
+  <button class="fab" id="netReset" data-i18n-aria="set.resetView" aria-label="Показать всю Сеть"><span class="glyph">⌖</span><span data-i18n="set.resetLabel">вся сеть</span></button>
 </div>
 <div id="loading" data-i18n="set.loading">// СИНХРОНИЗАЦИЯ...</div>
 <!-- Коробка Turnstile: обычно невидима, всплывает только если заслон
@@ -1603,9 +1605,9 @@ const INTRO_DURATION = 37000;
 function skipIntro(){
   try { localStorage.setItem('uc_intro_seen', '1'); } catch (e) {}
   const intro = document.getElementById('intro');
-  if (!intro) return;
+  if (!intro || intro.style.display === 'none') return;
   intro.style.animation = 'fadeOut 0.6s ease forwards';
-  setTimeout(() => { intro.style.display = 'none'; }, 600);
+  setTimeout(() => { intro.style.display = 'none'; дверьКлюча(); }, 600);
 }
 (function(){
   let виделИнтро = false, естьКлюч = false;
@@ -1614,8 +1616,13 @@ function skipIntro(){
     естьКлюч   = !!localStorage.getItem('uc_token');
   } catch (e) {}
   const intro = document.getElementById('intro');
-  if (intro && (виделИнтро || естьКлюч)) intro.style.display = 'none';
-  else setTimeout(skipIntro, INTRO_DURATION);
+  // Порядок первого входа (Витя, 19.09): сначала вводный текст, потом
+  // окно ключа. Спрашивать фразу поверх объяснения — значит спрашивать
+  // раньше, чем человек понял, о чём его спрашивают. Тапнул, не
+  // дочитав, — окно приходит тогда же: дверь ждёт конца интро, а не
+  // истечения тридцати семи секунд.
+  if (intro && !виделИнтро && !естьКлюч) setTimeout(skipIntro, INTRO_DURATION);
+  else { if (intro) intro.style.display = 'none'; дверьКлюча(); }
 })();
 
 // ── ДВЕРЬ КЛЮЧА ───────────────────────────────────────────────────
@@ -1625,10 +1632,15 @@ function skipIntro(){
 // но не превращается в «никогда больше не спрашивать».
 // Правка перенесена с прежней Сети: «чуть замешкался — перезагрузка и
 // опять окно ввода» (Витя, 22.08).
-(function(){
+var дверьПоказана = false;   // var, а не let: блок интро выше зовёт
+                             // дверь раньше этой строки, и let бросил бы
+                             // ошибку доступа до инициализации
+function дверьКлюча(){
+  if (дверьПоказана) return;
   let отказался = false;
   try { отказался = sessionStorage.getItem('uc_set_key_skipped') === '1'; } catch (e) {}
   if (MY.token || отказался) return;
+  дверьПоказана = true;
 
   const over = document.createElement('div');
   over.className = 'key-over';
@@ -1675,7 +1687,7 @@ function skipIntro(){
   }
   over.querySelector('#door-ok').onclick = войтиДверью;
   input.onkeydown = ev => { if (ev.key === 'Enter') войтиДверью(); };
-})();
+}
 
 // ── ПУЛЬС ─────────────────────────────────────────────────────────
 // Мигающая точка в статусной строке: страница живая, а не замерший
