@@ -113,8 +113,8 @@ write-воркер). Если ответа нет и в консоли **CORS** 
    Аналитик: `{ scope, nodes, connections } → { interpretation, scope, count }`, где `scope` ∈ `personal | social | collective`.
    Шлюз записи: `{ action, token, turnstile, ... } → { ok }`.
    Поменяешь формат — твои агенты перестанут стыковаться с чужими.
-1. **Схема базы и RLS.** Таблицы `nodes` и `connections`, имена полей (`raw_noise`, `lat`,
-   `lng`, `user_token`, `client_id`, `from_node_id`, `to_node_id`, `status`, `created_by`) и
+1. **Схема базы и RLS.** Таблицы `nodes` и `connections`, имена полей (`raw_noise`,
+   `user_token`, `client_id`, `from_node_id`, `to_node_id`, `status`, `created_by`) и
    включённый RLS (запись — только через шлюз). Другая структура → твои узлы не лягут в
    общую карту.
 1. **Связующий уже не «будущий» агент — он работает.** Третий шаг внутри write-воркера:
