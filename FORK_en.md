@@ -87,7 +87,10 @@ you'll get a Site Key (public) and a Secret Key.
 
 - Worker URLs: `WORKER_URL` (generator), `ANALYZE_URL` (analyst), `WRITE_WORKER_URL` (writes);
 - `SUPABASE_URL` and the public Supabase key (for reads);
-- the Turnstile **Site Key**.
+- the Turnstile **Site Key**;
+- `CF_BEACON_TOKEN` in `analytics.js` — the visit counter (Cloudflare Web Analytics).
+  Put your own site's token there, or leave an empty string to switch the counter off. Our
+  token is bound to `unitycode.space`: Cloudflare will not accept it on your domain.
 
 **6. Check** in order: open a Worker in a browser (it should answer `{"status":"ok"}`) →
 open the Spiral, send some noise → a resonance should come back → on the map create a
