@@ -59,9 +59,14 @@ Le schéma complet, RLS compris, tient dans un seul fichier : `schema.sql`.
 
 **2. Montez votre propre base Supabase** (offre gratuite) :
 
-- exécutez **`schema.sql`** en entier dans le SQL Editor — il crée les cinq tables et active RLS aussitôt ;
+- exécutez **`schema.sql`** en entier dans le SQL Editor — il crée les cinq tables, active RLS
+  et accorde leurs droits aux rôles ;
 - si vous créez ensuite des tables à la main — n'oubliez pas `NOTIFY pgrst, 'reload schema';`,
   sinon l'API REST cessera d'écrire dans la nouvelle table sans rien dire ;
+- **à partir du 30.10.2026** Supabase n'accorde plus lui-même les droits aux nouvelles tables
+  de `public` : une table sans `GRANT` est invisible via l'API, aussi bien pour le navigateur que
+  pour le worker. Le SQL passe sans erreur et l'API répond « permission denied ». Dans `schema.sql`
+  les droits sont déjà écrits — pour vos propres tables, pensez-y comme au `NOTIFY` ;
 - dans Settings → API récupérez le `Project URL`, la clé publique (`anon`/`publishable` — pour la lecture)
   et la clé **secrète** de service (pour le write-worker ; ne la mettez pas dans le client).
 

@@ -50,4 +50,19 @@ alter table echo_responses enable row level security;
 create policy echo_responses_read on echo_responses for select using (true);
 -- insert только через service role (unitycode-write, при наличии echo_id в запросе).
 
+-- ─── ПРАВА НА ТАБЛИЦЫ ───────────────────────────────────────────────────────
+-- Обязательно с 30.10.2026: Supabase больше не выдаёт права новым таблицам
+-- в public сам. Без GRANT таблица не видна через Data API — ни браузеру, ни
+-- воркеру, — причём SQL проходит без ошибок, а API отвечает «permission
+-- denied». Тот же молчаливый класс беды, что и забытый notify pgrst ниже.
+-- echoes читает браузер (set.html). echo_responses — только воркеры, но
+-- политика на чтение у него открытая, и права оставлены как были, чтобы
+-- ничего не поменялось молча.
+grant select on echoes, echo_responses to anon, authenticated;
+grant select, insert, update, delete on echoes, echo_responses to service_role;
+
+-- Запись анониму не положена нигде: браузер в базу не пишет, только воркер.
+revoke insert, update, delete, truncate on echoes         from anon;
+revoke insert, update, delete, truncate on echo_responses from anon;
+
 notify pgrst, 'reload schema';

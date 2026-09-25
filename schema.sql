@@ -99,8 +99,37 @@ create policy "uc_conn_public_read"
 -- events / linker_log / analysis_cache — политик нет: доступны только
 -- service-ключу воркеров.
 
+-- ─── ПРАВА НА ТАБЛИЦЫ (GRANT) ───────────────────────────────────────────────
+-- ВАЖНО С 30.10.2026. Раньше Supabase выдавал права на новые таблицы в public
+-- сам, и этот файл обходился без единого GRANT. Больше не выдаёт: таблица,
+-- созданная без явных прав, не видна через Data API — ни браузеру, ни воркеру.
+--
+-- Симптом обманчивый: SQL проходит без ошибок, таблицы созданы, RLS включён,
+-- политики на месте — а API отвечает «permission denied». Это тот же класс
+-- беды, что и забытый `notify pgrst` в конце файла: всё выглядит сделанным,
+-- но API таблицы не видит. Поэтому права проставлены явно.
+--
+-- Кому что. Браузер (anon) ходит ровно в четыре таблицы и только на чтение:
+-- здесь это nodes и connections, ещё echoes и voices — в своих миграциях.
+-- Всё остальное — только воркерам под service-ключом. Права на запись
+-- анониму не выдаются нигде: это правило проекта, а не настройка.
+grant select on nodes, connections
+  to anon, authenticated;
+
+grant select, insert, update, delete
+  on nodes, connections, events, linker_log, analysis_cache
+  to service_role;
+
+-- Подчистка для баз, созданных ДО 30.10.2026: там Supabase успел выдать
+-- анониму полный набор автоматически, включая delete и truncate. На свежей
+-- базе эти строки просто ничего не делают.
 revoke insert, update, delete on nodes          from anon;
 revoke insert, update, delete on connections    from anon;
 revoke all                    on events         from anon;
 revoke all                    on linker_log     from anon;
 revoke all                    on analysis_cache from anon;
+
+-- ─── ПОСЛЕДНЕЕ И ОБЯЗАТЕЛЬНОЕ ───────────────────────────────────────────────
+-- Без этого PostgREST не увидит новые таблицы и будет молча отвечать так,
+-- будто их нет.
+notify pgrst, 'reload schema';

@@ -60,9 +60,14 @@ The database is Supabase. Tables: `nodes`, `connections`, `events`, `linker_log`
 
 **2. Spin up your own Supabase database** (free tier):
 
-- run **`schema.sql`** in the SQL Editor — it creates all five tables and turns RLS on;
+- run **`schema.sql`** in the SQL Editor — it creates all five tables, turns RLS on
+  and grants the roles their privileges;
 - if you later create tables by hand, don't forget `NOTIFY pgrst, 'reload schema';`,
   otherwise the REST API will silently stop writing to the new table;
+- **from 2026-10-30** Supabase no longer grants privileges to new tables in `public` by itself:
+  a table without a `GRANT` is invisible through the API to both the browser and the Worker.
+  The SQL still succeeds, and the API answers "permission denied". `schema.sql` already carries
+  the grants — for your own tables remember them just like `NOTIFY`;
 - from Settings → API take your `Project URL`, the public key (`anon`/`publishable` — for reads)
   and the **secret** service key (for the write Worker; never put it in the client).
 
