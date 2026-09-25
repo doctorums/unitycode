@@ -21,4 +21,15 @@ create policy voices_read on voices for select using (true);
 -- INSERT-политики для anon НЕТ намеренно — RLS включена, политики insert
 -- нет вовсе, значит anon-ключ не может писать в таблицу вообще.
 
+-- ─── ПРАВА НА ТАБЛИЦЫ ───────────────────────────────────────────────────────
+-- Обязательно с 30.10.2026: Supabase больше не выдаёт права новым таблицам
+-- в public сам. Без GRANT таблица не видна через Data API — ни браузеру, ни
+-- воркеру, — причём SQL проходит без ошибок, а API отвечает «permission
+-- denied». Тот же молчаливый класс беды, что и забытый notify pgrst ниже.
+-- voices читает браузер (materials.html), пишет только воркер.
+grant select on voices to anon, authenticated;
+grant select, insert, update, delete on voices to service_role;
+
+revoke insert, update, delete, truncate on voices from anon;
+
 notify pgrst, 'reload schema';

@@ -279,6 +279,21 @@ from public.network_snapshots
 order by created_at desc;
 comment on view public.v_network_health is
   'Читаемая сводка снимков для Table Editor. Следить в первую очередь за доля_хабов (рост = гиперсвязность) и изолировано.';
+-- ─── ПРАВА НА ТАБЛИЦЫ ───────────────────────────────────────────────────────
+-- Обязательно с 30.10.2026: Supabase больше не выдаёт права новым таблицам
+-- в public сам. Без GRANT таблица не видна через Data API — ни браузеру, ни
+-- воркеру, — причём SQL проходит без ошибок, а API отвечает «permission
+-- denied». Тот же молчаливый класс беды, что и забытый notify pgrst ниже.
+-- settings и network_snapshots из браузера не читаются, но политики на
+-- чтение у них открытые — права оставлены как были, чтобы ничего не
+-- поменялось молча. Отбирается только запись.
+grant select on public.settings, public.network_snapshots to anon, authenticated;
+grant select, insert, update, delete
+  on public.settings, public.network_snapshots to service_role;
+
+revoke insert, update, delete, truncate on public.settings          from anon;
+revoke insert, update, delete, truncate on public.network_snapshots from anon;
+
 -- =====================================================================
 -- ЧАСТЬ 4.5. ОБНОВЛЕНИЕ КЭША СХЕМЫ POSTGREST — НЕ УДАЛЯТЬ
 -- =====================================================================

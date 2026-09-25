@@ -32,4 +32,15 @@ alter table echo_translations enable row level security;
 create policy echo_translations_read on echo_translations for select using (true);
 -- insert только через service role (unitycode-analyze) — anon-политики insert нет.
 
+-- ─── ПРАВА НА ТАБЛИЦЫ ───────────────────────────────────────────────────────
+-- Обязательно с 30.10.2026: Supabase больше не выдаёт права новым таблицам
+-- в public сам. Без GRANT таблица не видна через Data API — ни браузеру, ни
+-- воркеру, — причём SQL проходит без ошибок, а API отвечает «permission
+-- denied». Тот же молчаливый класс беды, что и забытый notify pgrst ниже.
+-- Переводы эха: читаются открыто, пишет только воркер.
+grant select on echo_translations to anon, authenticated;
+grant select, insert, update, delete on echo_translations to service_role;
+
+revoke insert, update, delete, truncate on echo_translations from anon;
+
 notify pgrst, 'reload schema';

@@ -56,9 +56,12 @@ UnityCode 不是一个网站，而是一套协议。任何人都可以拿走它�
 
 **2. 建立你自己的 Supabase 数据库**（免费额度即可）：
 
-- 在 SQL Editor 中完整执行 **`schema.sql`** —— 它会创建五张表并立即启用 RLS；
+- 在 SQL Editor 中完整执行 **`schema.sql`** —— 它会创建五张表、启用 RLS 并为各角色授予权限；
 - 如果之后手动建表 —— 别忘了 `NOTIFY pgrst, 'reload schema';`，
   否则 REST API 会悄无声息地拒绝向新表写入；
+- **自 2026-10-30 起** Supabase 不再自动为 `public` 中的新表授予权限：没有 `GRANT` 的表
+  通过 API 对浏览器和 Worker 都不可见。此时 SQL 不报错，API 却回应「permission denied」。
+  `schema.sql` 中已写好权限 —— 自建的表请像对待 `NOTIFY` 一样别忘了它；
 - 在 Settings → API 中取得 `Project URL`、公开密钥（`anon`/`publishable`，用于读取）
   以及**服务密钥**（给 write-worker 用；不要放进客户端）。
 
