@@ -81,7 +81,10 @@ UnityCode 不是一个网站，而是一套协议。任何人都可以拿走它�
 
 - worker 的地址：`WORKER_URL`（生成者）、`ANALYZE_URL`（分析者）、`WRITE_WORKER_URL`（写入）；
 - `SUPABASE_URL` 与 Supabase 公开密钥（用于读取）；
-- Turnstile 的 **Site Key**。
+- Turnstile 的 **Site Key**；
+- `analytics.js` 中的 `CF_BEACON_TOKEN` —— 访问计数器（Cloudflare Web Analytics）。
+  填入你自己站点的 token，或留空字符串以关闭计数器。我们的 token 绑定在
+  `unitycode.space` 上：在你的域名上 Cloudflare 不会接受它。
 
 **6. 按这个顺序检查**：在浏览器中打开 worker（应当返回 `{"status":"ok"}`）→
 打开螺旋，发送一段噪声 → 会收到共鸣 → 在地图上创建一个节点或一次联结
