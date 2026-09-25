@@ -112,15 +112,6 @@
     return Array.isArray(rows) ? rows : [];
   }
 
-  // Только узлы с координатами — для карты.
-  async function nodesWithPlace(select = 'id,created_at,raw_noise,lat,lng,user_token', since) {
-    let path = 'nodes?select=' + select
-      + '&lat=not.is.null&lng=not.is.null&order=created_at.desc';
-    if (since) path += '&created_at=gt.' + encodeURIComponent(since);
-    const rows = await get(path);
-    return Array.isArray(rows) ? rows : [];
-  }
-
   // Точное число узлов. Prefer:count=exact + limit=1 — не тянет строки,
   // читает только заголовок Content-Range. Нужно для триггера кэша анализа:
   // window._graphCounts устаревает, если граф изменился без перезагрузки.
@@ -184,7 +175,7 @@
     // личность
     token, phraseToToken,
     // узлы
-    myNodes, allNodes, nodesWithPlace, countNodes,
+    myNodes, allNodes, countNodes,
     // связи
     allConnections, connectionsFor,
   };
